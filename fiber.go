@@ -18,39 +18,24 @@ type FiberConfig struct {
 	AppFactory func() *fiber.App
 }
 
-func DefaultFiberConfig() *FiberConfig {
-	return &FiberConfig{
-		AppFactory: func() *fiber.App {
-			return fiber.New()
-		},
-	}
-}
-
-func NewFiberFactoryAdapter(config *FiberConfig, opts ...func(*fiber.App)) RouterAdapter[*fiber.App] {
-	if config == nil {
-		config = DefaultFiberConfig()
-	}
-
-	app := config.AppFactory()
+func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) RouterAdapter[*fiber.App] {
+	app := fiber.New()
 
 	if len(opts) == 0 {
 		opts = append(opts, DefaultFiberOptions)
 	}
 
 	for _, opt := range opts {
-		opt(app)
+		app = opt(app)
 	}
 
 	return &FiberAdapter{app: app}
 }
 
-func NewFiberAdapter(opts ...func(*fiber.App)) RouterAdapter[*fiber.App] {
-	return NewFiberFactoryAdapter(nil, opts...)
-}
-
-func DefaultFiberOptions(app *fiber.App) {
+func DefaultFiberOptions(app *fiber.App) *fiber.App {
 	app.Use(recover.New())
 	app.Use(logger.New())
+	return app
 }
 
 func (a *FiberAdapter) NewRouter() Router[*fiber.App] {
@@ -63,7 +48,15 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) interface{} {
 	}
 }
 
-func (a *FiberAdapter) Native() *fiber.App {
+func (a *FiberAdapter) Serve(address string) error {
+	return a.app.Listen(address)
+}
+
+func (a *FiberAdapter) Shutdown(ctx context.Context) error {
+	return a.app.ShutdownWithContext(ctx)
+}
+
+func (a *FiberAdapter) WrappedRouter() *fiber.App {
 	return a.app
 }
 
@@ -116,10 +109,6 @@ func (r *FiberRouter) Use(args ...any) Router[*fiber.App] {
 
 	r.router.Use(params...)
 	return r
-}
-
-func (r *FiberRouter) Serve(address string) error {
-	return r.router.Listen(address)
 }
 
 func (r *FiberRouter) Get(path string, handler HandlerFunc) RouteInfo {

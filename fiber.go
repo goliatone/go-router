@@ -14,8 +14,24 @@ type FiberAdapter struct {
 	app *fiber.App
 }
 
-func NewFiberAdapter(opts ...func(*fiber.App)) RouterAdapter[*fiber.App] {
-	app := fiber.New()
+type FiberConfig struct {
+	AppFactory func() *fiber.App
+}
+
+func DefaultFiberConfig() *FiberConfig {
+	return &FiberConfig{
+		AppFactory: func() *fiber.App {
+			return fiber.New()
+		},
+	}
+}
+
+func NewFiberFactoryAdapter(config *FiberConfig, opts ...func(*fiber.App)) RouterAdapter[*fiber.App] {
+	if config == nil {
+		config = DefaultFiberConfig()
+	}
+
+	app := config.AppFactory()
 
 	if len(opts) == 0 {
 		opts = append(opts, DefaultFiberOptions)
@@ -26,6 +42,10 @@ func NewFiberAdapter(opts ...func(*fiber.App)) RouterAdapter[*fiber.App] {
 	}
 
 	return &FiberAdapter{app: app}
+}
+
+func NewFiberAdapter(opts ...func(*fiber.App)) RouterAdapter[*fiber.App] {
+	return NewFiberFactoryAdapter(nil, opts...)
 }
 
 func DefaultFiberOptions(app *fiber.App) {

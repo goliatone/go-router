@@ -48,7 +48,9 @@ type Context interface {
 type RouterAdapter[T any] interface {
 	NewRouter() Router[T]
 	WrapHandler(HandlerFunc) interface{}
-	Native() T
+	WrappedRouter() T
+	Serve(address string) error
+	Shutdown(ctx context.Context) error
 }
 
 // Router represents a generic router interface
@@ -56,7 +58,6 @@ type Router[T any] interface {
 	Handle(method HTTPMethod, path string, handler ...HandlerFunc) RouteInfo
 	Group(prefix string) Router[T]
 	Use(args ...any) Router[T]
-	Serve(address string) error
 	Get(path string, handler HandlerFunc) RouteInfo
 	Post(path string, handler HandlerFunc) RouteInfo
 	Put(path string, handler HandlerFunc) RouteInfo

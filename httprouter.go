@@ -26,9 +26,10 @@ func debugPrint(format string, args ...interface{}) {
 // HTTPRouterAdapter implements RouterAdapter for julienschmidt/httprouter
 type HTTPRouterAdapter struct {
 	router *httprouter.Router
+	server *http.Server
 }
 
-func NewHTTPRouterAdapter(opts ...func(*httprouter.Router)) RouterAdapter[*httprouter.Router] {
+func NewHTTPRouterAdapter(opts ...func(*httprouter.Router) *httprouter.Router) RouterAdapter[*httprouter.Router] {
 	router := httprouter.New()
 
 	if len(opts) == 0 {
@@ -36,15 +37,16 @@ func NewHTTPRouterAdapter(opts ...func(*httprouter.Router)) RouterAdapter[*httpr
 	}
 
 	for _, opt := range opts {
-		opt(router)
+		router = opt(router)
 	}
 
 	return &HTTPRouterAdapter{router: router}
 }
 
-func DefaultHTTPRouterOptions(router *httprouter.Router) {
+func DefaultHTTPRouterOptions(router *httprouter.Router) *httprouter.Router {
 	router.HandleMethodNotAllowed = true
 	router.HandleOPTIONS = true
+	return router
 }
 
 func (a *HTTPRouterAdapter) NewRouter() Router[*httprouter.Router] {
@@ -60,8 +62,21 @@ func (a *HTTPRouterAdapter) WrapHandler(h HandlerFunc) interface{} {
 	}
 }
 
-func (a *HTTPRouterAdapter) Native() *httprouter.Router {
+func (a *HTTPRouterAdapter) WrappedRouter() *httprouter.Router {
 	return a.router
+}
+
+func (r *HTTPRouterAdapter) Serve(address string) error {
+	srv := &http.Server{
+		Addr:    address,
+		Handler: r.router,
+	}
+	r.server = srv
+	return srv.ListenAndServe()
+}
+
+func (r *HTTPRouterAdapter) Shutdown(ctx context.Context) error {
+	return r.server.Shutdown(ctx)
 }
 
 // HTTPRouter implements Router for httprouter
@@ -159,9 +174,9 @@ func (r *HTTPRouter) Use(middleware ...any) Router[*httprouter.Router] {
 	return r
 }
 
-func (r *HTTPRouter) Serve(address string) error {
-	return http.ListenAndServe(address, r.router)
-}
+// func (r *HTTPRouter) Serve(address string) error {
+// 	return http.ListenAndServe(address, r.router)
+// }
 
 func (r *HTTPRouter) Get(path string, handler HandlerFunc) RouteInfo {
 	return r.Handle(GET, path, handler)

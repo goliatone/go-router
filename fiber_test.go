@@ -31,7 +31,7 @@ func TestFiberRouter_Handle(t *testing.T) {
 
 	router.Handle(GET, "/hello", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	req := httptest.NewRequest("GET", "/hello", nil)
 	resp, err := app.Test(req)
@@ -74,7 +74,7 @@ func TestFiberRouter_UseMiddleware(t *testing.T) {
 	router.Use(middleware)
 	router.Get("/middleware", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	req := httptest.NewRequest("GET", "/middleware", nil)
 	resp, err := app.Test(req)
@@ -116,7 +116,7 @@ func TestFiberRouter_Group(t *testing.T) {
 
 	apiGroup.Get("/hello", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	req := httptest.NewRequest("GET", "/api/hello", nil)
 	resp, err := app.Test(req)
@@ -158,7 +158,7 @@ func TestFiberRouter_Methods(t *testing.T) {
 
 	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	for _, method := range methods {
 		req := httptest.NewRequest(method, "/test", nil)
@@ -223,7 +223,7 @@ func TestFiberContext(t *testing.T) {
 
 	router.Get("/context/test/:id", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	req := httptest.NewRequest("GET", "/context/test/123?q=test", nil)
 	req.Header.Set("X-Test-Header", "testvalue")
@@ -281,7 +281,7 @@ func TestFiberRouter_MiddlewareChain(t *testing.T) {
 
 	router.Get("/chain", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	req := httptest.NewRequest("GET", "/chain", nil)
 	resp, err := app.Test(req)
@@ -334,7 +334,7 @@ func TestFiberRouter_Bind(t *testing.T) {
 
 	router.Post("/bind", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	payload := `{"name":"Fiber"}`
 	req := httptest.NewRequest("POST", "/bind", strings.NewReader(payload))
@@ -394,7 +394,7 @@ func TestFiberContext_ContextMethods(t *testing.T) {
 
 	router.Get("/context", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	req := httptest.NewRequest("GET", "/context", nil)
 
@@ -434,7 +434,7 @@ func TestFiberContext_SetGetHeader(t *testing.T) {
 
 	router.Get("/header", handler)
 
-	app := adapter.Native()
+	app := adapter.WrappedRouter()
 
 	req := httptest.NewRequest("GET", "/header", nil)
 	req.Header.Set("X-Test-Header", "testvalue")

@@ -9,13 +9,13 @@ import (
 	"testing"
 )
 
-func TestFiberAdapter_NewRouter(t *testing.T) {
+func TestFiberAdapter_Router(t *testing.T) {
 	adapter := NewFiberAdapter()
 	if adapter == nil {
 		t.Fatal("Expected adapter to be non-nil")
 	}
 
-	router := adapter.NewRouter()
+	router := adapter.Router()
 	if router == nil {
 		t.Fatal("Expected router to be non-nil")
 	}
@@ -23,7 +23,7 @@ func TestFiberAdapter_NewRouter(t *testing.T) {
 
 func TestFiberRouter_Handle(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	handler := func(ctx Context) error {
 		return ctx.Send([]byte("Hello, Fiber!"))
@@ -59,7 +59,7 @@ func TestFiberRouter_Handle(t *testing.T) {
 
 func TestFiberRouter_UseMiddleware(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 	var middlewareCalled bool
 
 	middleware := func(ctx Context) error {
@@ -106,7 +106,7 @@ func TestFiberRouter_UseMiddleware(t *testing.T) {
 
 func TestFiberRouter_Group(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	apiGroup := router.Group("/api")
 
@@ -144,7 +144,7 @@ func TestFiberRouter_Group(t *testing.T) {
 
 func TestFiberRouter_Methods(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	handler := func(ctx Context) error {
 		return ctx.Send([]byte("Method OK"))
@@ -188,7 +188,7 @@ func TestFiberRouter_Methods(t *testing.T) {
 
 func TestFiberContext(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	handler := func(ctx Context) error {
 		if ctx.Method() != "GET" {
@@ -257,7 +257,7 @@ func TestFiberContext(t *testing.T) {
 
 func TestFiberRouter_MiddlewareChain(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	var order []string
 
@@ -320,7 +320,7 @@ func TestFiberRouter_MiddlewareChain(t *testing.T) {
 
 func TestFiberRouter_Bind(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	handler := func(ctx Context) error {
 		var data struct {
@@ -365,7 +365,7 @@ func TestFiberRouter_Bind(t *testing.T) {
 
 func TestFiberContext_ContextMethods(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	contextMiddleware := func(ctx Context) error {
 		newCtx := context.WithValue(ctx.Context(), "mykey", "myvalue")
@@ -419,7 +419,7 @@ func TestFiberContext_ContextMethods(t *testing.T) {
 
 func TestFiberContext_SetGetHeader(t *testing.T) {
 	adapter := NewFiberAdapter()
-	router := adapter.NewRouter()
+	router := adapter.Router()
 
 	handler := func(ctx Context) error {
 		ctx.SetHeader("X-Response-Header", "responsevalue")

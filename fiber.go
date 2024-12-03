@@ -9,16 +9,17 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
-// FiberAdapter implements RouterAdapter for Fiber framework
+// FiberAdapter implements Server for Fiber framework
 type FiberAdapter struct {
-	app *fiber.App
+	app    *fiber.App
+	router Router[*fiber.App]
 }
 
 type FiberConfig struct {
 	AppFactory func() *fiber.App
 }
 
-func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) RouterAdapter[*fiber.App] {
+func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 	app := fiber.New()
 
 	if len(opts) == 0 {
@@ -38,8 +39,11 @@ func DefaultFiberOptions(app *fiber.App) *fiber.App {
 	return app
 }
 
-func (a *FiberAdapter) NewRouter() Router[*fiber.App] {
-	return &FiberRouter{router: a.app}
+func (a *FiberAdapter) Router() Router[*fiber.App] {
+	if a.router == nil {
+		a.router = &FiberRouter{router: a.app}
+	}
+	return a.router
 }
 
 func (a *FiberAdapter) WrapHandler(h HandlerFunc) interface{} {

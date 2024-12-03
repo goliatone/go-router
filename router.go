@@ -45,8 +45,8 @@ type Context interface {
 	Next() error
 }
 
-type RouterAdapter[T any] interface {
-	NewRouter() Router[T]
+type Server[T any] interface {
+	Router() Router[T]
 	WrapHandler(HandlerFunc) interface{}
 	WrappedRouter() T
 	Serve(address string) error

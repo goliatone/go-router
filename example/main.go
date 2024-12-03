@@ -66,7 +66,7 @@ func NewUserStore() *UserStore {
 	}
 }
 
-func newFiberAdapter() router.RouterAdapter[*fiber.App] {
+func newFiberAdapter() router.Server[*fiber.App] {
 	app := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return fiber.New(
 			fiber.Config{
@@ -78,23 +78,21 @@ func newFiberAdapter() router.RouterAdapter[*fiber.App] {
 	return app
 }
 
-func newHTTPRouterAdapter() router.RouterAdapter[*httprouter.Router] {
-	return router.NewHTTPRouterAdapter()
+func newHTTPServer() router.Server[*httprouter.Router] {
+	return router.NewHTTPServer()
 }
 
 func main() {
 
 	app := newFiberAdapter()
-
-	r := app.NewRouter()
 	store := NewUserStore()
 
-	r.Use(func(c router.Context) error {
+	app.Router().Use(func(c router.Context) error {
 		c.SetHeader("Content-Type", "application/json")
 		return c.Next()
 	})
 
-	users := r.Group("/api/users")
+	users := app.Router().Group("/api/users")
 	{
 		users.Post("", createUser(store)).Name("user.create")
 		users.Get("", listUsers(store)).Name("user.list")

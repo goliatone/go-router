@@ -32,7 +32,7 @@ func TestHTTPRouter_Handle(t *testing.T) {
 
 	router.Handle(GET, "/hello", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/hello")
@@ -74,7 +74,7 @@ func TestHTTPRouter_Methods(t *testing.T) {
 
 	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
 	client := &http.Client{}
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	for _, method := range methods {
@@ -118,7 +118,7 @@ func TestHTTPRouter_Group(t *testing.T) {
 
 	apiGroup.Get("/hello", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/hello")
@@ -174,7 +174,7 @@ func TestHTTPRouter_ContextMethods(t *testing.T) {
 
 	router.Get("/context/test/:id", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	req, err := http.NewRequest("GET", server.URL+"/context/test/123?q=test", nil)
@@ -227,7 +227,7 @@ func TestHTTPRouter_Bind(t *testing.T) {
 
 	router.Post("/bind", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	payload := `{"name": "HTTPRouter"}`
@@ -274,7 +274,7 @@ func TestHTTPRouter_Middleware(t *testing.T) {
 	router.Use(middleware)
 	router.Get("/middleware", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/middleware")
@@ -319,7 +319,7 @@ func TestHTTPRouter_SetGetHeader(t *testing.T) {
 
 	router.Get("/header", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	req, err := http.NewRequest("GET", server.URL+"/header", nil)
@@ -373,7 +373,7 @@ func TestHTTPRouter_ContextPropagation2(t *testing.T) {
 	// Test the endpoint
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
-	adapter.Native().ServeHTTP(w, req)
+	adapter.WrappedRouter().ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status OK, got %v", w.Code)
@@ -408,7 +408,7 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 
 	router.Get("/context", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/context")
@@ -459,7 +459,7 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 	router.Use(middleware2)
 	router.Get("/chain", handler)
 
-	server := httptest.NewServer(adapter.Native())
+	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/chain")

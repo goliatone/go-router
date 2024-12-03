@@ -8,9 +8,9 @@ body = """
 	# [{{ version | trim_start_matches(pat="v") }}]\
 	{% if previous %}\
 		{% if previous.version %}\
-			(https://github.com/goliatone/hashid/compare/{{ previous.version }}...{{ version }})\
+			(https://github.com/goliatone/go-router/compare/{{ previous.version }}...{{ version }})\
 		{% else %}\
-			(https://github.com/goliatone/hashid/tree/{{ version }})\
+			(https://github.com/goliatone/go-router/tree/{{ version }})\
 		{% endif %}\
 	{% endif %} \
 	- ({{ timestamp | date(format="%Y-%m-%d") }})
@@ -25,9 +25,9 @@ body = """
 		  {% endif %}\
 		  {% if '```' in commit.message %}\
 		    {{ commit.message | upper_first }}\n\
-		    ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/goliatone/hashid/commit/{{ commit.id }}))  - ({{ commit.author.name }})\
+		    ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/goliatone/go-router/commit/{{ commit.id }}))  - ({{ commit.author.name }})\
           {% else %}\
-			{{ commit.message | upper_first  }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/goliatone/hashid/commit/{{ commit.id }}))  - ({{ commit.author.name }})\
+			{{ commit.message | upper_first  }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/goliatone/go-router/commit/{{ commit.id }}))  - ({{ commit.author.name }})\
           {% endif %}\
 		{% if commit.breaking %}\
 			{% for breakingChange in commit.footers %}\
@@ -47,8 +47,8 @@ conventional_commits = true
 filter_unconventional = false
 protect_breaking_commits = false
 commit_preprocessors = [
-    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/goliatone/hashid/issues/${2}))"},
-    { pattern = "Merge pull request #([0-9]+) from [^ ]+", replace = "PR [#${1}](https://github.com/goliatone/hashid/pull/${1}):"},
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/goliatone/go-router/issues/${2}))"},
+    { pattern = "Merge pull request #([0-9]+) from [^ ]+", replace = "PR [#${1}](https://github.com/goliatone/go-router/pull/${1}):"},
 ]
 commit_parsers = [
     { message = "(?i)^feat", group = "<!-- 0 -->🚀 Features"},

@@ -1,18 +1,21 @@
 package router
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type RouteInfo interface {
 	Name(string) RouteInfo
 }
 
-type RouteBuilder struct {
-	router Router[any]
-	routes []*Route
+type RouteBuilder[T any] struct {
+	router Router[T]
+	routes []*Route[T]
 }
 
-type Route struct {
-	builder     *RouteBuilder
+type Route[T any] struct {
+	builder     *RouteBuilder[T]
 	path        string
 	method      HTTPMethod
 	handler     HandlerFunc
@@ -21,67 +24,69 @@ type Route struct {
 	description string
 }
 
-func NewRouteBuilder(router Router[any]) *RouteBuilder {
-	return &RouteBuilder{
+func NewRouteBuilder[T any](router Router[T]) *RouteBuilder[T] {
+	return &RouteBuilder[T]{
 		router: router,
-		routes: make([]*Route, 0),
+		routes: make([]*Route[T], 0),
 	}
 }
 
-func (r *RouteBuilder) NewRoute() *Route {
-	route := &Route{
-		builder:    r,
+// NewRoute starts the configuration of a new route
+func (b *RouteBuilder[T]) NewRoute() *Route[T] {
+	route := &Route[T]{
+		builder:    b,
 		middleware: make([]HandlerFunc, 0),
 	}
-	r.routes = append(r.routes, route)
+	b.routes = append(b.routes, route)
 	return route
 }
 
 // Group creates a new RouteBuilder with a prefix path
-func (b *RouteBuilder) Group(prefix string) *RouteBuilder {
+func (b *RouteBuilder[T]) Group(prefix string) *RouteBuilder[T] {
 	return NewRouteBuilder(b.router.Group(prefix))
 }
 
-func (r *RouteBuilder) BuildAll() error {
+func (r *RouteBuilder[T]) BuildAll() error {
+	var errs error
 	for _, route := range r.routes {
 		if err := route.Build(); err != nil {
-			return fmt.Errorf("failed to build route %s: %w", route.path, err)
+			errs = errors.Join(fmt.Errorf("failed to build route %s: %w", route.path, err))
 		}
 	}
-	return nil
+	return errs
 }
 
-func (r *Route) Method(method HTTPMethod) *Route {
+func (r *Route[T]) Method(method HTTPMethod) *Route[T] {
 	r.method = method
 	return r
 }
 
-func (r *Route) Path(path string) *Route {
+func (r *Route[T]) Path(path string) *Route[T] {
 	r.path = path
 	return r
 }
 
-func (r *Route) Handler(handler HandlerFunc) *Route {
+func (r *Route[T]) Handler(handler HandlerFunc) *Route[T] {
 	r.handler = handler
 	return r
 }
 
-func (r *Route) Middleware(middleware ...HandlerFunc) *Route {
+func (r *Route[T]) Middleware(middleware ...HandlerFunc) *Route[T] {
 	r.middleware = append(r.middleware, middleware...)
 	return r
 }
 
-func (r *Route) Name(name string) *Route {
+func (r *Route[T]) Name(name string) *Route[T] {
 	r.name = name
 	return r
 }
 
-func (r *Route) Description(description string) *Route {
+func (r *Route[T]) Description(description string) *Route[T] {
 	r.description = description
 	return r
 }
 
-func (r *Route) Build() error {
+func (r *Route[T]) Build() error {
 	if err := r.validate(); err != nil {
 		return fmt.Errorf("route validation failed: %w", err)
 	}
@@ -98,7 +103,7 @@ func (r *Route) Build() error {
 	return nil
 }
 
-func (r *Route) validate() error {
+func (r *Route[T]) validate() error {
 	if r.method == "" {
 		return NewValidationError("method is required", nil)
 	}
@@ -114,22 +119,22 @@ func (r *Route) validate() error {
 	return nil
 }
 
-func (r *Route) GET() *Route {
+func (r *Route[T]) GET() *Route[T] {
 	return r.Method(GET)
 }
 
-func (r *Route) POST() *Route {
+func (r *Route[T]) POST() *Route[T] {
 	return r.Method(POST)
 }
 
-func (r *Route) PUT() *Route {
+func (r *Route[T]) PUT() *Route[T] {
 	return r.Method(PUT)
 }
 
-func (r *Route) DELETE() *Route {
+func (r *Route[T]) DELETE() *Route[T] {
 	return r.Method(DELETE)
 }
 
-func (r *Route) PATCH() *Route {
+func (r *Route[T]) PATCH() *Route[T] {
 	return r.Method(PATCH)
 }

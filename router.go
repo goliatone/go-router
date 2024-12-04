@@ -4,6 +4,10 @@ import (
 	"context"
 )
 
+const (
+	HeaderAuthorization = "Authorization"
+)
+
 // HTTPMethod represents HTTP request methods
 type HTTPMethod string
 
@@ -79,4 +83,11 @@ type Router[T any] interface {
 	Put(path string, handler HandlerFunc) RouteInfo
 	Delete(path string, handler HandlerFunc) RouteInfo
 	Patch(path string, handler HandlerFunc) RouteInfo
+}
+
+// WrapHandler function to wrap handlers that return error
+func WrapHandler(handler func(Context) error) HandlerFunc {
+	return func(c Context) error {
+		return handler(c)
+	}
 }

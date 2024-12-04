@@ -33,10 +33,3 @@ func WithErrorHandlerMiddleware(opts ...ErrorHandlerOption) HandlerFunc {
 		return c.JSON(routerErr.Code, response)
 	}
 }
-
-// WrapHandler function to wrap handlers that return error
-func WrapHandler(handler func(Context) error) HandlerFunc {
-	return func(c Context) error {
-		return handler(c)
-	}
-}

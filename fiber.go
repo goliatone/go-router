@@ -132,7 +132,7 @@ func (r *FiberRouter) Patch(path string, handler HandlerFunc) RouteInfo {
 	return r.Handle(PATCH, path, handler)
 }
 
-// Context implementations
+// Context implementation
 type fiberContext struct {
 	ctx *fiber.Ctx
 }

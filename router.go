@@ -17,37 +17,47 @@ const (
 	PATCH  HTTPMethod = "PATCH"
 )
 
-// Context represents a generic HTTP context
-type Context interface {
-	// Request data
+type Logger interface {
+	Debug(format string, args ...any)
+	Info(format string, args ...any)
+	Error(format string, args ...any)
+}
+
+type RequestContext interface {
 	Method() string
 	Path() string
 	Param(name string) string
 	Query(name string) string
 	Queries() map[string]string
+}
 
-	// Response methods
-	Status(code int) Context
+type ResponseWriter interface {
+	Status(code int) ResponseWriter
 	Send(body []byte) error
-	JSON(code int, v interface{}) error
+	JSON(code int, v any) error
 	NoContent(code int) error
+	Header(string) string
+	SetHeader(string, string) ResponseWriter
+}
+
+// Context represents a generic HTTP context
+type Context interface {
+	RequestContext
+	ResponseWriter
 
 	// Body parsing
-	Bind(interface{}) error
+	Bind(any) error
 
 	// Context methods
 	Context() context.Context
 	SetContext(context.Context)
-
-	Header(string) string
-	SetHeader(string, string)
 
 	Next() error
 }
 
 type Server[T any] interface {
 	Router() Router[T]
-	WrapHandler(HandlerFunc) interface{}
+	WrapHandler(HandlerFunc) any
 	WrappedRouter() T
 	Serve(address string) error
 	Shutdown(ctx context.Context) error

@@ -362,8 +362,6 @@ func TestHTTPRouter_ContextPropagation2(t *testing.T) {
 
 	router.Get("/test", func(c Context) error {
 		val := c.Context().Value("mykey")
-		debugPrint("Handler received context value: %v", val)
-
 		if val != "myvalue" {
 			return fmt.Errorf("expected context value 'myvalue', got '%v'", val)
 		}

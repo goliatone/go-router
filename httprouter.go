@@ -50,7 +50,11 @@ func (a *HTTPServer) WrapHandler(h HandlerFunc) interface{} {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		ctx := NewHTTPRouterContext(w, r, ps)
 		if err := h(ctx); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			a.router.Log.Error("error handling request: %s", err)
+			http.Error(w,
+				NewInternalError(err, "error handling request").Error(),
+				http.StatusInternalServerError,
+			)
 		}
 	}
 }
@@ -109,7 +113,10 @@ func (r *HTTPRouter) buildHandler(handlers ...HandlerFunc) http.Handler {
 
 		if err := ctx.Next(); err != nil {
 			r.Log.Error("Error during handler execution: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w,
+				NewInternalError(err, "error during handler execution").Error(),
+				http.StatusInternalServerError,
+			)
 			return
 		}
 	})

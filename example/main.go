@@ -90,10 +90,18 @@ func healthHandler(c router.Context) error {
 }
 
 func errorHandler(c router.Context) error {
-	return router.NewInternalError(fmt.Errorf("this is an error"), "error test")
+	return router.NewInternalError(
+		fmt.Errorf("this is an error"), "error test",
+	).
+		WithMetadata(map[string]any{
+			"version":  "v0.0.0",
+			"hostname": "localhost",
+		})
 }
 
 func main() {
+
+	router.LoggerEnabled = true
 
 	jsonType := func(c router.Context) error {
 		c.SetHeader("Content-Type", "application/json")
@@ -108,7 +116,10 @@ func main() {
 		GET().
 		Path("/health").
 		Middleware(jsonType).
-		Handler(router.WithErrorHandler(healthHandler)).
+		Handler(router.WithErrorHandler(healthHandler, router.ErrorHandlerConfig{
+			IncludeStack: true,
+			Environment:  "development",
+		})).
 		Name("health")
 
 	builder.NewRoute().

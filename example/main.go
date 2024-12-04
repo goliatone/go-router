@@ -84,13 +84,13 @@ func newHTTPServer() router.Server[*httprouter.Router] {
 	return router.NewHTTPServer()
 }
 
-func healthHandler(c router.Context) error {
+func healthRouteHandler(c router.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
 	})
 }
 
-func errorHandler(c router.Context) error {
+func errorRouteHandler(c router.Context) error {
 	return router.NewInternalError(
 		fmt.Errorf("this is an error"), "error test",
 	).WithMetadata(map[string]any{
@@ -99,12 +99,27 @@ func errorHandler(c router.Context) error {
 	})
 }
 
+type CustomCtx struct {
+	context.Context
+}
+
+func (c *CustomCtx) Foo() {
+	println("foo")
+}
+
+func (c *CustomCtx) Bar() {
+	println("bar")
+}
+
 func main() {
 
 	router.LoggerEnabled = true
 
 	jsonType := func(c router.Context) error {
 		c.SetHeader("Content-Type", "application/json")
+		cc := c.Context().(*CustomCtx)
+		cc.Foo()
+		cc.Bar()
 		return c.Next()
 	}
 
@@ -117,21 +132,35 @@ func main() {
 		router.WithErrorMapper(domainErrorMapper),
 	)
 
-	app.Router().Use(errMiddleware)
+	authMiddleware := func(c router.Context) error {
+		auth := c.Header(router.HeaderAuthorization)
+		if auth == "password" {
+			return c.Next()
+		}
+		return router.NewUnauthorizedError("Needs auth")
+	}
+
+	customCxt := func(c router.Context) error {
+		cc := &CustomCtx{c.Context()}
+		c.SetContext(cc)
+		return c.Next()
+	}
+
+	app.Router().Use(customCxt, errMiddleware, authMiddleware)
 
 	builder := router.NewRouteBuilder(app.Router())
 	builder.NewRoute().
 		GET().
 		Path("/health").
 		Middleware(jsonType).
-		Handler(healthHandler).
+		Handler(healthRouteHandler).
 		Name("health")
 
 	builder.NewRoute().
 		GET().
 		Path("/errors").
 		Middleware(jsonType).
-		Handler(errorHandler).
+		Handler(errorRouteHandler).
 		Name("errors")
 
 	builder.BuildAll()

@@ -47,7 +47,7 @@ func (e *RouterError) Unwrap() error {
 	return e.Internal
 }
 
-// Error constructors
+// NewValidationError
 func NewValidationError(message string, metadata map[string]any) *RouterError {
 	return &RouterError{
 		Type:     ErrorTypeValidation,

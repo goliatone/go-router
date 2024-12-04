@@ -154,7 +154,7 @@ func (c *fiberContext) Queries() map[string]string {
 	return queries
 }
 
-func (c *fiberContext) Status(code int) Context {
+func (c *fiberContext) Status(code int) ResponseWriter {
 	c.ctx.Status(code)
 	return c
 }
@@ -187,8 +187,9 @@ func (c *fiberContext) Header(key string) string {
 	return c.ctx.Get(key)
 }
 
-func (c *fiberContext) SetHeader(key string, value string) {
+func (c *fiberContext) SetHeader(key string, value string) ResponseWriter {
 	c.ctx.Set(key, value)
+	return c
 }
 
 func (c *fiberContext) Next() error {

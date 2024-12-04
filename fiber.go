@@ -15,10 +15,6 @@ type FiberAdapter struct {
 	router Router[*fiber.App]
 }
 
-type FiberConfig struct {
-	AppFactory func() *fiber.App
-}
-
 func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 	app := fiber.New()
 
@@ -41,7 +37,7 @@ func DefaultFiberOptions(app *fiber.App) *fiber.App {
 
 func (a *FiberAdapter) Router() Router[*fiber.App] {
 	if a.router == nil {
-		a.router = &FiberRouter{router: a.app}
+		a.router = &FiberRouter{router: a.app, Log: &defaultLogger{}}
 	}
 	return a.router
 }
@@ -68,6 +64,7 @@ func (a *FiberAdapter) WrappedRouter() *fiber.App {
 type FiberRouter struct {
 	router *fiber.App
 	prefix string
+	Log    Logger
 }
 
 func (r *FiberRouter) Handle(method HTTPMethod, path string, handlers ...HandlerFunc) RouteInfo {

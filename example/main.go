@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -82,15 +83,44 @@ func newHTTPServer() router.Server[*httprouter.Router] {
 	return router.NewHTTPServer()
 }
 
+func healthHandler(c router.Context) error {
+	return c.JSON(http.StatusOK, map[string]any{
+		"success": true,
+	})
+}
+
+func errorHandler(c router.Context) error {
+	return router.NewInternalError(fmt.Errorf("this is an error"), "error test")
+}
+
 func main() {
+
+	jsonType := func(c router.Context) error {
+		c.SetHeader("Content-Type", "application/json")
+		return c.Next()
+	}
 
 	app := newFiberAdapter()
 	store := NewUserStore()
 
-	app.Router().Use(func(c router.Context) error {
-		c.SetHeader("Content-Type", "application/json")
-		return c.Next()
-	})
+	builder := router.NewRouteBuilder(app.Router())
+	builder.NewRoute().
+		GET().
+		Path("/health").
+		Middleware(jsonType).
+		Handler(router.WithErrorHandler(healthHandler)).
+		Name("health")
+
+	builder.NewRoute().
+		GET().
+		Path("/errors").
+		Middleware(jsonType).
+		Handler(router.WithErrorHandler(errorHandler)).
+		Name("errors")
+
+	builder.BuildAll()
+
+	app.Router().Use(jsonType)
 
 	users := app.Router().Group("/api/users")
 	{

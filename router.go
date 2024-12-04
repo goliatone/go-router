@@ -55,8 +55,14 @@ type Context interface {
 	Next() error
 }
 
+// Server represents a generic HTTP server that
+// can be adapted to different HTTP routing frameworks.
+// It manages the lifecycle of the HTTP server and
+// provides access to the underlying router implementation.
 type Server[T any] interface {
+	// Router returns the router instance for registering routes and middleware
 	Router() Router[T]
+	// WrapHandler converts a HandlerFunc to the framework-specific handler type
 	WrapHandler(HandlerFunc) any
 	WrappedRouter() T
 	Serve(address string) error
@@ -73,8 +79,4 @@ type Router[T any] interface {
 	Put(path string, handler HandlerFunc) RouteInfo
 	Delete(path string, handler HandlerFunc) RouteInfo
 	Patch(path string, handler HandlerFunc) RouteInfo
-}
-
-type RouteInfo interface {
-	Name(string) RouteInfo
 }

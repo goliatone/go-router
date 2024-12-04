@@ -28,6 +28,10 @@ type ValidationError struct {
 	Message string `json:"message"`
 }
 
+func (v *ValidationError) Error() string {
+	return v.Message
+}
+
 // ErrorHandlerConfig allows customization of error handling behavior
 type ErrorHandlerConfig struct {
 	// Include stack traces in non-production environments
@@ -40,6 +44,46 @@ type ErrorHandlerConfig struct {
 	Environment string
 
 	GetRequestID func(c Context) string
+
+	GetStackTrace func() []string
+}
+
+// ErrorHandlerOption defines a function that can modify ErrorHandlerConfig
+type ErrorHandlerOption func(*ErrorHandlerConfig)
+
+// WithEnvironment sets the environment for error handling
+func WithEnvironment(env string) ErrorHandlerOption {
+	return func(config *ErrorHandlerConfig) {
+		config.Environment = env
+	}
+}
+
+// WithLogger sets the logger for error handling
+func WithLogger(logger Logger) ErrorHandlerOption {
+	return func(config *ErrorHandlerConfig) {
+		config.Logger = logger
+	}
+}
+
+// WithStackTrace enables or disables stack traces
+func WithStackTrace(include bool) ErrorHandlerOption {
+	return func(config *ErrorHandlerConfig) {
+		config.IncludeStack = include
+	}
+}
+
+// WithErrorMapper adds additional error mappers
+func WithErrorMapper(mapper ErrorMapper) ErrorHandlerOption {
+	return func(config *ErrorHandlerConfig) {
+		config.ErrorMappers = append(config.ErrorMappers, mapper)
+	}
+}
+
+// WithGetStackTrace adds additional error mappers
+func WithGetStackTrace(stacker func() []string) ErrorHandlerOption {
+	return func(config *ErrorHandlerConfig) {
+		config.GetStackTrace = stacker
+	}
 }
 
 // ErrorMapper is a function that can map specific error types to RouterError
@@ -59,6 +103,7 @@ func DefaultErrorHandlerConfig() ErrorHandlerConfig {
 		GetRequestID: func(c Context) string {
 			return c.Header("X-Request-ID")
 		},
+		GetStackTrace: getStackTrace,
 	}
 }
 
@@ -77,26 +122,22 @@ func WithErrorHandler(handler HandlerFunc, configs ...ErrorHandlerConfig) Handle
 		}
 
 		// Convert error to RouterError
-		routerErr := mapToRouterError(err, config.ErrorMappers)
+		routerErr := MapToRouterError(err, config.ErrorMappers)
 
-		// Get request ID from context if available
 		if requestID := config.GetRequestID(c); requestID != "" {
 			routerErr.RequestID = requestID
 		}
 
-		// Prepare error response
-		response := prepareErrorResponse(routerErr, config)
+		response := PrepareErrorResponse(routerErr, config)
 
-		// Log error
-		logError(config.Logger, routerErr, c)
+		LogError(config.Logger, routerErr, c)
 
-		// Send response
 		return c.JSON(routerErr.Code, response)
 	}
 }
 
-// logError logs the error with context information
-func logError(logger Logger, err *RouterError, c Context) {
+// LogError logs the error with context information
+func LogError(logger Logger, err *RouterError, c Context) {
 	fields := map[string]any{
 		"type":       err.Type,
 		"code":       err.Code,
@@ -116,8 +157,8 @@ func logError(logger Logger, err *RouterError, c Context) {
 	logger.Error(err.Message, fields)
 }
 
-// mapToRouterError converts any error to RouterError
-func mapToRouterError(err error, mappers []ErrorMapper) *RouterError {
+// MapToRouterError converts any error to RouterError
+func MapToRouterError(err error, mappers []ErrorMapper) *RouterError {
 	var routerErr *RouterError
 	if errors.As(err, &routerErr) {
 		return routerErr
@@ -132,7 +173,7 @@ func mapToRouterError(err error, mappers []ErrorMapper) *RouterError {
 	return NewInternalError(err, "An unexpected error occurred")
 }
 
-func prepareErrorResponse(err *RouterError, config ErrorHandlerConfig) ErrorResponse {
+func PrepareErrorResponse(err *RouterError, config ErrorHandlerConfig) ErrorResponse {
 	response := ErrorResponse{}
 	response.Error.Type = string(err.Type)
 	response.Error.Message = err.Message
@@ -141,7 +182,7 @@ func prepareErrorResponse(err *RouterError, config ErrorHandlerConfig) ErrorResp
 	response.Error.Metadata = err.Metadata
 
 	if config.IncludeStack && config.Environment != "production" {
-		response.Error.Stack = getStackTrace()
+		response.Error.Stack = config.GetStackTrace()
 	}
 
 	return response

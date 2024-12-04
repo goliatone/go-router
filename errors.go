@@ -21,12 +21,12 @@ const (
 
 // RouterError represents a custom error type for the router package
 type RouterError struct {
-	Type      ErrorType      `json:"type"`
-	Code      int            `json:"code"`
-	Message   string         `json:"message"`
-	Internal  error          `json:"error"`
-	Metadata  map[string]any `json:"metadata"`
-	RequestID string         `json:"request_id"`
+	Type      ErrorType
+	Code      int
+	Message   string
+	Internal  error
+	Metadata  map[string]any
+	RequestID string
 }
 
 func (e *RouterError) Error() string {

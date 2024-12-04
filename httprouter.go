@@ -11,18 +11,6 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-type contextKey struct {
-	name string
-}
-
-var debugEnabled = true
-
-func debugPrint(format string, args ...interface{}) {
-	if debugEnabled {
-		fmt.Printf("[DEBUG] "+format+"\n", args...)
-	}
-}
-
 // HTTPServer implements Server for julienschmidt/httprouter
 type HTTPServer struct {
 	httpRouter *httprouter.Router
@@ -52,7 +40,7 @@ func DefaultHTTPRouterOptions(router *httprouter.Router) *httprouter.Router {
 
 func (a *HTTPServer) Router() Router[*httprouter.Router] {
 	if a.router == nil {
-		a.router = &HTTPRouter{router: a.httpRouter}
+		a.router = &HTTPRouter{router: a.httpRouter, Log: &defaultLogger{}}
 	}
 
 	return a.router
@@ -89,17 +77,14 @@ type HTTPRouter struct {
 	router     *httprouter.Router
 	prefix     string
 	middleware []HandlerFunc
+	Log        Logger
 }
 
 func (r *HTTPRouter) Handle(method HTTPMethod, path string, handlers ...HandlerFunc) RouteInfo {
 	fullPath := r.prefix + path
 	handler := r.buildHandler(handlers...)
 
-	// debugPrint("Registering handler for %s %s", method, fullPath)
-
 	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
-		// debugPrint("Router handling request for %s %s", method, fullPath)
-
 		ctx := context.WithValue(req.Context(), httprouter.ParamsKey, params)
 		req = req.WithContext(ctx)
 		handler.ServeHTTP(w, req)
@@ -112,7 +97,6 @@ func (r *HTTPRouter) buildHandler(handlers ...HandlerFunc) http.Handler {
 	allHandlers := append(append([]HandlerFunc{}, r.middleware...), handlers...)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		// debugPrint("Starting new request handling for path: %s", req.URL.Path)
 		params := httprouter.ParamsFromContext(req.Context())
 
 		ctx := &httpRouterContext{
@@ -123,16 +107,11 @@ func (r *HTTPRouter) buildHandler(handlers ...HandlerFunc) http.Handler {
 			index:    -1,
 		}
 
-		// debugPrint("Initial context values: %+v", contextToString(ctx.r.Context()))
-
 		if err := ctx.Next(); err != nil {
-			debugPrint("Error during handler execution: %v", err)
+			r.Log.Error("Error during handler execution: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// debugPrint("Request handling completed. Final context values: %+v",
-		// 	contextToString(ctx.r.Context()))
 	})
 }
 
@@ -146,9 +125,7 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 
 func adaptStandardMiddleware(next func(http.Handler) http.Handler) HandlerFunc {
 	return func(c Context) error {
-		// debugPrint("Executing adapted standard middleware")
 		handler := next(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// debugPrint("Standard middleware inner handler")
 			c.Next()
 		}))
 		handler.ServeHTTP(c.(*httpRouterContext).w, c.(*httpRouterContext).r)
@@ -157,25 +134,18 @@ func adaptStandardMiddleware(next func(http.Handler) http.Handler) HandlerFunc {
 }
 
 func (r *HTTPRouter) Use(middleware ...any) Router[*httprouter.Router] {
-	// debugPrint("Adding middleware. Current count: %d", len(r.middleware))
-
 	for _, m := range middleware {
 		switch v := m.(type) {
 		case HandlerFunc:
-			// debugPrint("Adding HandlerFunc middleware")
 			r.middleware = append(r.middleware, v)
 		case func(Context) error:
-			// debugPrint("Adding func(Context) error middleware")
 			r.middleware = append(r.middleware, HandlerFunc(v))
 		case func(http.Handler) http.Handler:
-			// debugPrint("Adding standard http middleware")
 			r.middleware = append(r.middleware, adaptStandardMiddleware(v))
 		default:
-			debugPrint("Warning: Unsupported middleware type: %T", m)
+			r.Log.Error("Warning: Unsupported middleware type: %T", m)
 		}
 	}
-
-	// debugPrint("Total middleware count: %d", len(r.middleware))
 	return r
 }
 
@@ -239,7 +209,7 @@ func (c *httpRouterContext) Queries() map[string]string {
 	return queries
 }
 
-func (c *httpRouterContext) Status(code int) Context {
+func (c *httpRouterContext) Status(code int) ResponseWriter {
 	c.statusCode = code
 	return c
 }
@@ -268,9 +238,7 @@ func (c *httpRouterContext) Bind(v interface{}) error {
 }
 
 func (c *httpRouterContext) SetContext(ctx context.Context) {
-	// debugPrint("Setting new context. Old values: %+v", contextToString(c.r.Context()))
 	c.r = c.r.WithContext(ctx)
-	// debugPrint("New context values: %+v", contextToString(c.r.Context()))
 }
 
 func (c *httpRouterContext) Context() context.Context {
@@ -281,15 +249,14 @@ func (c *httpRouterContext) Header(key string) string {
 	return c.r.Header.Get(key)
 }
 
-func (c *httpRouterContext) SetHeader(key string, value string) {
+func (c *httpRouterContext) SetHeader(key string, value string) ResponseWriter {
 	c.w.Header().Set(key, value)
+	return c
 }
 
 func (c *httpRouterContext) Next() error {
 	c.index++
-	// debugPrint("Executing handler at index: %d (total handlers: %d)", c.index, len(c.handlers))
 	if c.index < len(c.handlers) {
-		// debugPrint("Context values before handler %d: %+v", c.index, contextToString(c.r.Context()))
 		return c.handlers[c.index](c)
 	}
 	return nil
@@ -318,13 +285,8 @@ func contextToString(ctx context.Context) string {
 
 func CreateContextMiddleware(key, value string) HandlerFunc {
 	return func(c Context) error {
-		debugPrint("Executing context middleware for key: %s", key)
-		debugPrint("Before setting context value: %+v", contextToString(c.Context()))
-
 		newCtx := context.WithValue(c.Context(), key, value)
 		c.SetContext(newCtx)
-
-		debugPrint("After setting context value: %+v", contextToString(c.Context()))
 		return c.Next()
 	}
 }

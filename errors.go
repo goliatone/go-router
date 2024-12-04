@@ -21,12 +21,12 @@ const (
 
 // RouterError represents a custom error type for the router package
 type RouterError struct {
-	Type      ErrorType
-	Code      int
-	Message   string
-	Internal  error
-	Metadata  map[string]interface{}
-	RequestID string
+	Type      ErrorType      `json:"type"`
+	Code      int            `json:"code"`
+	Message   string         `json:"message"`
+	Internal  error          `json:"error"`
+	Metadata  map[string]any `json:"metadata"`
+	RequestID string         `json:"request_id"`
 }
 
 func (e *RouterError) Error() string {
@@ -36,12 +36,19 @@ func (e *RouterError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Type, e.Message)
 }
 
+func (e *RouterError) WithMetadata(meta map[string]any) *RouterError {
+	for k, v := range meta {
+		e.Metadata[k] = v
+	}
+	return e
+}
+
 func (e *RouterError) Unwrap() error {
 	return e.Internal
 }
 
 // Error constructors
-func NewValidationError(message string, metadata map[string]interface{}) *RouterError {
+func NewValidationError(message string, metadata map[string]any) *RouterError {
 	return &RouterError{
 		Type:     ErrorTypeValidation,
 		Code:     http.StatusBadRequest,
@@ -52,25 +59,28 @@ func NewValidationError(message string, metadata map[string]interface{}) *Router
 
 func NewUnauthorizedError(message string) *RouterError {
 	return &RouterError{
-		Type:    ErrorTypeUnauthorized,
-		Code:    http.StatusUnauthorized,
-		Message: message,
+		Type:     ErrorTypeUnauthorized,
+		Code:     http.StatusUnauthorized,
+		Message:  message,
+		Metadata: map[string]any{},
 	}
 }
 
 func NewForbiddenError(message string) *RouterError {
 	return &RouterError{
-		Type:    ErrorTypeForbidden,
-		Code:    http.StatusForbidden,
-		Message: message,
+		Type:     ErrorTypeForbidden,
+		Code:     http.StatusForbidden,
+		Message:  message,
+		Metadata: map[string]any{},
 	}
 }
 
 func NewNotFoundError(message string) *RouterError {
 	return &RouterError{
-		Type:    ErrorTypeNotFound,
-		Code:    http.StatusNotFound,
-		Message: message,
+		Type:     ErrorTypeNotFound,
+		Code:     http.StatusNotFound,
+		Message:  message,
+		Metadata: map[string]any{},
 	}
 }
 
@@ -80,5 +90,6 @@ func NewInternalError(err error, message string) *RouterError {
 		Code:     http.StatusInternalServerError,
 		Message:  message,
 		Internal: err,
+		Metadata: map[string]any{},
 	}
 }

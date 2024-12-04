@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -92,11 +93,10 @@ func healthHandler(c router.Context) error {
 func errorHandler(c router.Context) error {
 	return router.NewInternalError(
 		fmt.Errorf("this is an error"), "error test",
-	).
-		WithMetadata(map[string]any{
-			"version":  "v0.0.0",
-			"hostname": "localhost",
-		})
+	).WithMetadata(map[string]any{
+		"version":  "v0.0.0",
+		"hostname": "localhost",
+	})
 }
 
 func main() {
@@ -111,22 +111,27 @@ func main() {
 	app := newFiberAdapter()
 	store := NewUserStore()
 
+	errMiddleware := router.WithErrorHandlerMiddleware(
+		router.WithEnvironment("development"),
+		router.WithStackTrace(true),
+		router.WithErrorMapper(domainErrorMapper),
+	)
+
+	app.Router().Use(errMiddleware)
+
 	builder := router.NewRouteBuilder(app.Router())
 	builder.NewRoute().
 		GET().
 		Path("/health").
 		Middleware(jsonType).
-		Handler(router.WithErrorHandler(healthHandler, router.ErrorHandlerConfig{
-			IncludeStack: true,
-			Environment:  "development",
-		})).
+		Handler(healthHandler).
 		Name("health")
 
 	builder.NewRoute().
 		GET().
 		Path("/errors").
 		Middleware(jsonType).
-		Handler(router.WithErrorHandler(errorHandler)).
+		Handler(errorHandler).
 		Name("errors")
 
 	builder.BuildAll()
@@ -135,11 +140,11 @@ func main() {
 
 	users := app.Router().Group("/api/users")
 	{
-		users.Post("", createUser(store)).Name("user.create")
-		users.Get("", listUsers(store)).Name("user.list")
-		users.Get("/:id", getUser(store)).Name("user.get")
-		users.Put("/:id", updateUser(store)).Name("user.update")
-		users.Delete("/:id", deleteUser(store)).Name("user.delete")
+		users.Post("", router.WrapHandler(createUser(store))).Name("user.create")
+		users.Get("", router.WrapHandler(listUsers(store))).Name("user.list")
+		users.Get("/:id", router.WrapHandler(getUser(store))).Name("user.get")
+		users.Put("/:id", router.WrapHandler(updateUser(store))).Name("user.update")
+		users.Delete("/:id", router.WrapHandler(deleteUser(store))).Name("user.delete")
 	}
 
 	go func() {
@@ -160,6 +165,30 @@ func main() {
 
 }
 
+type DomainError struct {
+	Type    string
+	Code    int
+	Message string
+}
+
+func (e *DomainError) Error() string {
+	return e.Message
+}
+
+// Custom error mapper for domain errors
+func domainErrorMapper(err error) *router.RouterError {
+	var domainErr *DomainError
+	if errors.As(err, &domainErr) {
+		return &router.RouterError{
+			Type:     router.ErrorType(domainErr.Type),
+			Code:     domainErr.Code,
+			Message:  domainErr.Message,
+			Metadata: map[string]any{},
+		}
+	}
+	return nil
+}
+
 type CreateUserRequest struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -169,16 +198,22 @@ func createUser(store *UserStore) router.HandlerFunc {
 	return func(c router.Context) error {
 		var req CreateUserRequest
 		if err := c.Bind(&req); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return router.NewValidationError("Invalid request body", map[string]any{
+				"error": err.Error(),
+			})
 		}
 
 		if req.Name == "" || req.Email == "" {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "name and email are required"})
+			return router.NewValidationError("Invalid request body", map[string]any{
+				"error": "name and email are required",
+			})
 		}
 
 		id, err := hashid.New(req.Email)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return router.NewValidationError("Invalid request body", map[string]any{
+				"error": "error parsing payload",
+			})
 		}
 
 		user := User{
@@ -219,7 +254,11 @@ func getUser(store *UserStore) router.HandlerFunc {
 		store.RUnlock()
 
 		if !exists {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
+			return &DomainError{
+				Type:    "USER_NOT_FOUND",
+				Code:    http.StatusNotFound,
+				Message: "User not found",
+			}
 		}
 
 		return c.JSON(http.StatusOK, user)
@@ -237,7 +276,9 @@ func updateUser(store *UserStore) router.HandlerFunc {
 
 		var req UpdateUserRequest
 		if err := c.Bind(&req); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return router.NewValidationError("Invalid request body", map[string]any{
+				"error": err.Error(),
+			})
 		}
 
 		store.Lock()
@@ -245,7 +286,11 @@ func updateUser(store *UserStore) router.HandlerFunc {
 
 		user, exists := store.users[id]
 		if !exists {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
+			return &DomainError{
+				Type:    "USER_NOT_FOUND",
+				Code:    http.StatusNotFound,
+				Message: "User not found",
+			}
 		}
 
 		if req.Name != "" {
@@ -272,7 +317,11 @@ func deleteUser(store *UserStore) router.HandlerFunc {
 		_, exists := store.users[id]
 		if !exists {
 			store.Unlock()
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
+			return &DomainError{
+				Type:    "USER_NOT_FOUND",
+				Code:    http.StatusNotFound,
+				Message: "User not found",
+			}
 		}
 
 		delete(store.users, id)

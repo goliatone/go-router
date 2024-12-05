@@ -78,15 +78,11 @@ func newFiberAdapter() router.Server[*fiber.App] {
 	return app
 }
 
-func newHTTPServer() router.Server[*httprouter.Router] {
+func newHTTPServerAdapter() router.Server[*httprouter.Router] {
 	return router.NewHTTPServer()
 }
 
-func main() {
-
-	app := newFiberAdapter()
-	store := NewUserStore()
-
+func createRoutes[T any](app router.Server[T], store *UserStore) {
 	app.Router().Use(func(c router.Context) error {
 		c.SetHeader("Content-Type", "application/json")
 		return c.Next()
@@ -100,6 +96,14 @@ func main() {
 		users.Put("/:id", updateUser(store)).Name("user.update")
 		users.Delete("/:id", deleteUser(store)).Name("user.delete")
 	}
+}
+
+func main() {
+
+	// app := newFiberAdapter()
+	app := newHTTPServerAdapter()
+	store := NewUserStore()
+	createRoutes(app, store)
 
 	go func() {
 		if err := app.Serve(":9092"); err != nil {
@@ -237,6 +241,6 @@ func deleteUser(store *UserStore) router.HandlerFunc {
 		delete(store.users, id)
 		store.Unlock()
 
-		return c.JSON(http.StatusNoContent, nil)
+		return c.NoContent(http.StatusNoContent)
 	}
 }

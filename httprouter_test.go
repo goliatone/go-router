@@ -271,7 +271,7 @@ func TestHTTPRouter_Middleware(t *testing.T) {
 		return ctx.Send([]byte("Hello with Middleware!"))
 	}
 
-	router.Use(middleware)
+	router.Use(MiddlewareFromHTTP(middleware))
 	router.Get("/middleware", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
@@ -352,13 +352,21 @@ func TestHTTPRouter_SetGetHeader(t *testing.T) {
 	}
 }
 
+func CreateContextMiddleware(key, value string) HandlerFunc {
+	return func(c Context) error {
+		newCtx := context.WithValue(c.Context(), key, value)
+		c.SetContext(newCtx)
+		return c.Next()
+	}
+}
+
 func TestHTTPRouter_ContextPropagation2(t *testing.T) {
 	adapter := NewHTTPServer()
 	router := adapter.Router()
 
 	// Create middleware using the helper function
 	middleware := CreateContextMiddleware("mykey", "myvalue")
-	router.Use(middleware)
+	router.Use(ToMiddleware(middleware))
 
 	router.Get("/test", func(c Context) error {
 		val := c.Context().Value("mykey")
@@ -388,7 +396,7 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 		return ctx.Next()
 	}
 
-	router.Use(contextMiddleware)
+	router.Use(ToMiddleware(contextMiddleware))
 
 	handler := func(ctx Context) error {
 		value := ctx.Context().Value("mykey")
@@ -453,8 +461,8 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 		return ctx.Send([]byte("Middleware Chain OK"))
 	}
 
-	router.Use(middleware1)
-	router.Use(middleware2)
+	router.Use(MiddlewareFromHTTP(middleware1))
+	router.Use(MiddlewareFromHTTP(middleware2))
 	router.Get("/chain", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())

@@ -35,6 +35,7 @@ type ResponseWriter interface {
 	Status(code int) ResponseWriter
 	Send(body []byte) error
 	JSON(code int, v any) error
+	// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 	NoContent(code int) error
 	Header(string) string
 	SetHeader(string, string) ResponseWriter

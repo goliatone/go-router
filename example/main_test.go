@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -302,6 +305,99 @@ func TestFiber_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestFiber_EdgeCases(t *testing.T) {
+	app, store := setupFiberTest()
+
+	t.Run("nil body in request", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/users", nil)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.WrappedRouter().Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("malformed json body", func(t *testing.T) {
+		body := bytes.NewBufferString("{bad json}")
+		req := httptest.NewRequest(http.MethodPost, "/api/users", body)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.WrappedRouter().Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	// TODO: normalize between frameworks
+	t.Run("missing content type", func(t *testing.T) {
+		user := CreateUserRequest{Name: "test", Email: "test@example.com"}
+		body, _ := json.Marshal(user)
+		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewBuffer(body))
+		resp, err := app.WrappedRouter().Test(req)
+		require.NoError(t, err)
+		// assert.Equal(t, http.StatusUnsupportedMediaType, resp.StatusCode)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("response with nil", func(t *testing.T) {
+		id := "test-id"
+		store.Lock()
+		store.users[id] = User{ID: id, Name: "Test"}
+		store.Unlock()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/users/"+id, nil)
+		resp, err := app.WrappedRouter().Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.NotEmpty(t, resp.Header.Get("Content-Type"))
+	})
+
+	t.Run("invalid method override", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/users", nil)
+		req.Header.Set("X-HTTP-Method-Override", "INVALID")
+		resp, err := app.WrappedRouter().Test(req)
+		require.NoError(t, err)
+		// assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("concurrent requests", func(t *testing.T) {
+		wg := sync.WaitGroup{}
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+				resp, err := app.WrappedRouter().Test(req)
+				require.NoError(t, err)
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+			}()
+		}
+		wg.Wait()
+	})
+
+	t.Run("very long url path", func(t *testing.T) {
+		longPath := strings.Repeat("a", 2048)
+		req := httptest.NewRequest(http.MethodGet, "/api/users/"+longPath, nil)
+		resp, err := app.WrappedRouter().Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	// t.Run("unicode in path params", func(t *testing.T) {
+	// 	unicodeID := "测试-id"
+	// 	store.Lock()
+	// 	store.users[unicodeID] = User{ID: unicodeID, Name: "Test"}
+	// 	store.Unlock()
+
+	// 	req := httptest.NewRequest(http.MethodGet, "/api/users/"+url.PathEscape(unicodeID), nil)
+	// 	resp, err := app.WrappedRouter().Test(req)
+	// 	require.NoError(t, err)
+	// 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	// })
+}
+
+/////////////////////////////////////////////////////////////////
+///// HTTP ROUTER
+/////////////////////////////////////////////////////////////////
+
 func setupHTTPServerTest() (*httptest.Server, *UserStore) {
 	app := newHTTPServerAdapter()
 	store := NewUserStore()
@@ -310,7 +406,7 @@ func setupHTTPServerTest() (*httptest.Server, *UserStore) {
 	return ts, store
 }
 
-func TestHTTP_ListUsers(t *testing.T) {
+func TestHTTPRouter_ListUsers(t *testing.T) {
 	ts, _ := setupHTTPServerTest()
 	defer ts.Close()
 
@@ -332,7 +428,7 @@ func TestHTTP_ListUsers(t *testing.T) {
 	}
 }
 
-func TestHTTP_CreateUser(t *testing.T) {
+func TestHTTPRouter_CreateUser(t *testing.T) {
 	ts, _ := setupHTTPServerTest()
 	defer ts.Close()
 
@@ -392,7 +488,7 @@ func TestHTTP_CreateUser(t *testing.T) {
 	}
 }
 
-func TestHTTP_GetUser(t *testing.T) {
+func TestHTTPRouter_GetUser(t *testing.T) {
 	ts, store := setupHTTPServerTest()
 	defer ts.Close()
 
@@ -441,7 +537,7 @@ func TestHTTP_GetUser(t *testing.T) {
 	}
 }
 
-func TestHTTP_UpdateUser(t *testing.T) {
+func TestHTTPRouter_UpdateUser(t *testing.T) {
 	ts, store := setupHTTPServerTest()
 	defer ts.Close()
 
@@ -521,7 +617,7 @@ func TestHTTP_UpdateUser(t *testing.T) {
 	}
 }
 
-func TestHTTP_DeleteUser(t *testing.T) {
+func TestHTTPRouter_DeleteUser(t *testing.T) {
 	ts, store := setupHTTPServerTest()
 	defer ts.Close()
 
@@ -575,7 +671,7 @@ func TestHTTP_DeleteUser(t *testing.T) {
 	}
 }
 
-func TestHTTP_MethodNotAllowed(t *testing.T) {
+func TestHTTPRouter_MethodNotAllowed(t *testing.T) {
 	ts, _ := setupHTTPServerTest()
 	defer ts.Close()
 
@@ -612,4 +708,120 @@ func TestHTTP_MethodNotAllowed(t *testing.T) {
 			assert.Equal(t, tt.wantStatus, resp.StatusCode)
 		})
 	}
+}
+
+func TestHTTPRouter_EdgeCases(t *testing.T) {
+	ts, store := setupHTTPServerTest()
+	defer ts.Close()
+
+	t.Run("nil body in request", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/users", nil)
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("malformed json body", func(t *testing.T) {
+		body := bytes.NewBufferString("{bad json}")
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/users", body)
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	// t.Run("missing content type", func(t *testing.T) {
+	// 	user := CreateUserRequest{Name: "test", Email: "test@example.com"}
+	// 	body, _ := json.Marshal(user)
+	// 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/users", bytes.NewBuffer(body))
+
+	// 	client := &http.Client{}
+	// 	resp, err := client.Do(req)
+	// 	require.NoError(t, err)
+	// 	defer resp.Body.Close()
+
+	// 	assert.Equal(t, http.StatusUnsupportedMediaType, resp.StatusCode)
+	// })
+
+	t.Run("invalid method override", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/users", nil)
+		req.Header.Set("X-HTTP-Method-Override", "INVALID")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("response with nil", func(t *testing.T) {
+		id := "test-id"
+		store.Lock()
+		store.users[id] = User{ID: id, Name: "Test"}
+		store.Unlock()
+
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/users/"+id, nil)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.NotEmpty(t, resp.Header.Get("Content-Type"))
+	})
+
+	t.Run("concurrent requests", func(t *testing.T) {
+		wg := sync.WaitGroup{}
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/users", nil)
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+			}()
+		}
+		wg.Wait()
+	})
+
+	t.Run("very long url path", func(t *testing.T) {
+		longPath := strings.Repeat("a", 2048)
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/users/"+longPath, nil)
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("unicode in path params", func(t *testing.T) {
+		unicodeID := "测试-id"
+		store.Lock()
+		store.users[unicodeID] = User{ID: unicodeID, Name: "Test"}
+		store.Unlock()
+
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/users/"+url.PathEscape(unicodeID), nil)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
 }

@@ -186,7 +186,7 @@ func TestFiberRouter_Methods(t *testing.T) {
 	}
 }
 
-func TestFiberContext(t *testing.T) {
+func TestFiber_Context(t *testing.T) {
 	adapter := NewFiberAdapter()
 	router := adapter.Router()
 

@@ -20,7 +20,11 @@ type FiberConfig struct {
 }
 
 func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		UnescapePath:      true,
+		EnablePrintRoutes: true,
+		StrictRouting:     false,
+	})
 
 	if len(opts) == 0 {
 		opts = append(opts, DefaultFiberOptions)

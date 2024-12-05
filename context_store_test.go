@@ -22,7 +22,7 @@ func TestContextStore_Basic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
 			store.Set(tt.key, tt.value)
-			got := store.Get(tt.key)
+			got := store.Get(tt.key, "")
 			if got != tt.expected {
 				t.Errorf("Get(%q) = %v, want %v", tt.key, got, tt.expected)
 			}
@@ -137,7 +137,7 @@ func TestContextStore_ThreadSafety(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				_ = store.Get("key")
+				_ = store.Get("key", "")
 			}
 		}()
 	}
@@ -159,7 +159,7 @@ func TestContextStore_MultipleKeys(t *testing.T) {
 			for j := 0; j < iterations; j++ {
 				key := "key" + string(rune(j))
 				store.Set(key, id)
-				_ = store.Get(key)
+				_ = store.Get(key, "")
 			}
 		}(i)
 	}
@@ -170,7 +170,7 @@ func TestContextStore_MultipleKeys(t *testing.T) {
 func TestContextStore_NilStore(t *testing.T) {
 	store := &safeStore{}
 
-	if val := store.Get("test"); val != nil {
+	if val := store.Get("test", nil); val != nil {
 		t.Errorf("Expected nil for uninitialized store, got %v", val)
 	}
 

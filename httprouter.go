@@ -262,8 +262,8 @@ func (c *httpRouterContext) Set(key string, value any) {
 	c.store.Set(key, value)
 }
 
-func (c *httpRouterContext) Get(key string) any {
-	return c.store.Get(key)
+func (c *httpRouterContext) Get(key string, def any) any {
+	return c.store.Get(key, def)
 }
 
 func (c *httpRouterContext) GetString(key string, def string) string {

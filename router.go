@@ -52,7 +52,7 @@ type ResponseWriter interface {
 // Store e.g. for authentication middleware.
 type ContextStore interface {
 	Set(key string, value any)
-	Get(key string) any
+	Get(key string, def any) any
 	GetString(key string, def string) string
 	GetInt(key string, def int) int
 	GetBool(key string, def bool) bool

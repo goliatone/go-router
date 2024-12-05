@@ -527,17 +527,17 @@ func TestContext_GetSet(t *testing.T) {
 	handler := func(c Context) error {
 		c.Set("key2", "value2")
 
-		val1 := c.Get("key1")
+		val1 := c.Get("key1", "")
 		if val1 != "value1" {
 			t.Errorf("Expected value1, got %v", val1)
 		}
 
-		val2 := c.Get("key2")
+		val2 := c.Get("key2", "")
 		if val2 != "value2" {
 			t.Errorf("Expected value2, got %v", val2)
 		}
 
-		nonExistent := c.Get("nonexistent")
+		nonExistent := c.Get("nonexistent", nil)
 		if nonExistent != nil {
 			t.Errorf("Expected nil for nonexistent key, got %v", nonExistent)
 		}

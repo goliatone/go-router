@@ -229,8 +229,8 @@ func (c *fiberContext) Set(key string, value any) {
 	c.store.Set(key, value)
 }
 
-func (c *fiberContext) Get(key string) any {
-	return c.store.Get(key)
+func (c *fiberContext) Get(key string, def any) any {
+	return c.store.Get(key, def)
 }
 
 func (c *fiberContext) GetString(key string, def string) string {

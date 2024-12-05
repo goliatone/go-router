@@ -1,6 +1,8 @@
 package router
 
-import "sync"
+import (
+	"sync"
+)
 
 type safeStore struct {
 	mu    sync.RWMutex
@@ -22,35 +24,51 @@ func (s *safeStore) Set(key string, value any) {
 	s.store[key] = value
 }
 
-func (s *safeStore) Get(key string) any {
+func (s *safeStore) Get(key string, def any) any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.store[key]
-}
-
-func (c *safeStore) GetString(key string, def string) string {
-	if v := c.Get(key); v != nil {
-		if s, ok := v.(string); ok {
-			return s
-		}
+	if s, ok := s.store[key]; ok {
+		return s
 	}
 	return def
 }
 
-func (c *safeStore) GetInt(key string, def int) int {
-	if v := c.Get(key); v != nil {
-		if s, ok := v.(int); ok {
-			return s
-		}
+func (s *safeStore) GetString(key string, def string) string {
+	val := s.Get(key, def)
+	str, ok := val.(string)
+	if !ok {
+		return def
 	}
-	return def
+	return str
 }
 
-func (c *safeStore) GetBool(key string, def bool) bool {
-	if v := c.Get(key); v != nil {
-		if s, ok := v.(bool); ok {
-			return s
-		}
+func (s *safeStore) GetInt(key string, def int) int {
+	val := s.Get(key, def)
+	num, ok := val.(int)
+	if !ok {
+		return def
+	}
+	return num
+}
+
+func (s *safeStore) GetBool(key string, def bool) bool {
+	val := s.Get(key, def)
+	b, ok := val.(bool)
+	if !ok {
+		return def
+	}
+	return b
+}
+
+// GetContextValue functions for type assertion
+func GetContextValue[T any](c Context, key string, def T) T {
+	val := c.Get(key, nil)
+	if val == nil {
+		return def
+	}
+
+	if typed, ok := val.(T); ok {
+		return typed
 	}
 	return def
 }

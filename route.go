@@ -5,10 +5,6 @@ import (
 	"fmt"
 )
 
-type RouteInfo interface {
-	Name(string) RouteInfo
-}
-
 type RouteBuilder[T any] struct {
 	router Router[T]
 	routes []*Route[T]
@@ -19,7 +15,7 @@ type Route[T any] struct {
 	path        string
 	method      HTTPMethod
 	handler     HandlerFunc
-	middleware  []HandlerFunc
+	middleware  []MiddlewareFunc
 	name        string
 	description string
 }
@@ -35,7 +31,7 @@ func NewRouteBuilder[T any](router Router[T]) *RouteBuilder[T] {
 func (b *RouteBuilder[T]) NewRoute() *Route[T] {
 	route := &Route[T]{
 		builder:    b,
-		middleware: make([]HandlerFunc, 0),
+		middleware: make([]MiddlewareFunc, 0),
 	}
 	b.routes = append(b.routes, route)
 	return route
@@ -71,7 +67,7 @@ func (r *Route[T]) Handler(handler HandlerFunc) *Route[T] {
 	return r
 }
 
-func (r *Route[T]) Middleware(middleware ...HandlerFunc) *Route[T] {
+func (r *Route[T]) Middleware(middleware ...MiddlewareFunc) *Route[T] {
 	r.middleware = append(r.middleware, middleware...)
 	return r
 }
@@ -91,11 +87,13 @@ func (r *Route[T]) Build() error {
 		return fmt.Errorf("route validation failed: %w", err)
 	}
 
-	handlers := make([]HandlerFunc, 0, len(r.middleware)+1)
-	handlers = append(handlers, r.middleware...)
-	handlers = append(handlers, r.handler)
+	// Chain middleware with final handler
+	var finalHandler HandlerFunc = r.handler
+	for i := len(r.middleware) - 1; i >= 0; i-- {
+		finalHandler = r.middleware[i](finalHandler)
+	}
 
-	route := r.builder.router.Handle(r.method, r.path, handlers...)
+	route := r.builder.router.Handle(r.method, r.path, finalHandler)
 	if r.name != "" {
 		route = route.Name(r.name)
 	}

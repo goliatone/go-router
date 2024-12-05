@@ -71,7 +71,7 @@ func TestFiberRouter_UseMiddleware(t *testing.T) {
 		return ctx.Send([]byte("Hello with Middleware!"))
 	}
 
-	router.Use(middleware)
+	router.Use(ToMiddleware(middleware))
 	router.Get("/middleware", handler)
 
 	app := adapter.WrappedRouter()
@@ -276,8 +276,8 @@ func TestFiberRouter_MiddlewareChain(t *testing.T) {
 		return ctx.Send([]byte("Middleware Chain OK"))
 	}
 
-	router.Use(middleware1)
-	router.Use(middleware2)
+	router.Use(ToMiddleware(middleware1))
+	router.Use(ToMiddleware(middleware2))
 
 	router.Get("/chain", handler)
 
@@ -373,7 +373,7 @@ func TestFiberContext_ContextMethods(t *testing.T) {
 		return ctx.Next()
 	}
 
-	router.Use(contextMiddleware)
+	router.Use(ToMiddleware(contextMiddleware))
 
 	handler := func(ctx Context) error {
 		value := ctx.Context().Value("mykey")

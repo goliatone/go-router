@@ -83,10 +83,11 @@ func newHTTPServerAdapter() router.Server[*httprouter.Router] {
 }
 
 func createRoutes[T any](app router.Server[T], store *UserStore) {
-	app.Router().Use(func(c router.Context) error {
+
+	app.Router().Use(router.ToMiddleware(func(c router.Context) error {
 		c.SetHeader("Content-Type", "application/json")
 		return c.Next()
-	})
+	}))
 
 	users := app.Router().Group("/api/users")
 	{
@@ -104,6 +105,8 @@ func main() {
 	app := newHTTPServerAdapter()
 	store := NewUserStore()
 	createRoutes(app, store)
+
+	app.Router().PrintRoutes()
 
 	go func() {
 		if err := app.Serve(":9092"); err != nil {

@@ -107,35 +107,6 @@ func DefaultErrorHandlerConfig() ErrorHandlerConfig {
 	}
 }
 
-// WithErrorHandler wraps a handler with error handling middleware
-func WithErrorHandler(handler HandlerFunc, configs ...ErrorHandlerConfig) HandlerFunc {
-	// Use default config if none provided
-	config := DefaultErrorHandlerConfig()
-	if len(configs) > 0 {
-		config = configs[0]
-	}
-
-	return func(c Context) error {
-		err := handler(c)
-		if err == nil {
-			return nil
-		}
-
-		// Convert error to RouterError
-		routerErr := MapToRouterError(err, config.ErrorMappers)
-
-		if requestID := config.GetRequestID(c); requestID != "" {
-			routerErr.RequestID = requestID
-		}
-
-		response := PrepareErrorResponse(routerErr, config)
-
-		LogError(config.Logger, routerErr, c)
-
-		return c.JSON(routerErr.Code, response)
-	}
-}
-
 // LogError logs the error with context information
 func LogError(logger Logger, err *RouterError, c Context) {
 	fields := map[string]any{

@@ -115,12 +115,14 @@ func main() {
 
 	router.LoggerEnabled = true
 
-	jsonType := func(c router.Context) error {
-		c.SetHeader("Content-Type", "application/json")
-		cc := c.Context().(*CustomCtx)
-		cc.Foo()
-		cc.Bar()
-		return c.Next()
+	jsonType := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
+			c.SetHeader("Content-Type", "application/json")
+			cc := c.Context().(*CustomCtx)
+			cc.Foo()
+			cc.Bar()
+			return c.Next()
+		}
 	}
 
 	app := newFiberAdapter()
@@ -140,13 +142,15 @@ func main() {
 		return router.NewUnauthorizedError("Needs auth")
 	}
 
-	customCxt := func(c router.Context) error {
-		cc := &CustomCtx{c.Context()}
-		c.SetContext(cc)
-		return c.Next()
+	customCxt := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
+			cc := &CustomCtx{c.Context()}
+			c.SetContext(cc)
+			return c.Next()
+		}
 	}
 
-	app.Router().Use(customCxt, errMiddleware, authMiddleware)
+	app.Router().Use(customCxt, errMiddleware, router.ToMiddleware(authMiddleware))
 
 	builder := router.NewRouteBuilder(app.Router())
 	builder.NewRoute().

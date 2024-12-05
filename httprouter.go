@@ -11,6 +11,18 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+type contextKey struct {
+	name string
+}
+
+var debugEnabled = true
+
+func debugPrint(format string, args ...interface{}) {
+	if debugEnabled {
+		fmt.Printf("[DEBUG] "+format+"\n", args...)
+	}
+}
+
 // HTTPServer implements Server for julienschmidt/httprouter
 type HTTPServer struct {
 	httpRouter *httprouter.Router
@@ -59,12 +71,19 @@ func (a *HTTPServer) WrappedRouter() *httprouter.Router {
 	return a.httpRouter
 }
 
+func (a *HTTPServer) WrappedServer() *http.Server {
+	return a.server
+}
+
 func (r *HTTPServer) Serve(address string) error {
 	srv := &http.Server{
 		Addr:    address,
 		Handler: r.httpRouter,
 	}
 	r.server = srv
+
+	debugPrint("serving at %s", srv.Addr)
+
 	return srv.ListenAndServe()
 }
 
@@ -94,16 +113,17 @@ func (r *HTTPRouter) Handle(method HTTPMethod, path string, handlers ...HandlerF
 }
 
 func (r *HTTPRouter) buildHandler(handlers ...HandlerFunc) http.Handler {
-	allHandlers := append(append([]HandlerFunc{}, r.middleware...), handlers...)
-
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		params := httprouter.ParamsFromContext(req.Context())
+		if params == nil {
+			params = make(httprouter.Params, 0)
+		}
 
 		ctx := &httpRouterContext{
 			w:        w,
 			r:        req,
 			params:   params,
-			handlers: allHandlers,
+			handlers: append(r.middleware, handlers...),
 			index:    -1,
 		}
 
@@ -125,7 +145,9 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 
 func adaptStandardMiddleware(next func(http.Handler) http.Handler) HandlerFunc {
 	return func(c Context) error {
+		debugPrint("Executing adapted standard middleware")
 		handler := next(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			debugPrint("Standard middleware inner handler")
 			c.Next()
 		}))
 		handler.ServeHTTP(c.(*httpRouterContext).w, c.(*httpRouterContext).r)
@@ -215,6 +237,9 @@ func (c *httpRouterContext) Status(code int) ResponseWriter {
 }
 
 func (c *httpRouterContext) Send(body []byte) error {
+	if body == nil {
+		return c.NoContent(c.statusCode)
+	}
 	if c.statusCode > 0 {
 		c.w.WriteHeader(c.statusCode)
 	}
@@ -223,22 +248,35 @@ func (c *httpRouterContext) Send(body []byte) error {
 }
 
 func (c *httpRouterContext) JSON(code int, v interface{}) error {
+	if v == nil {
+		return c.NoContent(code)
+	}
+
 	c.w.Header().Set("Content-Type", "application/json")
 	c.w.WriteHeader(code)
 	return json.NewEncoder(c.w).Encode(v)
 }
 
+// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 func (c *httpRouterContext) NoContent(code int) error {
 	c.w.WriteHeader(code)
 	return nil
 }
 
 func (c *httpRouterContext) Bind(v interface{}) error {
+	if v == nil {
+		return fmt.Errorf("bind: nil interface provided")
+	}
+	if c.r.Body == nil {
+		return fmt.Errorf("bind: request body is nil")
+	}
 	return json.NewDecoder(c.r.Body).Decode(v)
 }
 
 func (c *httpRouterContext) SetContext(ctx context.Context) {
+	debugPrint("Setting new context. Old values: %+v", contextToString(c.r.Context()))
 	c.r = c.r.WithContext(ctx)
+	debugPrint("New context values: %+v", contextToString(c.r.Context()))
 }
 
 func (c *httpRouterContext) Context() context.Context {
@@ -256,7 +294,9 @@ func (c *httpRouterContext) SetHeader(key string, value string) ResponseWriter {
 
 func (c *httpRouterContext) Next() error {
 	c.index++
+	debugPrint("Executing handler at index: %d (total handlers: %d)", c.index, len(c.handlers))
 	if c.index < len(c.handlers) {
+		debugPrint("Context values before handler %d: %+v", c.index, contextToString(c.r.Context()))
 		return c.handlers[c.index](c)
 	}
 	return nil
@@ -285,8 +325,13 @@ func contextToString(ctx context.Context) string {
 
 func CreateContextMiddleware(key, value string) HandlerFunc {
 	return func(c Context) error {
+		debugPrint("Executing context middleware for key: %s", key)
+		debugPrint("Before setting context value: %+v", contextToString(c.Context()))
+
 		newCtx := context.WithValue(c.Context(), key, value)
 		c.SetContext(newCtx)
+
+		debugPrint("After setting context value: %+v", contextToString(c.Context()))
 		return c.Next()
 	}
 }

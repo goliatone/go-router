@@ -2,12 +2,16 @@ package router
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 )
 
 // HTTPMethod represents HTTP request methods
 type HTTPMethod string
 
 type HandlerFunc func(Context) error
+
+type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 const (
 	GET    HTTPMethod = "GET"
@@ -45,17 +49,41 @@ type ResponseWriter interface {
 type Context interface {
 	RequestContext
 	ResponseWriter
-
 	// Body parsing
-	Bind(any) error
+	Bind(any) error // TODO: Myabe rename to ParseBody
 
 	// Context methods
 	Context() context.Context
 	SetContext(context.Context)
-
 	Next() error
 }
 
+// NamedHandler is a handler with a name for debugging/printing
+type NamedHandler struct {
+	Name    string
+	Handler HandlerFunc
+}
+
+type RouteInfo interface {
+	Name(string) RouteInfo
+}
+
+// Router represents a generic router interface
+type Router[T any] interface {
+	Handle(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) RouteInfo
+	Group(prefix string) Router[T]
+	Use(m ...MiddlewareFunc) Router[T]
+	Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+	Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+	Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+	Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+	Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+
+	// For debugging: Print a table of routes and their middleware chain
+	PrintRoutes()
+}
+
+// Server represents a generic server interface
 type Server[T any] interface {
 	Router() Router[T]
 	WrapHandler(HandlerFunc) any
@@ -64,18 +92,55 @@ type Server[T any] interface {
 	Shutdown(ctx context.Context) error
 }
 
-// Router represents a generic router interface
-type Router[T any] interface {
-	Handle(method HTTPMethod, path string, handler ...HandlerFunc) RouteInfo
-	Group(prefix string) Router[T]
-	Use(args ...any) Router[T]
-	Get(path string, handler HandlerFunc) RouteInfo
-	Post(path string, handler HandlerFunc) RouteInfo
-	Put(path string, handler HandlerFunc) RouteInfo
-	Delete(path string, handler HandlerFunc) RouteInfo
-	Patch(path string, handler HandlerFunc) RouteInfo
+// WrapHandler function to wrap handlers that return error
+func WrapHandler(handler func(Context) error) HandlerFunc {
+	return HandlerFunc(handler)
 }
 
-type RouteInfo interface {
-	Name(string) RouteInfo
+// ToMiddleware function to wrap handlers and run them as a middleware
+func ToMiddleware(h HandlerFunc) MiddlewareFunc {
+	return func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			if err := h(c); err != nil {
+				return err
+			}
+			return c.Next()
+		}
+	}
+}
+
+// MiddlewareFromHTTP that transforms a standard Go HTTP middleware
+// which takes and returns http.Handler, into a MiddlewareFunc suitable
+// for use with our router.
+// This function essentially adapts the http.Handler pattern to the
+// HandlerFunc (Context) error interface
+func MiddlewareFromHTTP(mw func(next http.Handler) http.Handler) MiddlewareFunc {
+	return func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			// c should be *httpRouterContext
+			ctx, ok := c.(*httpRouterContext)
+			if !ok {
+				return fmt.Errorf("context is not httpRouterContext")
+			}
+
+			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				origW, origR := ctx.w, ctx.r
+				defer func() {
+					ctx.w = origW
+					ctx.r = origR
+				}()
+				ctx.w = w
+				ctx.r = r
+				ctx.handlers = []NamedHandler{{Name: "adapted_next", Handler: next}}
+				ctx.index = -1
+				if err := ctx.Next(); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			})
+
+			finalHandler := mw(nextHandler)
+			finalHandler.ServeHTTP(ctx.w, ctx.r)
+			return nil
+		}
+	}
 }

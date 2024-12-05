@@ -4,14 +4,10 @@ import (
 	"context"
 )
 
-const (
-	HeaderAuthorization = "Authorization"
-)
+const HeaderAuthorization = "Authorization"
 
 // HTTPMethod represents HTTP request methods
 type HTTPMethod string
-
-type HandlerFunc func(Context) error
 
 const (
 	GET    HTTPMethod = "GET"
@@ -20,6 +16,10 @@ const (
 	DELETE HTTPMethod = "DELETE"
 	PATCH  HTTPMethod = "PATCH"
 )
+
+type HandlerFunc func(Context) error
+type MiddlewareFunc func(HandlerFunc) HandlerFunc
+type ErrorHandler func(Context, error) error
 
 type Logger interface {
 	Debug(format string, args ...any)
@@ -44,19 +44,36 @@ type ResponseWriter interface {
 	SetHeader(string, string) ResponseWriter
 }
 
+// ContextStore is a request scoped, in-memoroy
+// store to pass data between middleware/handlers
+// in the same request in a fremework agnostic
+// way.
+// If you need persistence between requests use
+// Store e.g. for authentication middleware.
+type ContextStore interface {
+	Set(key string, value any)
+	Get(key string) any
+	GetString(key string, def string) string
+	GetInt(key string, def int) int
+	GetBool(key string, def bool) bool
+}
+
 // Context represents a generic HTTP context
 type Context interface {
 	RequestContext
 	ResponseWriter
+	ContextStore
 
-	// Body parsing
+	// Body parsing //TODO: maybe rename to BodyParse?
 	Bind(any) error
 
 	// Context methods
 	Context() context.Context
 	SetContext(context.Context)
-
 	Next() error
+
+	IsAborted() bool
+	Abort()
 }
 
 // Server represents a generic HTTP server that
@@ -71,13 +88,19 @@ type Server[T any] interface {
 	WrappedRouter() T
 	Serve(address string) error
 	Shutdown(ctx context.Context) error
+	SetErrorHandler(handler ErrorHandler)
+}
+
+type RouteInfo interface {
+	Name(string) RouteInfo
 }
 
 // Router represents a generic router interface
 type Router[T any] interface {
 	Handle(method HTTPMethod, path string, handler ...HandlerFunc) RouteInfo
 	Group(prefix string) Router[T]
-	Use(args ...any) Router[T]
+	Use(middleware ...MiddlewareFunc) Router[T]
+	UseWithPriority(priority int, middleware ...MiddlewareFunc) Router[T]
 	Get(path string, handler HandlerFunc) RouteInfo
 	Post(path string, handler HandlerFunc) RouteInfo
 	Put(path string, handler HandlerFunc) RouteInfo
@@ -87,7 +110,17 @@ type Router[T any] interface {
 
 // WrapHandler function to wrap handlers that return error
 func WrapHandler(handler func(Context) error) HandlerFunc {
-	return func(c Context) error {
-		return handler(c)
+	return HandlerFunc(handler)
+}
+
+// ToMiddleware function to wrap handlers and run them as a middleware
+func ToMiddleware(h HandlerFunc) MiddlewareFunc {
+	return func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			if err := h(c); err != nil {
+				return err
+			}
+			return next(c)
+		}
 	}
 }

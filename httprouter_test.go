@@ -2,10 +2,11 @@ package router
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -260,11 +261,11 @@ func TestHTTPRouter_Middleware(t *testing.T) {
 
 	var middlewareCalled bool
 
-	middleware := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	middleware := func(next HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
 			middlewareCalled = true
-			next.ServeHTTP(w, req)
-		})
+			return next(ctx)
+		}
 	}
 
 	handler := func(ctx Context) error {
@@ -352,43 +353,17 @@ func TestHTTPRouter_SetGetHeader(t *testing.T) {
 	}
 }
 
-func TestHTTPRouter_ContextPropagation2(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
-
-	// Create middleware using the helper function
-	middleware := CreateContextMiddleware("mykey", "myvalue")
-	router.Use(middleware)
-
-	router.Get("/test", func(c Context) error {
-		val := c.Context().Value("mykey")
-		if val != "myvalue" {
-			return fmt.Errorf("expected context value 'myvalue', got '%v'", val)
-		}
-		return nil
-	})
-
-	// Test the endpoint
-	req := httptest.NewRequest("GET", "/test", nil)
-	w := httptest.NewRecorder()
-	adapter.WrappedRouter().ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status OK, got %v", w.Code)
-	}
-}
-
 func TestHTTPRouter_ContextPropagation(t *testing.T) {
 	adapter := NewHTTPServer()
 	router := adapter.Router()
 
-	contextMiddleware := func(ctx Context) error {
-		newCtx := context.WithValue(ctx.Context(), "mykey", "myvalue")
-		ctx.SetContext(newCtx)
-		return ctx.Next()
+	contextMiddleware := func(next HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			newCtx := context.WithValue(ctx.Context(), "mykey", "myvalue")
+			ctx.SetContext(newCtx)
+			return next(ctx)
+		}
 	}
-
-	router.Use(contextMiddleware)
 
 	handler := func(ctx Context) error {
 		value := ctx.Context().Value("mykey")
@@ -404,6 +379,7 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 		return ctx.Send([]byte("Context Methods OK"))
 	}
 
+	router.Use(contextMiddleware)
 	router.Get("/context", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
@@ -427,25 +403,24 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 		t.Errorf("Expected body '%s', got '%s'", expectedBody, bodyString)
 	}
 }
-
 func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 	adapter := NewHTTPServer()
 	router := adapter.Router()
 
 	var order []string
 
-	middleware1 := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	middleware1 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
 			order = append(order, "middleware1")
-			next.ServeHTTP(w, req)
-		})
+			return next(c)
+		}
 	}
 
-	middleware2 := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	middleware2 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
 			order = append(order, "middleware2")
-			next.ServeHTTP(w, req)
-		})
+			return next(c)
+		}
 	}
 
 	handler := func(ctx Context) error {
@@ -453,8 +428,7 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 		return ctx.Send([]byte("Middleware Chain OK"))
 	}
 
-	router.Use(middleware1)
-	router.Use(middleware2)
+	router.Use(middleware1, middleware2)
 	router.Get("/chain", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
@@ -483,13 +457,143 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 	}
 
 	expectedOrder := []string{"middleware1", "middleware2", "handler"}
-	if len(order) != len(expectedOrder) {
+	if !reflect.DeepEqual(order, expectedOrder) {
 		t.Errorf("Expected order %v, got %v", expectedOrder, order)
-	} else {
-		for i := range order {
-			if order[i] != expectedOrder[i] {
-				t.Errorf("At index %d, expected '%s', got '%s'", i, expectedOrder[i], order[i])
-			}
+	}
+}
+
+func TestHTTPRouter_UseWithPriority(t *testing.T) {
+	adapter := NewHTTPServer()
+	router := adapter.Router()
+
+	var order []string
+
+	middleware1 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			order = append(order, "middleware1")
+			return next(c)
 		}
+	}
+
+	middleware2 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			order = append(order, "middleware2")
+			return next(c)
+		}
+	}
+
+	middleware3 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			order = append(order, "middleware3")
+			return next(c)
+		}
+	}
+
+	handler := func(ctx Context) error {
+		order = append(order, "handler")
+		return ctx.Send([]byte("OK"))
+	}
+
+	router.UseWithPriority(1, middleware1)
+	router.UseWithPriority(3, middleware2)
+	router.UseWithPriority(2, middleware3)
+	router.Get("/priority", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	_, err := http.Get(server.URL + "/priority")
+	if err != nil {
+		t.Fatalf("Error making GET request: %v", err)
+	}
+
+	expected := []string{"middleware2", "middleware3", "middleware1", "handler"}
+	if !reflect.DeepEqual(order, expected) {
+		t.Errorf("Expected order %v, got %v", expected, order)
+	}
+}
+
+func TestContext_GetSet(t *testing.T) {
+	adapter := NewHTTPServer()
+	router := adapter.Router()
+
+	middleware := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			c.Set("key1", "value1")
+			return next(c)
+		}
+	}
+
+	handler := func(c Context) error {
+		c.Set("key2", "value2")
+
+		val1 := c.Get("key1")
+		if val1 != "value1" {
+			t.Errorf("Expected value1, got %v", val1)
+		}
+
+		val2 := c.Get("key2")
+		if val2 != "value2" {
+			t.Errorf("Expected value2, got %v", val2)
+		}
+
+		nonExistent := c.Get("nonexistent")
+		if nonExistent != nil {
+			t.Errorf("Expected nil for nonexistent key, got %v", nonExistent)
+		}
+
+		return c.Send([]byte("OK"))
+	}
+
+	router.Use(middleware)
+	router.Get("/store", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	_, err := http.Get(server.URL + "/store")
+	if err != nil {
+		t.Fatalf("Error making GET request: %v", err)
+	}
+}
+
+func TestMiddleware_Abort(t *testing.T) {
+	adapter := NewHTTPServer()
+	router := adapter.Router()
+
+	abortingMiddleware := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			c.Abort()
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		}
+	}
+
+	handler := func(c Context) error {
+		t.Error("Handler should not be called after abort")
+		return nil
+	}
+
+	router.Use(abortingMiddleware)
+	router.Get("/abort", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/abort")
+	if err != nil {
+		t.Fatalf("Error making GET request: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected status code %d, got %d", http.StatusUnauthorized, resp.StatusCode)
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("Error decoding response: %v", err)
+	}
+
+	if result["error"] != "unauthorized" {
+		t.Errorf("Expected error message 'unauthorized', got %s", result["error"])
 	}
 }

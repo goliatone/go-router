@@ -3,19 +3,19 @@ package router
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"path"
-	"strings"
+	"sort"
 
 	"github.com/julienschmidt/httprouter"
 )
 
 // HTTPServer implements Server for julienschmidt/httprouter
 type HTTPServer struct {
-	httpRouter *httprouter.Router
-	server     *http.Server
-	router     *HTTPRouter
+	httpRouter   *httprouter.Router
+	server       *http.Server
+	router       *HTTPRouter
+	errorHandler ErrorHandler
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -38,120 +38,111 @@ func DefaultHTTPRouterOptions(router *httprouter.Router) *httprouter.Router {
 	return router
 }
 
-func (a *HTTPServer) Router() Router[*httprouter.Router] {
-	if a.router == nil {
-		a.router = &HTTPRouter{router: a.httpRouter, Log: &defaultLogger{}}
+func (s *HTTPServer) Router() Router[*httprouter.Router] {
+	if s.router == nil {
+		s.router = &HTTPRouter{
+			router:       s.httpRouter,
+			errorHandler: s.errorHandler,
+		}
 	}
-
-	return a.router
+	return s.router
 }
 
-func (a *HTTPServer) WrapHandler(h HandlerFunc) interface{} {
+func (s *HTTPServer) WrapHandler(h HandlerFunc) any {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		ctx := NewHTTPRouterContext(w, r, ps)
-		if err := h(ctx); err != nil {
-			a.router.Log.Error("error handling request: %s", err)
-			http.Error(w,
-				NewInternalError(err, "error handling request").Error(),
-				http.StatusInternalServerError,
-			)
+		if err := h(ctx); err != nil && s.errorHandler != nil {
+			s.errorHandler(ctx, err)
 		}
 	}
 }
 
-func (a *HTTPServer) WrappedRouter() *httprouter.Router {
-	return a.httpRouter
+func (s *HTTPServer) WrappedRouter() *httprouter.Router {
+	return s.httpRouter
 }
 
-func (r *HTTPServer) Serve(address string) error {
+func (s *HTTPServer) Serve(address string) error {
 	srv := &http.Server{
 		Addr:    address,
-		Handler: r.httpRouter,
+		Handler: s.httpRouter,
 	}
-	r.server = srv
+	s.server = srv
 	return srv.ListenAndServe()
 }
 
-func (r *HTTPServer) Shutdown(ctx context.Context) error {
-	return r.server.Shutdown(ctx)
+func (s *HTTPServer) Shutdown(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
 }
 
-// HTTPRouter implements Router for httprouter
+func (s *HTTPServer) SetErrorHandler(handler ErrorHandler) {
+	s.errorHandler = handler
+	if s.router != nil {
+		s.router.errorHandler = handler
+	}
+}
+
 type HTTPRouter struct {
-	router     *httprouter.Router
-	prefix     string
-	middleware []HandlerFunc
-	Log        Logger
+	router      *httprouter.Router
+	prefix      string
+	middlewares []struct {
+		priority int
+		handler  MiddlewareFunc
+	}
+	errorHandler ErrorHandler
 }
 
 func (r *HTTPRouter) Handle(method HTTPMethod, path string, handlers ...HandlerFunc) RouteInfo {
 	fullPath := r.prefix + path
-	handler := r.buildHandler(handlers...)
+	handler := r.buildChain(handlers...)
 
-	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
-		ctx := context.WithValue(req.Context(), httprouter.ParamsKey, params)
-		req = req.WithContext(ctx)
-		handler.ServeHTTP(w, req)
+	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		ctx := NewHTTPRouterContext(w, req, ps)
+		if err := handler(ctx); err != nil && r.errorHandler != nil {
+			r.errorHandler(ctx, err)
+		}
 	})
 
 	return &HTTPRouteInfo{path: fullPath}
 }
 
-func (r *HTTPRouter) buildHandler(handlers ...HandlerFunc) http.Handler {
-	allHandlers := append(append([]HandlerFunc{}, r.middleware...), handlers...)
-
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		params := httprouter.ParamsFromContext(req.Context())
-
-		ctx := &httpRouterContext{
-			w:        w,
-			r:        req,
-			params:   params,
-			handlers: allHandlers,
-			index:    -1,
-		}
-
-		if err := ctx.Next(); err != nil {
-			r.Log.Error("Error during handler execution: %v", err)
-			http.Error(w,
-				NewInternalError(err, "error during handler execution").Error(),
-				http.StatusInternalServerError,
-			)
-			return
-		}
+func (r *HTTPRouter) buildChain(handlers ...HandlerFunc) HandlerFunc {
+	sort.Slice(r.middlewares, func(i, j int) bool {
+		return r.middlewares[i].priority > r.middlewares[j].priority
 	})
+
+	var final HandlerFunc
+	if len(handlers) > 0 {
+		final = handlers[0]
+	} else {
+		final = func(c Context) error { return nil }
+	}
+
+	for i := len(r.middlewares) - 1; i >= 0; i-- {
+		final = r.middlewares[i].handler(final)
+	}
+
+	return final
 }
 
 func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
-		router:     r.router,
-		middleware: r.middleware,
-		prefix:     path.Join(r.prefix, prefix),
+		router:       r.router,
+		prefix:       path.Join(r.prefix, prefix),
+		middlewares:  r.middlewares,
+		errorHandler: r.errorHandler,
 	}
 }
 
-func adaptStandardMiddleware(next func(http.Handler) http.Handler) HandlerFunc {
-	return func(c Context) error {
-		handler := next(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			c.Next()
-		}))
-		handler.ServeHTTP(c.(*httpRouterContext).w, c.(*httpRouterContext).r)
-		return nil
-	}
+func (r *HTTPRouter) Use(middleware ...MiddlewareFunc) Router[*httprouter.Router] {
+	return r.UseWithPriority(0, middleware...)
 }
 
-func (r *HTTPRouter) Use(middleware ...any) Router[*httprouter.Router] {
+func (r *HTTPRouter) UseWithPriority(priority int, middleware ...MiddlewareFunc) Router[*httprouter.Router] {
 	for _, m := range middleware {
-		switch v := m.(type) {
-		case HandlerFunc:
-			r.middleware = append(r.middleware, v)
-		case func(Context) error:
-			r.middleware = append(r.middleware, HandlerFunc(v))
-		case func(http.Handler) http.Handler:
-			r.middleware = append(r.middleware, adaptStandardMiddleware(v))
-		default:
-			r.Log.Error("Warning: Unsupported middleware type: %T", m)
-		}
+		r.middlewares = append(r.middlewares, struct {
+			priority int
+			handler  MiddlewareFunc
+		}{priority, m})
 	}
 	return r
 }
@@ -176,28 +167,29 @@ func (r *HTTPRouter) Patch(path string, handler HandlerFunc) RouteInfo {
 	return r.Handle(PATCH, path, handler)
 }
 
-// HTTPRouterContext implementation
 type httpRouterContext struct {
-	w          http.ResponseWriter
-	r          *http.Request
-	params     httprouter.Params
-	handlers   []HandlerFunc
-	index      int
-	statusCode int
+	w        http.ResponseWriter
+	r        *http.Request
+	params   httprouter.Params
+	store    ContextStore
+	aborted  bool
+	handlers []HandlerFunc
+	index    int
 }
 
 func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params) Context {
 	return &httpRouterContext{
-		w:        w,
-		r:        r,
-		params:   ps,
-		handlers: make([]HandlerFunc, 0),
-		index:    -1,
+		w:      w,
+		r:      r,
+		params: ps,
+		store:  NewContextStore(),
+		index:  -1,
 	}
 }
 
 func (c *httpRouterContext) Method() string { return c.r.Method }
 func (c *httpRouterContext) Path() string   { return c.r.URL.Path }
+
 func (c *httpRouterContext) Param(name string) string {
 	return c.params.ByName(name)
 }
@@ -217,19 +209,16 @@ func (c *httpRouterContext) Queries() map[string]string {
 }
 
 func (c *httpRouterContext) Status(code int) ResponseWriter {
-	c.statusCode = code
+	c.w.WriteHeader(code)
 	return c
 }
 
 func (c *httpRouterContext) Send(body []byte) error {
-	if c.statusCode > 0 {
-		c.w.WriteHeader(c.statusCode)
-	}
 	_, err := c.w.Write(body)
 	return err
 }
 
-func (c *httpRouterContext) JSON(code int, v interface{}) error {
+func (c *httpRouterContext) JSON(code int, v any) error {
 	c.w.Header().Set("Content-Type", "application/json")
 	c.w.WriteHeader(code)
 	return json.NewEncoder(c.w).Encode(v)
@@ -240,16 +229,16 @@ func (c *httpRouterContext) NoContent(code int) error {
 	return nil
 }
 
-func (c *httpRouterContext) Bind(v interface{}) error {
+func (c *httpRouterContext) Bind(v any) error {
 	return json.NewDecoder(c.r.Body).Decode(v)
-}
-
-func (c *httpRouterContext) SetContext(ctx context.Context) {
-	c.r = c.r.WithContext(ctx)
 }
 
 func (c *httpRouterContext) Context() context.Context {
 	return c.r.Context()
+}
+
+func (c *httpRouterContext) SetContext(ctx context.Context) {
+	c.r = c.r.WithContext(ctx)
 }
 
 func (c *httpRouterContext) Header(key string) string {
@@ -269,6 +258,34 @@ func (c *httpRouterContext) Next() error {
 	return nil
 }
 
+func (c *httpRouterContext) Set(key string, value any) {
+	c.store.Set(key, value)
+}
+
+func (c *httpRouterContext) Get(key string) any {
+	return c.store.Get(key)
+}
+
+func (c *httpRouterContext) GetString(key string, def string) string {
+	return c.store.GetString(key, def)
+}
+
+func (c *httpRouterContext) GetInt(key string, def int) int {
+	return c.store.GetInt(key, def)
+}
+
+func (c *httpRouterContext) GetBool(key string, def bool) bool {
+	return c.store.GetBool(key, def)
+}
+
+func (c *httpRouterContext) IsAborted() bool {
+	return c.aborted
+}
+
+func (c *httpRouterContext) Abort() {
+	c.aborted = true
+}
+
 type HTTPRouteInfo struct {
 	path string
 	name string
@@ -277,23 +294,4 @@ type HTTPRouteInfo struct {
 func (r *HTTPRouteInfo) Name(name string) RouteInfo {
 	r.name = name
 	return r
-}
-
-func contextToString(ctx context.Context) string {
-	var values []string
-	keys := []string{"mykey"}
-	for _, key := range keys {
-		if val := ctx.Value(key); val != nil {
-			values = append(values, fmt.Sprintf("%s=%v", key, val))
-		}
-	}
-	return strings.Join(values, ", ")
-}
-
-func CreateContextMiddleware(key, value string) HandlerFunc {
-	return func(c Context) error {
-		newCtx := context.WithValue(c.Context(), key, value)
-		c.SetContext(newCtx)
-		return c.Next()
-	}
 }

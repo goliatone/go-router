@@ -2,9 +2,11 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -62,9 +64,11 @@ func TestFiberRouter_UseMiddleware(t *testing.T) {
 	router := adapter.Router()
 	var middlewareCalled bool
 
-	middleware := func(ctx Context) error {
-		middlewareCalled = true
-		return ctx.Next()
+	middleware := func(next HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			middlewareCalled = true
+			return next(ctx)
+		}
 	}
 
 	handler := func(ctx Context) error {
@@ -261,14 +265,18 @@ func TestFiberRouter_MiddlewareChain(t *testing.T) {
 
 	var order []string
 
-	middleware1 := func(ctx Context) error {
-		order = append(order, "middleware1")
-		return ctx.Next()
+	middleware1 := func(next HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			order = append(order, "middleware1")
+			return next(ctx)
+		}
 	}
 
-	middleware2 := func(ctx Context) error {
-		order = append(order, "middleware2")
-		return ctx.Next()
+	middleware2 := func(next HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			order = append(order, "middleware2")
+			return next(ctx)
+		}
 	}
 
 	handler := func(ctx Context) error {
@@ -367,13 +375,15 @@ func TestFiberContext_ContextMethods(t *testing.T) {
 	adapter := NewFiberAdapter()
 	router := adapter.Router()
 
-	contextMiddleware := func(ctx Context) error {
-		newCtx := context.WithValue(ctx.Context(), "mykey", "myvalue")
-		ctx.SetContext(newCtx)
-		return ctx.Next()
+	contextMiddleware := func(next HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			newCtx := context.WithValue(ctx.Context(), "mykey", "myvalue")
+			ctx.SetContext(newCtx)
+			return next(ctx)
+		}
 	}
 
-	router.Use(contextMiddleware)
+	router.Use((contextMiddleware))
 
 	handler := func(ctx Context) error {
 		value := ctx.Context().Value("mykey")
@@ -460,5 +470,142 @@ func TestFiberContext_SetGetHeader(t *testing.T) {
 	responseHeader := resp.Header.Get("X-Response-Header")
 	if responseHeader != "responsevalue" {
 		t.Errorf("Expected response header X-Response-Header=responsevalue, got %s", responseHeader)
+	}
+}
+
+func TestFiberRouter_UseWithPriority(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	var order []string
+
+	middleware1 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			order = append(order, "middleware1")
+			return next(c)
+		}
+	}
+
+	middleware2 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			order = append(order, "middleware2")
+			return next(c)
+		}
+	}
+
+	middleware3 := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			order = append(order, "middleware3")
+			return next(c)
+		}
+	}
+
+	handler := func(ctx Context) error {
+		order = append(order, "handler")
+		return ctx.Send([]byte("OK"))
+	}
+
+	router.UseWithPriority(1, middleware1)
+	router.UseWithPriority(3, middleware2)
+	router.UseWithPriority(2, middleware3)
+	router.Get("/priority", handler)
+
+	app := adapter.WrappedRouter()
+	req := httptest.NewRequest("GET", "/priority", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+
+	expected := []string{"middleware2", "middleware3", "middleware1", "handler"}
+	if !reflect.DeepEqual(order, expected) {
+		t.Errorf("Expected order %v, got %v", expected, order)
+	}
+}
+
+func TestFiberContext_GetSet(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	middleware := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			c.Set("key1", "value1")
+			return next(c)
+		}
+	}
+
+	handler := func(c Context) error {
+		c.Set("key2", "value2")
+
+		val1 := c.Get("key1")
+		if val1 != "value1" {
+			t.Errorf("Expected value1, got %v", val1)
+		}
+
+		val2 := c.Get("key2")
+		if val2 != "value2" {
+			t.Errorf("Expected value2, got %v", val2)
+		}
+
+		nonExistent := c.Get("nonexistent")
+		if nonExistent != nil {
+			t.Errorf("Expected nil for nonexistent key, got %v", nonExistent)
+		}
+
+		return c.Send([]byte("OK"))
+	}
+
+	router.Use(middleware)
+	router.Get("/store", handler)
+
+	app := adapter.WrappedRouter()
+	req := httptest.NewRequest("GET", "/store", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+}
+
+func TestFiberMiddleware_Abort(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	abortingMiddleware := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			c.Abort()
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		}
+	}
+
+	handler := func(c Context) error {
+		t.Error("Handler should not be called after abort")
+		return nil
+	}
+
+	router.Use(abortingMiddleware)
+	router.Get("/abort", handler)
+
+	app := adapter.WrappedRouter()
+	req := httptest.NewRequest("GET", "/abort", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected status code %d, got %d", http.StatusUnauthorized, resp.StatusCode)
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("Error decoding response: %v", err)
+	}
+
+	if result["error"] != "unauthorized" {
+		t.Errorf("Expected error message 'unauthorized', got %s", result["error"])
 	}
 }

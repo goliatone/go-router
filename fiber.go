@@ -9,14 +9,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
-// FiberAdapter implements Server for Fiber framework
 type FiberAdapter struct {
 	app    *fiber.App
-	router Router[*fiber.App]
-}
-
-type FiberConfig struct {
-	AppFactory func() *fiber.App
+	router *FiberRouter
 }
 
 func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
@@ -45,14 +40,22 @@ func DefaultFiberOptions(app *fiber.App) *fiber.App {
 
 func (a *FiberAdapter) Router() Router[*fiber.App] {
 	if a.router == nil {
-		a.router = &FiberRouter{router: a.app}
+		a.router = &FiberRouter{
+			app: a.app,
+			baseRouter: baseRouter{
+				logger: &defaultLogger{},
+			},
+		}
 	}
 	return a.router
 }
 
 func (a *FiberAdapter) WrapHandler(h HandlerFunc) interface{} {
+	// Wrap a HandlerFunc into a fiber handler
 	return func(c *fiber.Ctx) error {
-		return h(NewFiberContext(c))
+		ctx := NewFiberContext(c)
+		// c.Next() will work if c.handlers is set up at request time.
+		return h(ctx)
 	}
 }
 
@@ -68,86 +71,92 @@ func (a *FiberAdapter) WrappedRouter() *fiber.App {
 	return a.app
 }
 
-// FiberRouter implements Router for Fiber
 type FiberRouter struct {
-	router *fiber.App
-	prefix string
-}
-
-func (r *FiberRouter) Handle(method HTTPMethod, path string, handlers ...HandlerFunc) RouteInfo {
-	fullPath := r.prefix + path
-
-	h := make([]func(*fiber.Ctx) error, len(handlers))
-
-	for i, handler := range handlers {
-		h[i] = func(c *fiber.Ctx) error {
-			return handler(NewFiberContext(c))
-		}
-	}
-
-	r.router.Add(string(method), fullPath, h...)
-
-	return &FiberRouteInfo{router: r.router}
+	app *fiber.App
+	baseRouter
 }
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
-		router: r.router,
-		prefix: path.Join(r.prefix, prefix),
+		app: r.app,
+		baseRouter: baseRouter{
+			prefix:      path.Join(r.prefix, prefix),
+			middlewares: append([]namedMiddleware{}, r.middlewares...),
+			// middlewares: r.middlewares,
+			logger: r.logger,
+			routes: r.routes,
+		},
 	}
 }
 
-func (r *FiberRouter) Use(args ...any) Router[*fiber.App] {
-	var params []interface{}
-
-	for _, arg := range args {
-		switch v := arg.(type) {
-		case string:
-			params = append(params, v)
-		case HandlerFunc:
-			params = append(params, func(c *fiber.Ctx) error {
-				return v(NewFiberContext(c))
-			})
-		case func(Context) error:
-			params = append(params, func(c *fiber.Ctx) error {
-				return v(NewFiberContext(c))
-			})
-		}
+func (r *FiberRouter) Use(m ...MiddlewareFunc) Router[*fiber.App] {
+	for _, mw := range m {
+		r.middlewares = append(r.middlewares, namedMiddleware{
+			Name: funcName(mw),
+			Mw:   mw,
+		})
 	}
-
-	r.router.Use(params...)
 	return r
 }
 
-func (r *FiberRouter) Get(path string, handler HandlerFunc) RouteInfo {
-	return r.Handle(GET, path, handler)
+func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
+	fullPath := r.prefix + pathStr
+	allMw := append([]namedMiddleware{}, r.middlewares...)
+	for _, mw := range m {
+		allMw = append(allMw, namedMiddleware{
+			Name: funcName(mw),
+			Mw:   mw,
+		})
+	}
+
+	route := r.addRoute(method, fullPath, handler, "", allMw)
+
+	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
+		ctx := NewFiberContext(c)
+		if fc, ok := ctx.(*fiberContext); ok {
+			fc.setHandlers(route.Handlers)
+		}
+		return ctx.Next()
+	})
+
+	return route
 }
 
-func (r *FiberRouter) Post(path string, handler HandlerFunc) RouteInfo {
-	return r.Handle(POST, path, handler)
+func (r *FiberRouter) Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return r.Handle(GET, path, handler, mw...)
+}
+func (r *FiberRouter) Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return r.Handle(POST, path, handler, mw...)
+}
+func (r *FiberRouter) Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return r.Handle(PUT, path, handler, mw...)
+}
+func (r *FiberRouter) Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return r.Handle(DELETE, path, handler, mw...)
+}
+func (r *FiberRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return r.Handle(PATCH, path, handler, mw...)
 }
 
-func (r *FiberRouter) Put(path string, handler HandlerFunc) RouteInfo {
-	return r.Handle(PUT, path, handler)
+func (r *FiberRouter) PrintRoutes() {
+	r.baseRouter.PrintRoutes()
 }
 
-func (r *FiberRouter) Delete(path string, handler HandlerFunc) RouteInfo {
-	return r.Handle(DELETE, path, handler)
-}
-
-func (r *FiberRouter) Patch(path string, handler HandlerFunc) RouteInfo {
-	return r.Handle(PATCH, path, handler)
-}
-
-// Context implementations
 type fiberContext struct {
-	ctx *fiber.Ctx
+	ctx      *fiber.Ctx
+	handlers []NamedHandler
+	index    int
 }
 
 func NewFiberContext(c *fiber.Ctx) Context {
-	return &fiberContext{ctx: c}
+	return &fiberContext{ctx: c, index: -1}
 }
 
+func (c *fiberContext) setHandlers(h []NamedHandler) {
+	c.handlers = h
+}
+
+// Context methods
 func (c *fiberContext) Method() string           { return c.ctx.Method() }
 func (c *fiberContext) Path() string             { return c.ctx.Path() }
 func (c *fiberContext) Param(name string) string { return c.ctx.Params(name) }
@@ -197,16 +206,9 @@ func (c *fiberContext) SetHeader(key string, value string) ResponseWriter {
 }
 
 func (c *fiberContext) Next() error {
-	return c.ctx.Next()
-}
-
-// RouteInfo implementations
-type FiberRouteInfo struct {
-	router *fiber.App
-	path   string
-}
-
-func (r *FiberRouteInfo) Name(name string) RouteInfo {
-	r.router.Name(name)
-	return r
+	c.index++
+	if c.index < len(c.handlers) {
+		return c.handlers[c.index].Handler(c)
+	}
+	return nil
 }

@@ -98,8 +98,6 @@ func (r *Route[T]) Responses(responses []Response) *Route[T] {
 }
 
 func (r *Route[T]) Parameter(name, in string, required bool, schema any) *Route[T] {
-	// store these until build time, or apply to route after Build:
-	// We can store them in the route struct and apply in Build()
 	r.parameters = append(r.parameters, Parameter{
 		Name:     name,
 		In:       in,
@@ -132,13 +130,11 @@ func (r *Route[T]) Build() error {
 		return fmt.Errorf("route validation failed: %w", err)
 	}
 
-	// Compose middleware chain: wrap handler with each middleware in reverse order
 	finalHandler := r.handler
 	for i := len(r.middleware) - 1; i >= 0; i-- {
 		finalHandler = r.middleware[i](finalHandler)
 	}
 
-	// Register the route and get the RouteInfo back
 	ri := r.builder.router.Handle(r.method, r.path, finalHandler)
 
 	if r.name != "" {
@@ -184,19 +180,22 @@ func (r *Route[T]) validate() error {
 	return nil
 }
 
-// Helper methods for common HTTP methods
 func (r *Route[T]) GET() *Route[T] {
 	return r.Method(GET)
 }
+
 func (r *Route[T]) POST() *Route[T] {
 	return r.Method(POST)
 }
+
 func (r *Route[T]) PUT() *Route[T] {
 	return r.Method(PUT)
 }
+
 func (r *Route[T]) DELETE() *Route[T] {
 	return r.Method(DELETE)
 }
+
 func (r *Route[T]) PATCH() *Route[T] {
 	return r.Method(PATCH)
 }

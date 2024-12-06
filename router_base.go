@@ -82,9 +82,7 @@ func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 		Path:      fullPath,
 		name:      routeName,
 		Handlers:  chain,
-		Operation: Operation{
-			// Initially empty, populated via RouteInfo methods
-		},
+		Operation: Operation{},
 	}
 	br.root.routes = append(br.root.routes, r)
 	return r

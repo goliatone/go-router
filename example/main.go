@@ -109,11 +109,6 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 
 	app.Router().Use(errMiddleware)
 
-	app.Router().Use(router.ToMiddleware(func(c router.Context) error {
-		c.SetHeader(router.HeaderContentType, "application/json")
-		return c.Next()
-	}))
-
 	var auth router.HandlerFunc = func(c router.Context) error {
 		if pwd := c.Header(router.HeaderAuthorization); pwd == "password" {
 			return c.Next()
@@ -121,7 +116,13 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		return router.NewUnauthorizedError("unauthorized")
 	}
 
-	users := app.Router().Group("/api/users")
+	api := app.Router().Group("/api")
+	api.Use(router.ToMiddleware(func(c router.Context) error {
+		c.SetHeader(router.HeaderContentType, "application/json")
+		return c.Next()
+	}))
+
+	users := api.Group("/users")
 	{
 		users.Post("", createUser(store)).Name("user.create")
 		users.Get("", listUsers(store)).Name("user.list")
@@ -130,13 +131,13 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		users.Delete("/:id", deleteUser(store)).Name("user.delete")
 	}
 
-	private := app.Router().Group("/api/secret")
+	private := api.Group("/secret")
 	{
 		private.Use(auth.AsMiddlware())
 		private.Get("/:name", getSecret()).Name("secrets.get")
 	}
 
-	builder := router.NewRouteBuilder(app.Router())
+	builder := router.NewRouteBuilder(api)
 	builder.NewRoute().
 		GET().
 		Path("/health").
@@ -172,7 +173,12 @@ func main() {
 
 	app.Router().PrintRoutes()
 
-	router.ServeOpenAPI(app.Router(), &router.OpenAPIRenderer{
+	front := app.Router().Use(router.ToMiddleware(func(c router.Context) error {
+		c.SetHeader(router.HeaderContentType, "text/html")
+		return c.Next()
+	}))
+
+	router.ServeOpenAPI(front, &router.OpenAPIRenderer{
 		Title:       "My Test App",
 		Version:     "v0.0.1",
 		Description: "This is my description, but nothing more",

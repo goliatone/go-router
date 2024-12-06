@@ -147,10 +147,11 @@ type fiberContext struct {
 	ctx      *fiber.Ctx
 	handlers []NamedHandler
 	index    int
+	store    ContextStore
 }
 
 func NewFiberContext(c *fiber.Ctx) Context {
-	return &fiberContext{ctx: c, index: -1}
+	return &fiberContext{ctx: c, index: -1, store: NewContextStore()}
 }
 
 func (c *fiberContext) setHandlers(h []NamedHandler) {
@@ -204,6 +205,26 @@ func (c *fiberContext) Header(key string) string {
 func (c *fiberContext) SetHeader(key string, value string) ResponseWriter {
 	c.ctx.Set(key, value)
 	return c
+}
+
+func (c *fiberContext) Set(key string, value any) {
+	c.store.Set(key, value)
+}
+
+func (c *fiberContext) Get(key string, def any) any {
+	return c.store.Get(key, def)
+}
+
+func (c *fiberContext) GetString(key string, def string) string {
+	return c.store.GetString(key, def)
+}
+
+func (c *fiberContext) GetInt(key string, def int) int {
+	return c.store.GetInt(key, def)
+}
+
+func (c *fiberContext) GetBool(key string, def bool) bool {
+	return c.store.GetBool(key, def)
 }
 
 func (c *fiberContext) Next() error {

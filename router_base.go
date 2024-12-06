@@ -23,10 +23,41 @@ type namedMiddleware struct {
 }
 
 type registeredRoute struct {
-	Method   HTTPMethod
-	Path     string
-	name     string
-	Handlers []NamedHandler // The entire chain: [m1, m2, ..., finalHandler]
+	method    HTTPMethod
+	path      string
+	name      string
+	desc      string
+	tags      []string
+	responses map[int]string
+	handlers  []NamedHandler
+}
+
+func (r *registeredRoute) Description(d string) RouteInfo {
+	r.desc = d
+	return r
+}
+
+func (r *registeredRoute) Tags(t ...string) RouteInfo {
+	r.tags = append(r.tags, t...)
+	return r
+}
+
+func (r *registeredRoute) Responses(resp map[int]string) RouteInfo {
+	if r.responses == nil {
+		r.responses = make(map[int]string)
+	}
+	for k, v := range resp {
+		r.responses[k] = v
+	}
+	return r
+}
+
+func (r *registeredRoute) Method() string {
+	return string(r.method)
+}
+
+func (r *registeredRoute) Path() string {
+	return r.path
 }
 
 func (r *registeredRoute) Name(n string) RouteInfo {
@@ -54,26 +85,34 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 	return chain
 }
 
-// func (br *baseRouter) PrintRoutes() {
-// 	// Print a table similar to Fiber's output
-// 	fmt.Println("method  | path           | name        | handlers ")
-// 	fmt.Println("------  | ----           | ----        | -------- ")
-// 	for _, rt := range br.routes {
-// 		handlerNames := []string{}
-// 		for _, h := range rt.Handlers {
-// 			handlerNames = append(handlerNames, h.Name)
-// 		}
-// 		fmt.Printf("%-7s | %-14s | %-11s | %s\n",
-// 			rt.Method, rt.Path, rt.name, strings.Join(handlerNames, " -> "))
-// 	}
-// }
+//	func (br *baseRouter) PrintRoutes() {
+//		// Print a table similar to Fiber's output
+//		fmt.Println("method  | path           | name        | handlers ")
+//		fmt.Println("------  | ----           | ----        | -------- ")
+//		for _, rt := range br.routes {
+//			handlerNames := []string{}
+//			for _, h := range rt.Handlers {
+//				handlerNames = append(handlerNames, h.Name)
+//			}
+//			fmt.Printf("%-7s | %-14s | %-11s | %s\n",
+//				rt.Method, rt.Path, rt.name, strings.Join(handlerNames, " -> "))
+//		}
+//	}
 
 func (br *baseRouter) PrintRoutes() {
 	for _, rt := range br.root.routes {
-		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.name)
-		for i, h := range rt.Handlers {
-			indent := "  "
-			fmt.Printf("%s%02d: %s\n", indent, i, h.Name)
+		fmt.Printf("%s %s (%s)\n", rt.method, rt.path, rt.name)
+		if rt.desc != "" {
+			fmt.Printf("  Description: %s\n", rt.desc)
+		}
+		if len(rt.tags) > 0 {
+			fmt.Printf("  Tags: %v\n", rt.tags)
+		}
+		if len(rt.responses) > 0 {
+			fmt.Printf("  Responses: %v\n", rt.responses)
+		}
+		for i, h := range rt.handlers {
+			fmt.Printf("  %02d: %s\n", i, h.Name)
 		}
 		fmt.Println()
 	}
@@ -82,10 +121,12 @@ func (br *baseRouter) PrintRoutes() {
 func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *registeredRoute {
 	chain := chainHandlers(finalHandler, routeName, allMw)
 	r := &registeredRoute{
-		Method:   method,
-		Path:     fullPath,
-		name:     routeName,
-		Handlers: chain,
+		method:    method,
+		path:      fullPath,
+		name:      routeName,
+		handlers:  chain,
+		tags:      []string{},
+		responses: make(map[int]string),
 	}
 	br.root.routes = append(br.root.routes, r)
 	return r

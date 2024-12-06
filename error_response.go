@@ -156,6 +156,14 @@ func PrepareErrorResponse(err *RouterError, config ErrorHandlerConfig) ErrorResp
 		response.Error.Stack = config.GetStackTrace()
 	}
 
+	if err.Type == ErrorTypeValidation && err.Metadata != nil {
+		if val, ok := err.Metadata["validation"]; ok {
+			if vErrs, ok := val.([]ValidationError); ok {
+				response.Error.Validation = vErrs
+			}
+		}
+	}
+
 	return response
 }
 
@@ -185,9 +193,7 @@ func defaultErrorMappers() []ErrorMapper {
 		func(err error) *RouterError {
 			var validationErr interface{ ValidationErrors() []ValidationError }
 			if errors.As(err, &validationErr) {
-				return NewValidationError("Validation failed", map[string]any{
-					"validation": validationErr.ValidationErrors(),
-				})
+				return NewValidationError("Validation failed", validationErr.ValidationErrors())
 			}
 			return nil
 		},

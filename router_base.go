@@ -2,8 +2,11 @@ package router
 
 import (
 	"fmt"
-	"strings"
 )
+
+type routerRoot struct {
+	routes []*registeredRoute
+}
 
 // Common fields for both FiberRouter and HTTPRouter
 type baseRouter struct {
@@ -11,6 +14,7 @@ type baseRouter struct {
 	middlewares []namedMiddleware
 	routes      []*registeredRoute
 	logger      Logger
+	root        *routerRoot
 }
 
 type namedMiddleware struct {
@@ -50,17 +54,28 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 	return chain
 }
 
+// func (br *baseRouter) PrintRoutes() {
+// 	// Print a table similar to Fiber's output
+// 	fmt.Println("method  | path           | name        | handlers ")
+// 	fmt.Println("------  | ----           | ----        | -------- ")
+// 	for _, rt := range br.routes {
+// 		handlerNames := []string{}
+// 		for _, h := range rt.Handlers {
+// 			handlerNames = append(handlerNames, h.Name)
+// 		}
+// 		fmt.Printf("%-7s | %-14s | %-11s | %s\n",
+// 			rt.Method, rt.Path, rt.name, strings.Join(handlerNames, " -> "))
+// 	}
+// }
+
 func (br *baseRouter) PrintRoutes() {
-	// Print a table similar to Fiber's output
-	fmt.Println("method  | path           | name        | handlers ")
-	fmt.Println("------  | ----           | ----        | -------- ")
-	for _, rt := range br.routes {
-		handlerNames := []string{}
-		for _, h := range rt.Handlers {
-			handlerNames = append(handlerNames, h.Name)
+	for _, rt := range br.root.routes {
+		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.name)
+		for i, h := range rt.Handlers {
+			indent := "  "
+			fmt.Printf("%s%02d: %s\n", indent, i, h.Name)
 		}
-		fmt.Printf("%-7s | %-14s | %-11s | %s\n",
-			rt.Method, rt.Path, rt.name, strings.Join(handlerNames, " -> "))
+		fmt.Println()
 	}
 }
 
@@ -72,6 +87,6 @@ func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 		name:     routeName,
 		Handlers: chain,
 	}
-	br.routes = append(br.routes, r)
+	br.root.routes = append(br.root.routes, r)
 	return r
 }

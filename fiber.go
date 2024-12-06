@@ -44,6 +44,7 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 			app: a.app,
 			baseRouter: baseRouter{
 				logger: &defaultLogger{},
+				root:   &routerRoot{},
 			},
 		}
 	}
@@ -82,9 +83,9 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 		baseRouter: baseRouter{
 			prefix:      path.Join(r.prefix, prefix),
 			middlewares: append([]namedMiddleware{}, r.middlewares...),
-			// middlewares: r.middlewares,
-			logger: r.logger,
-			routes: r.routes,
+			logger:      r.logger,
+			routes:      r.routes,
+			root:        r.root,
 		},
 	}
 }

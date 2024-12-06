@@ -101,8 +101,8 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 
 func main() {
 
-	// app := newFiberAdapter()
-	app := newHTTPServerAdapter()
+	app := newFiberAdapter()
+	// app := newHTTPServerAdapter()
 	store := NewUserStore()
 	createRoutes(app, store)
 

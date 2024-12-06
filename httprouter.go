@@ -41,7 +41,10 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 		a.router = &HTTPRouter{
 			router: a.httpRouter,
 			baseRouter: baseRouter{
-				logger: &defaultLogger{},
+				logger:      &defaultLogger{},
+				routes:      []*registeredRoute{},
+				middlewares: []namedMiddleware{},
+				root:        &routerRoot{routes: []*registeredRoute{}},
 			},
 		}
 	}
@@ -79,8 +82,8 @@ func (a *HTTPServer) Shutdown(ctx context.Context) error {
 
 // HTTPRouter implements Router for httprouter
 type HTTPRouter struct {
-	router *httprouter.Router
 	baseRouter
+	router *httprouter.Router
 }
 
 func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
@@ -91,6 +94,7 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 			middlewares: append([]namedMiddleware{}, r.middlewares...),
 			logger:      r.logger,
 			routes:      r.routes,
+			root:        r.root,
 		},
 	}
 }

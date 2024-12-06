@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func funcName(i interface{}) string {
+func funcName(i any) string {
 	pc := make([]uintptr, 10)
 	// Skip some frames to get the caller of funcName.
 	// 2 or 3 might need tweaking depending on the call stack.

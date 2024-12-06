@@ -6,7 +6,10 @@ import (
 	"net/http"
 )
 
-const HeaderAuthorization = "Authorization"
+const (
+	HeaderAuthorization = "Authorization"
+	HeaderContentType   = "Content-Type"
+)
 
 // HTTPMethod represents HTTP request methods
 type HTTPMethod string
@@ -51,10 +54,25 @@ type ResponseWriter interface {
 	SetHeader(string, string) ResponseWriter
 }
 
+// ContextStore is a request scoped, in-memoroy
+// store to pass data between middleware/handlers
+// in the same request in a fremework agnostic
+// way.
+// If you need persistence between requests use
+// Store e.g. for authentication middleware.
+type ContextStore interface {
+	Set(key string, value any)
+	Get(key string, def any) any
+	GetString(key string, def string) string
+	GetInt(key string, def int) int
+	GetBool(key string, def bool) bool
+}
+
 // Context represents a generic HTTP context
 type Context interface {
 	RequestContext
 	ResponseWriter
+	ContextStore
 	// Body parsing
 	Bind(any) error // TODO: Myabe rename to ParseBody
 

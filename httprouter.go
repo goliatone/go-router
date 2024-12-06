@@ -112,6 +112,16 @@ func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
 	fullPath := r.prefix + pathStr
 
+	// Check for duplicates, since the behavior between fiber and httprouter differs
+	// we need to decide how to handle this case...
+	for _, route := range r.root.routes {
+		if route.Method == method && route.Path == fullPath {
+			// Decide how to handle duplicates:
+			// return a RouterError or just log and skip
+			panic(fmt.Sprintf("duplicate route %s %s already registered", method, pathStr))
+		}
+	}
+
 	allMw := append([]namedMiddleware{}, r.middlewares...)
 	for _, mw := range m {
 		allMw = append(allMw, namedMiddleware{

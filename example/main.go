@@ -165,12 +165,18 @@ func getSecret() func(c router.Context) error {
 
 func main() {
 
-	// app := newFiberAdapter()
-	app := newHTTPServerAdapter()
+	app := newFiberAdapter()
+	// app := newHTTPServerAdapter()
 	store := NewUserStore()
 	createRoutes(app, store)
 
 	app.Router().PrintRoutes()
+
+	router.ServeOpenAPI(app.Router(), &router.OpenAPIRenderer{
+		Title:       "My Test App",
+		Version:     "v0.0.1",
+		Description: "This is my description, but nothing more",
+	})
 
 	go func() {
 		if err := app.Serve(":9092"); err != nil {

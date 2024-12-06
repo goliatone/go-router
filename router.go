@@ -90,6 +90,9 @@ type NamedHandler struct {
 
 type RouteInfo interface {
 	Name(string) RouteInfo
+	Description(string) RouteInfo
+	Tags(...string) RouteInfo
+	Responses(map[int]string) RouteInfo
 }
 
 // Router represents a generic router interface

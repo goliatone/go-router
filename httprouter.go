@@ -115,7 +115,7 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	// Check for duplicates, since the behavior between fiber and httprouter differs
 	// we need to decide how to handle this case...
 	for _, route := range r.root.routes {
-		if route.Method == method && route.Path == fullPath {
+		if route.method == method && route.path == fullPath {
 			// Decide how to handle duplicates:
 			// return a RouterError or just log and skip
 			panic(fmt.Sprintf("duplicate route %s %s already registered", method, pathStr))
@@ -136,7 +136,7 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		ctx := NewHTTPRouterContext(w, req, params)
 		if rh, ok := ctx.(*httpRouterContext); ok {
-			rh.setHandlers(route.Handlers)
+			rh.setHandlers(route.handlers)
 		}
 
 		if err := ctx.Next(); err != nil {

@@ -43,17 +43,24 @@ func defaultOpenAPIConfig() *openAPIConfig {
 	}
 }
 
+type OpenAPIFieldContact struct {
+	Email string
+	Name  string
+	URL   string
+}
+
 type OpenAPIRenderer struct {
 	Title       string
 	Version     string
 	Description string
+	Contact     OpenAPIFieldContact
 }
 
 func (o *OpenAPIRenderer) GenerateOpenAPI(routes []RouteDefinition) map[string]any {
 	paths := make(map[string]any)
 	for _, rt := range routes {
 		op := map[string]any{
-			"summary":     rt.Operation.Description,
+			"summary":     rt.Operation.Summary,
 			"description": rt.Operation.Description,
 			"tags":        rt.Operation.Tags,
 			"responses":   map[string]any{},
@@ -109,6 +116,11 @@ func (o *OpenAPIRenderer) GenerateOpenAPI(routes []RouteDefinition) map[string]a
 			"title":       o.Title,
 			"version":     o.Version,
 			"description": o.Description,
+			"contact": map[string]any{
+				"email": o.Contact.Email,
+				"name":  o.Contact.Name,
+				"url":   o.Contact.URL,
+			},
 		},
 		"paths": paths,
 	}
@@ -127,8 +139,8 @@ func ServeOpenAPI[T any](router Router[T], renderer *OpenAPIRenderer, opts ...Op
 	}
 
 	jsonPath := cfg.openapiPath
-	if !strings.HasSuffix(yamlPath, ".json") {
-		yamlPath = yamlPath + ".json"
+	if !strings.HasSuffix(jsonPath, ".json") {
+		jsonPath = jsonPath + ".json"
 	}
 
 	doc := renderer.GenerateOpenAPI(router.Routes())

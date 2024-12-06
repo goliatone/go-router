@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -83,6 +84,21 @@ func newHTTPServerAdapter() router.Server[*httprouter.Router] {
 	return router.NewHTTPServer()
 }
 
+func healthRouteHandler(c router.Context) error {
+	return c.JSON(http.StatusOK, map[string]any{
+		"success": true,
+	})
+}
+
+func errorRouteHandler(c router.Context) error {
+	return router.NewInternalError(
+		fmt.Errorf("this is an error"), "error test",
+	).WithMetadata(map[string]any{
+		"version":  "v0.0.0",
+		"hostname": "localhost",
+	})
+}
+
 func createRoutes[T any](app router.Server[T], store *UserStore) {
 
 	errMiddleware := router.WithErrorHandlerMiddleware(
@@ -119,6 +135,25 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		private.Use(auth.AsMiddlware())
 		private.Get("/:name", getSecret()).Name("secrets.get")
 	}
+
+	builder := router.NewRouteBuilder(app.Router())
+	builder.NewRoute().
+		GET().
+		Path("/health").
+		Description("Health endpoint to get information about: health status").
+		Tags("health", "http").
+		Handler(healthRouteHandler).
+		Name("health")
+
+	builder.NewRoute().
+		GET().
+		Path("/errors").
+		Description("Errors endpoint to get information about: errors").
+		Tags("health", "http").
+		Handler(errorRouteHandler).
+		Name("errors")
+
+	builder.BuildAll()
 }
 
 func getSecret() func(c router.Context) error {

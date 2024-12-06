@@ -115,7 +115,7 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c)
 		if fc, ok := ctx.(*fiberContext); ok {
-			fc.setHandlers(route.handlers)
+			fc.setHandlers(route.Handlers)
 		}
 		return ctx.Next()
 	})

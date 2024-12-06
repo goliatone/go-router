@@ -50,6 +50,11 @@ func (r *RouteDefinition) Description(d string) RouteInfo {
 	return r
 }
 
+func (r *RouteDefinition) Summary(s string) RouteInfo {
+	r.Operation.Summary = s
+	return r
+}
+
 func (r *RouteDefinition) Tags(t ...string) RouteInfo {
 	r.Operation.Tags = append(r.Operation.Tags, t...)
 	return r

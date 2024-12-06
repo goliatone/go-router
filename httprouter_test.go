@@ -271,7 +271,7 @@ func TestHTTPRouter_Middleware(t *testing.T) {
 		return ctx.Send([]byte("Hello with Middleware!"))
 	}
 
-	router.Use(middleware)
+	router.Use(MiddlewareFromHTTP(middleware))
 	router.Get("/middleware", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
@@ -352,13 +352,21 @@ func TestHTTPRouter_SetGetHeader(t *testing.T) {
 	}
 }
 
+func CreateContextMiddleware(key, value string) HandlerFunc {
+	return func(c Context) error {
+		newCtx := context.WithValue(c.Context(), key, value)
+		c.SetContext(newCtx)
+		return c.Next()
+	}
+}
+
 func TestHTTPRouter_ContextPropagation2(t *testing.T) {
 	adapter := NewHTTPServer()
 	router := adapter.Router()
 
 	// Create middleware using the helper function
 	middleware := CreateContextMiddleware("mykey", "myvalue")
-	router.Use(middleware)
+	router.Use(ToMiddleware(middleware))
 
 	router.Get("/test", func(c Context) error {
 		val := c.Context().Value("mykey")
@@ -388,7 +396,7 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 		return ctx.Next()
 	}
 
-	router.Use(contextMiddleware)
+	router.Use(ToMiddleware(contextMiddleware))
 
 	handler := func(ctx Context) error {
 		value := ctx.Context().Value("mykey")
@@ -453,8 +461,8 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 		return ctx.Send([]byte("Middleware Chain OK"))
 	}
 
-	router.Use(middleware1)
-	router.Use(middleware2)
+	router.Use(MiddlewareFromHTTP(middleware1))
+	router.Use(MiddlewareFromHTTP(middleware2))
 	router.Get("/chain", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
@@ -491,5 +499,49 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 				t.Errorf("At index %d, expected '%s', got '%s'", i, expectedOrder[i], order[i])
 			}
 		}
+	}
+}
+
+func TestContext_GetSet(t *testing.T) {
+	adapter := NewHTTPServer()
+	router := adapter.Router()
+
+	middleware := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			c.Set("key1", "value1")
+			return next(c)
+		}
+	}
+
+	handler := func(c Context) error {
+		c.Set("key2", "value2")
+
+		val1 := c.Get("key1", "")
+		if val1 != "value1" {
+			t.Errorf("Expected value1, got %v", val1)
+		}
+
+		val2 := c.Get("key2", "")
+		if val2 != "value2" {
+			t.Errorf("Expected value2, got %v", val2)
+		}
+
+		nonExistent := c.Get("nonexistent", nil)
+		if nonExistent != nil {
+			t.Errorf("Expected nil for nonexistent key, got %v", nonExistent)
+		}
+
+		return c.Send([]byte("OK"))
+	}
+
+	router.Use(middleware)
+	router.Get("/store", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	_, err := http.Get(server.URL + "/store")
+	if err != nil {
+		t.Fatalf("Error making GET request: %v", err)
 	}
 }

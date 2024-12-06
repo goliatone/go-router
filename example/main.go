@@ -122,13 +122,67 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		return c.Next()
 	}))
 
-	users := api.Group("/users")
+	builder := router.NewRouteBuilder(api)
+
+	users := builder.Group("/users")
 	{
-		users.Post("", createUser(store)).Name("user.create")
-		users.Get("", listUsers(store)).Name("user.list")
-		users.Get("/:id", getUser(store)).Name("user.get")
-		users.Put("/:id", updateUser(store)).Name("user.update")
-		users.Delete("/:id", deleteUser(store)).Name("user.delete")
+		users.NewRoute().
+			POST().
+			Path("/").
+			Summary("Create User").
+			Description(`## Create User
+This endpoint will create a new User, just for you
+			`).
+			Tags("User").
+			Handler(createUser(store)).
+			Name("user.create")
+
+		users.NewRoute().
+			GET().
+			Path("/").
+			Description("List all users").
+			Summary("This is the summary").
+			Tags("User").
+			Responses([]router.Response{
+				{
+					Code:        200,
+					Description: "Successful call a user",
+					Content: map[string]any{
+						"age": "age",
+					},
+				},
+			}).
+			Handler(listUsers(store)).
+			Name("user.list")
+
+		users.NewRoute().
+			GET().
+			Path("/:id").
+			Summary("Get User By ID").
+			Description("Get user by ID").
+			Tags("User").
+			Handler(getUser(store)).
+			Name("user.get")
+
+		users.NewRoute().
+			PUT().
+			Path("/:id").
+			Summary("Update user by ID").
+			Description("Update user by ID").
+			Tags("User").
+			Handler(updateUser(store)).
+			Name("user.update")
+
+		users.NewRoute().
+			DELETE().
+			Path("/:id").
+			Summary("Delete user by ID").
+			Description("Delete user by ID").
+			Tags("User").
+			Handler(deleteUser(store)).
+			Name("user.delete")
+
+		users.BuildAll()
 	}
 
 	private := api.Group("/secret")
@@ -137,12 +191,11 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		private.Get("/:name", getSecret()).Name("secrets.get")
 	}
 
-	builder := router.NewRouteBuilder(api)
 	builder.NewRoute().
 		GET().
 		Path("/health").
 		Description("Health endpoint to get information about: health status").
-		Tags("health", "http").
+		Tags("Health").
 		Handler(healthRouteHandler).
 		Name("health")
 
@@ -150,7 +203,7 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		GET().
 		Path("/errors").
 		Description("Errors endpoint to get information about: errors").
-		Tags("health", "http").
+		Tags("Health").
 		Handler(errorRouteHandler).
 		Name("errors")
 
@@ -179,9 +232,19 @@ func main() {
 	}))
 
 	router.ServeOpenAPI(front, &router.OpenAPIRenderer{
-		Title:       "My Test App",
-		Version:     "v0.0.1",
-		Description: "This is my description, but nothing more",
+		Title:   "My Test App",
+		Version: "v0.0.1",
+		Description: `## API Documentation
+This playground exposes, and documents all the endpoints used by the demo application. Endpoints are documented, and provide payload examples, as well as interactive demos.
+
+### Version
+The API version: v0.0.0..
+		`,
+		Contact: router.OpenAPIFieldContact{
+			Email: "test@example.com",
+			Name:  "Test Name",
+			URL:   "https://example.com",
+		},
 	})
 
 	go func() {

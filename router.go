@@ -6,10 +6,16 @@ import (
 	"net/http"
 )
 
+const HeaderAuthorization = "Authorization"
+
 // HTTPMethod represents HTTP request methods
 type HTTPMethod string
 
 type HandlerFunc func(Context) error
+
+func (h HandlerFunc) AsMiddlware() MiddlewareFunc {
+	return ToMiddleware(h)
+}
 
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 

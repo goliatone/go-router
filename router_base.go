@@ -58,7 +58,7 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 
 func (br *baseRouter) PrintRoutes() {
 	for _, rt := range br.root.routes {
-		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.Name)
+		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.name)
 		if rt.Operation.Description != "" {
 			fmt.Printf("  Description: %s\n", rt.Operation.Description)
 		}

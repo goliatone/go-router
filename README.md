@@ -49,9 +49,64 @@ func main() {
 ```go
 api := app.Router().Group("/api")
 {
-    api.Get("/users", listUsers)
-    api.Post("/users", createUser)
-    api.Get("/users/:id", getUser)
+    api.Post("/users", createUser(store)).Name("user.create")
+    api.Get("/users", listUsers(store)).Name("user.list")
+    api.Get("/users/:id", getUser(store)).Name("user.get")
+    api.Put("/users/:id", updateUser(store)).Name("user.update")
+    api.Delete("/users/:id", deleteUser(store)).Name("user.delete")
+}
+```
+
+### Builder
+
+```go
+api := app.Router().Group("/api")
+
+builder := router.NewRouteBuilder(api)
+
+users := builder.Group("/users")
+{
+    users.NewRoute().
+        POST().
+        Path("/").
+        Description("Create a new user").
+        Tags("User").
+        Handler(createUser(store)).
+        Name("user.create")
+
+    users.NewRoute().
+        GET().
+        Path("/").
+        Description("List all users").
+        Tags("User").
+        Handler(listUsers(store)).
+        Name("user.list")
+
+    users.NewRoute().
+        GET().
+        Path("/:id").
+        Description("Get user by ID").
+        Tags("User").
+        Handler(getUser(store)).
+        Name("user.get")
+
+    users.NewRoute().
+        PUT().
+        Path("/:id").
+        Description("Update user by ID").
+        Tags("User").
+        Handler(updateUser(store)).
+        Name("user.update")
+
+    users.NewRoute().
+        DELETE().
+        Path("/:id").
+        Description("Delete user by ID").
+        Tags("User").
+        Handler(deleteUser(store)).
+        Name("user.delete")
+
+    users.BuildAll()
 }
 ```
 

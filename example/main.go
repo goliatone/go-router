@@ -109,11 +109,6 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 
 	app.Router().Use(errMiddleware)
 
-	app.Router().Use(router.ToMiddleware(func(c router.Context) error {
-		c.SetHeader(router.HeaderContentType, "application/json")
-		return c.Next()
-	}))
-
 	var auth router.HandlerFunc = func(c router.Context) error {
 		if pwd := c.Header(router.HeaderAuthorization); pwd == "password" {
 			return c.Next()
@@ -121,27 +116,86 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		return router.NewUnauthorizedError("unauthorized")
 	}
 
-	users := app.Router().Group("/api/users")
+	api := app.Router().Group("/api")
+	api.Use(router.ToMiddleware(func(c router.Context) error {
+		c.SetHeader(router.HeaderContentType, "application/json")
+		return c.Next()
+	}))
+
+	builder := router.NewRouteBuilder(api)
+
+	users := builder.Group("/users")
 	{
-		users.Post("", createUser(store)).Name("user.create")
-		users.Get("", listUsers(store)).Name("user.list")
-		users.Get("/:id", getUser(store)).Name("user.get")
-		users.Put("/:id", updateUser(store)).Name("user.update")
-		users.Delete("/:id", deleteUser(store)).Name("user.delete")
+		users.NewRoute().
+			POST().
+			Path("/").
+			Summary("Create User").
+			Description(`## Create User
+This endpoint will create a new User, just for you
+			`).
+			Tags("User").
+			Handler(createUser(store)).
+			Name("user.create")
+
+		users.NewRoute().
+			GET().
+			Path("/").
+			Description("List all users").
+			Summary("This is the summary").
+			Tags("User").
+			Responses([]router.Response{
+				{
+					Code:        200,
+					Description: "Successful call a user",
+					Content: map[string]any{
+						"age": "age",
+					},
+				},
+			}).
+			Handler(listUsers(store)).
+			Name("user.list")
+
+		users.NewRoute().
+			GET().
+			Path("/:id").
+			Summary("Get User By ID").
+			Description("Get user by ID").
+			Tags("User").
+			Handler(getUser(store)).
+			Name("user.get")
+
+		users.NewRoute().
+			PUT().
+			Path("/:id").
+			Summary("Update user by ID").
+			Description("Update user by ID").
+			Tags("User").
+			Handler(updateUser(store)).
+			Name("user.update")
+
+		users.NewRoute().
+			DELETE().
+			Path("/:id").
+			Summary("Delete user by ID").
+			Description("Delete user by ID").
+			Tags("User").
+			Handler(deleteUser(store)).
+			Name("user.delete")
+
+		users.BuildAll()
 	}
 
-	private := app.Router().Group("/api/secret")
+	private := api.Group("/secret")
 	{
 		private.Use(auth.AsMiddlware())
 		private.Get("/:name", getSecret()).Name("secrets.get")
 	}
 
-	builder := router.NewRouteBuilder(app.Router())
 	builder.NewRoute().
 		GET().
 		Path("/health").
 		Description("Health endpoint to get information about: health status").
-		Tags("health", "http").
+		Tags("Health").
 		Handler(healthRouteHandler).
 		Name("health")
 
@@ -149,7 +203,7 @@ func createRoutes[T any](app router.Server[T], store *UserStore) {
 		GET().
 		Path("/errors").
 		Description("Errors endpoint to get information about: errors").
-		Tags("health", "http").
+		Tags("Health").
 		Handler(errorRouteHandler).
 		Name("errors")
 
@@ -165,12 +219,33 @@ func getSecret() func(c router.Context) error {
 
 func main() {
 
-	// app := newFiberAdapter()
-	app := newHTTPServerAdapter()
+	app := newFiberAdapter()
+	// app := newHTTPServerAdapter()
 	store := NewUserStore()
 	createRoutes(app, store)
 
 	app.Router().PrintRoutes()
+
+	front := app.Router().Use(router.ToMiddleware(func(c router.Context) error {
+		c.SetHeader(router.HeaderContentType, "text/html")
+		return c.Next()
+	}))
+
+	router.ServeOpenAPI(front, &router.OpenAPIRenderer{
+		Title:   "My Test App",
+		Version: "v0.0.1",
+		Description: `## API Documentation
+This playground exposes, and documents all the endpoints used by the demo application. Endpoints are documented, and provide payload examples, as well as interactive demos.
+
+### Version
+The API version: v0.0.0..
+		`,
+		Contact: router.OpenAPIFieldContact{
+			Email: "test@example.com",
+			Name:  "Test Name",
+			URL:   "https://example.com",
+		},
+	})
 
 	go func() {
 		if err := app.Serve(":9092"); err != nil {

@@ -18,8 +18,11 @@ type Route[T any] struct {
 	middleware  []MiddlewareFunc
 	name        string
 	description string
+	summary     string
 	tags        []string
-	responses   map[int]string
+	responses   []Response
+	parameters  []Parameter
+	requestBody *RequestBody
 }
 
 func NewRouteBuilder[T any](router Router[T]) *RouteBuilder[T] {
@@ -34,7 +37,7 @@ func (b *RouteBuilder[T]) NewRoute() *Route[T] {
 	route := &Route[T]{
 		builder:    b,
 		middleware: make([]MiddlewareFunc, 0),
-		responses:  make(map[int]string),
+		responses:  make([]Response, 0),
 	}
 	b.routes = append(b.routes, route)
 	return route
@@ -61,6 +64,10 @@ func (r *Route[T]) Method(method HTTPMethod) *Route[T] {
 }
 
 func (r *Route[T]) Path(path string) *Route[T] {
+	// TODO: Sanitize path, e.g.
+	if path == "" {
+		path = "/"
+	}
 	r.path = path
 	return r
 }
@@ -85,18 +92,46 @@ func (r *Route[T]) Description(description string) *Route[T] {
 	return r
 }
 
+func (r *Route[T]) Summary(summary string) *Route[T] {
+	r.summary = summary
+	return r
+}
+
 func (r *Route[T]) Tags(tags ...string) *Route[T] {
 	r.tags = append(r.tags, tags...)
 	return r
 }
 
-func (r *Route[T]) Responses(responses map[int]string) *Route[T] {
-	if r.responses == nil {
-		r.responses = make(map[int]string)
+func (r *Route[T]) Responses(responses []Response) *Route[T] {
+	r.responses = append(r.responses, responses...)
+	return r
+}
+
+func (r *Route[T]) Parameter(name, in string, required bool, schema any) *Route[T] {
+	r.parameters = append(r.parameters, Parameter{
+		Name:     name,
+		In:       in,
+		Required: required,
+		Schema:   schema,
+	})
+	return r
+}
+
+func (r *Route[T]) RequestBody(desc string, required bool, content map[string]any) *Route[T] {
+	r.requestBody = &RequestBody{
+		Description: desc,
+		Required:    required,
+		Content:     content,
 	}
-	for k, v := range responses {
-		r.responses[k] = v
-	}
+	return r
+}
+
+func (r *Route[T]) Response(code int, desc string, content map[string]any) *Route[T] {
+	r.responses = append(r.responses, Response{
+		Code:        code,
+		Description: desc,
+		Content:     content,
+	})
 	return r
 }
 
@@ -105,27 +140,41 @@ func (r *Route[T]) Build() error {
 		return fmt.Errorf("route validation failed: %w", err)
 	}
 
-	// Compose middleware chain: wrap handler with each middleware in reverse order
 	finalHandler := r.handler
 	for i := len(r.middleware) - 1; i >= 0; i-- {
 		finalHandler = r.middleware[i](finalHandler)
 	}
 
-	// Register the route and get the RouteInfo back
 	ri := r.builder.router.Handle(r.method, r.path, finalHandler)
 
-	// Apply metadata to RouteInfo
 	if r.name != "" {
 		ri = ri.Name(r.name)
 	}
+
 	if r.description != "" {
 		ri = ri.Description(r.description)
 	}
+
+	if r.summary != "" {
+		ri = ri.Summary(r.summary)
+	}
+
+	//TODO: Make sure if we don't have summary or description we use the other.
+
 	if len(r.tags) > 0 {
 		ri = ri.Tags(r.tags...)
 	}
-	if len(r.responses) > 0 {
-		ri = ri.Responses(r.responses)
+
+	for _, p := range r.parameters {
+		ri = ri.AddParameter(p.Name, p.In, p.Required, p.Schema)
+	}
+
+	if r.requestBody != nil {
+		ri = ri.SetRequestBody(r.requestBody.Description, r.requestBody.Required, r.requestBody.Content)
+	}
+
+	for _, resp := range r.responses {
+		ri = ri.AddResponse(resp.Code, resp.Description, resp.Content)
 	}
 
 	return nil
@@ -147,19 +196,22 @@ func (r *Route[T]) validate() error {
 	return nil
 }
 
-// Helper methods for common HTTP methods
 func (r *Route[T]) GET() *Route[T] {
 	return r.Method(GET)
 }
+
 func (r *Route[T]) POST() *Route[T] {
 	return r.Method(POST)
 }
+
 func (r *Route[T]) PUT() *Route[T] {
 	return r.Method(PUT)
 }
+
 func (r *Route[T]) DELETE() *Route[T] {
 	return r.Method(DELETE)
 }
+
 func (r *Route[T]) PATCH() *Route[T] {
 	return r.Method(PATCH)
 }

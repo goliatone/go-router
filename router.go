@@ -91,8 +91,11 @@ type NamedHandler struct {
 type RouteInfo interface {
 	Name(string) RouteInfo
 	Description(string) RouteInfo
+	Summary(s string) RouteInfo
 	Tags(...string) RouteInfo
-	Responses(map[int]string) RouteInfo
+	AddParameter(name, in string, required bool, schema any) RouteInfo
+	SetRequestBody(desc string, required bool, content map[string]any) RouteInfo
+	AddResponse(code int, desc string, content map[string]any) RouteInfo
 }
 
 // Router represents a generic router interface
@@ -106,7 +109,9 @@ type Router[T any] interface {
 	Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 
+	// TODO: Move to a different interface e.g. MetaRouter
 	// For debugging: Print a table of routes and their middleware chain
+	Routes() []RouteDefinition // New method to retrieve registered routes
 	PrintRoutes()
 }
 

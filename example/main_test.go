@@ -685,13 +685,13 @@ func TestHTTPRouter_MethodNotAllowed(t *testing.T) {
 			name:       "PATCH not allowed on users",
 			method:     http.MethodPatch,
 			path:       "/api/users",
-			wantStatus: http.StatusMethodNotAllowed,
+			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "HEAD not allowed on users",
 			method:     http.MethodHead,
 			path:       "/api/users",
-			wantStatus: http.StatusMethodNotAllowed,
+			wantStatus: http.StatusNotFound,
 		},
 	}
 

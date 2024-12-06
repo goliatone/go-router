@@ -13,7 +13,7 @@ import (
 // TODO: use gomock and mockgen -source=router.go -destination=mocks_test.go -package=router_test
 // MockRouter is a mock implementation of Router[T] for testing.
 type MockRouter struct {
-	Routes []*MockRouteInfo
+	routes []*MockRouteInfo
 	Prefix string
 	Mw     []MiddlewareFunc
 }
@@ -27,8 +27,12 @@ func (m *MockRouter) Handle(method HTTPMethod, path string, handler HandlerFunc,
 		Handler:    handler,
 		Middleware: allMw,
 	}
-	m.Routes = append(m.Routes, r)
+	m.routes = append(m.routes, r)
 	return r
+}
+
+func (m *MockRouter) Routes() []RouteDefinition {
+	return []RouteDefinition{}
 }
 
 func (m *MockRouter) Group(prefix string) Router[*MockRouter] {
@@ -91,13 +95,19 @@ func (r *MockRouteInfo) Tags(t ...string) RouteInfo {
 	return r
 }
 
-func (r *MockRouteInfo) Responses(resp map[int]string) RouteInfo {
+func (r *MockRouteInfo) AddParameter(name, in string, required bool, schema any) RouteInfo {
+	return r
+}
+
+func (r *MockRouteInfo) SetRequestBody(desc string, required bool, content map[string]any) RouteInfo {
+	return r
+}
+
+func (r *MockRouteInfo) AddResponse(code int, desc string, content map[string]any) RouteInfo {
 	if r.ResponsesVal == nil {
 		r.ResponsesVal = make(map[int]string)
 	}
-	for k, v := range resp {
-		r.ResponsesVal[k] = v
-	}
+	r.ResponsesVal[code] = desc
 	return r
 }
 
@@ -106,9 +116,7 @@ func TestRouteBuilder_BasicRoute(t *testing.T) {
 	mockRouter := &MockRouter{}
 	builder := NewRouteBuilder(mockRouter)
 
-	// wasCalled := false
 	handler := func(c Context) error {
-		// wasCalled = true
 		return c.JSON(http.StatusOK, map[string]string{"msg": "hello"})
 	}
 
@@ -120,16 +128,22 @@ func TestRouteBuilder_BasicRoute(t *testing.T) {
 		Name("hello_route").
 		Description("Returns a friendly greeting").
 		Tags("greetings", "public").
-		Responses(map[int]string{
-			http.StatusOK:       "successful response",
-			http.StatusNotFound: "not found",
+		Responses([]Response{
+			{
+				Code:        http.StatusOK,
+				Description: "successful response",
+			},
+			{
+				Code:        http.StatusNotFound,
+				Description: "not found",
+			},
 		})
 
 	err := builder.BuildAll()
 	require.NoError(t, err, "expected no error building routes")
 
-	require.Len(t, mockRouter.Routes, 1)
-	r := mockRouter.Routes[0]
+	require.Len(t, mockRouter.routes, 1)
+	r := mockRouter.routes[0]
 	assert.Equal(t, GET, r.Method)
 	assert.Equal(t, "/hello", r.Path)
 	assert.Equal(t, "hello_route", r.NameVal)
@@ -191,7 +205,7 @@ func TestRouteBuilder_MiddlewareChain(t *testing.T) {
 	require.NoError(t, err)
 
 	// Simulate a request
-	r := mockRouter.Routes[0]
+	r := mockRouter.routes[0]
 	require.NotNil(t, r.Handler)
 
 	// Build a context mock

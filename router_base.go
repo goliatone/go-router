@@ -5,14 +5,14 @@ import (
 )
 
 type routerRoot struct {
-	routes []*registeredRoute
+	routes []*RouteDefinition
 }
 
 // Common fields for both FiberRouter and HTTPRouter
 type baseRouter struct {
 	prefix      string
 	middlewares []namedMiddleware
-	routes      []*registeredRoute
+	routes      []*RouteDefinition
 	logger      Logger
 	root        *routerRoot
 }
@@ -20,49 +20,6 @@ type baseRouter struct {
 type namedMiddleware struct {
 	Name string
 	Mw   MiddlewareFunc
-}
-
-type registeredRoute struct {
-	method    HTTPMethod
-	path      string
-	name      string
-	desc      string
-	tags      []string
-	responses map[int]string
-	handlers  []NamedHandler
-}
-
-func (r *registeredRoute) Description(d string) RouteInfo {
-	r.desc = d
-	return r
-}
-
-func (r *registeredRoute) Tags(t ...string) RouteInfo {
-	r.tags = append(r.tags, t...)
-	return r
-}
-
-func (r *registeredRoute) Responses(resp map[int]string) RouteInfo {
-	if r.responses == nil {
-		r.responses = make(map[int]string)
-	}
-	for k, v := range resp {
-		r.responses[k] = v
-	}
-	return r
-}
-
-func (r *registeredRoute) Method() string {
-	return string(r.method)
-}
-
-func (r *registeredRoute) Path() string {
-	return r.path
-}
-
-func (r *registeredRoute) Name(n string) RouteInfo {
-	r.name = n
-	return r
 }
 
 // ChainHandlers builds the final handler chain:
@@ -101,33 +58,40 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 
 func (br *baseRouter) PrintRoutes() {
 	for _, rt := range br.root.routes {
-		fmt.Printf("%s %s (%s)\n", rt.method, rt.path, rt.name)
-		if rt.desc != "" {
-			fmt.Printf("  Description: %s\n", rt.desc)
+		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.name)
+		if rt.Operation.Description != "" {
+			fmt.Printf("  Description: %s\n", rt.Operation.Description)
 		}
-		if len(rt.tags) > 0 {
-			fmt.Printf("  Tags: %v\n", rt.tags)
+		if len(rt.Operation.Tags) > 0 {
+			fmt.Printf("  Tags: %v\n", rt.Operation.Tags)
 		}
-		if len(rt.responses) > 0 {
-			fmt.Printf("  Responses: %v\n", rt.responses)
+		if len(rt.Operation.Responses) > 0 {
+			fmt.Printf("  Responses: %v\n", rt.Operation.Responses)
 		}
-		for i, h := range rt.handlers {
+		for i, h := range rt.Handlers {
 			fmt.Printf("  %02d: %s\n", i, h.Name)
 		}
 		fmt.Println()
 	}
 }
 
-func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *registeredRoute {
+func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *RouteDefinition {
 	chain := chainHandlers(finalHandler, routeName, allMw)
-	r := &registeredRoute{
-		method:    method,
-		path:      fullPath,
+	r := &RouteDefinition{
+		Method:    method,
+		Path:      fullPath,
 		name:      routeName,
-		handlers:  chain,
-		tags:      []string{},
-		responses: make(map[int]string),
+		Handlers:  chain,
+		Operation: Operation{},
 	}
 	br.root.routes = append(br.root.routes, r)
 	return r
+}
+
+func (br *baseRouter) Routes() []RouteDefinition {
+	defs := make([]RouteDefinition, len(br.root.routes))
+	for i, rt := range br.root.routes {
+		defs[i] = *rt
+	}
+	return defs
 }

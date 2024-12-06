@@ -462,3 +462,46 @@ func TestFiberContext_SetGetHeader(t *testing.T) {
 		t.Errorf("Expected response header X-Response-Header=responsevalue, got %s", responseHeader)
 	}
 }
+
+func TestFiberContext_GetSet(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	middleware := func(next HandlerFunc) HandlerFunc {
+		return func(c Context) error {
+			c.Set("key1", "value1")
+			return next(c)
+		}
+	}
+
+	handler := func(c Context) error {
+		c.Set("key2", "value2")
+
+		val1 := c.Get("key1", "")
+		if val1 != "value1" {
+			t.Errorf("Expected value1, got %v", val1)
+		}
+
+		val2 := c.Get("key2", "")
+		if val2 != "value2" {
+			t.Errorf("Expected value2, got %v", val2)
+		}
+
+		nonExistent := c.Get("nonexistent", nil)
+		if nonExistent != nil {
+			t.Errorf("Expected nil for nonexistent key, got %v", nonExistent)
+		}
+
+		return c.Send([]byte("OK"))
+	}
+
+	router.Use(middleware)
+	router.Get("/store", handler)
+
+	app := adapter.WrappedRouter()
+	req := httptest.NewRequest("GET", "/store", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+}

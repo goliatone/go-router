@@ -175,6 +175,7 @@ type httpRouterContext struct {
 	params   httprouter.Params
 	handlers []NamedHandler
 	index    int
+	store    ContextStore
 }
 
 func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params) Context {
@@ -183,6 +184,7 @@ func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.
 		r:      r,
 		params: ps,
 		index:  -1,
+		store:  NewContextStore(),
 	}
 }
 
@@ -262,6 +264,26 @@ func (c *httpRouterContext) Header(key string) string {
 func (c *httpRouterContext) SetHeader(key string, value string) ResponseWriter {
 	c.w.Header().Set(key, value)
 	return c
+}
+
+func (c *httpRouterContext) Set(key string, value any) {
+	c.store.Set(key, value)
+}
+
+func (c *httpRouterContext) Get(key string, def any) any {
+	return c.store.Get(key, def)
+}
+
+func (c *httpRouterContext) GetString(key string, def string) string {
+	return c.store.GetString(key, def)
+}
+
+func (c *httpRouterContext) GetInt(key string, def int) int {
+	return c.store.GetInt(key, def)
+}
+
+func (c *httpRouterContext) GetBool(key string, def bool) bool {
+	return c.store.GetBool(key, def)
 }
 
 func (c *httpRouterContext) Next() error {

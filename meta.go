@@ -26,9 +26,10 @@ type Operation struct {
 	Parameters  []Parameter
 	RequestBody *RequestBody
 	Responses   []Response
-	// Additional fields like security, deprecated, operationId could be added
+	//TODO: Additional fields like security, deprecated, operationId could be added
 }
 
+// TODO: Either use lowercase or functions
 type RouteDefinition struct {
 	Method    HTTPMethod
 	Path      string

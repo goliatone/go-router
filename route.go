@@ -19,7 +19,9 @@ type Route[T any] struct {
 	name        string
 	description string
 	tags        []string
-	responses   map[int]string
+	responses   []Response
+	parameters  []Parameter
+	requestBody *RequestBody
 }
 
 func NewRouteBuilder[T any](router Router[T]) *RouteBuilder[T] {
@@ -34,7 +36,7 @@ func (b *RouteBuilder[T]) NewRoute() *Route[T] {
 	route := &Route[T]{
 		builder:    b,
 		middleware: make([]MiddlewareFunc, 0),
-		responses:  make(map[int]string),
+		responses:  make([]Response, 0),
 	}
 	b.routes = append(b.routes, route)
 	return route
@@ -90,13 +92,38 @@ func (r *Route[T]) Tags(tags ...string) *Route[T] {
 	return r
 }
 
-func (r *Route[T]) Responses(responses map[int]string) *Route[T] {
-	if r.responses == nil {
-		r.responses = make(map[int]string)
+func (r *Route[T]) Responses(responses []Response) *Route[T] {
+	r.responses = append(r.responses, responses...)
+	return r
+}
+
+func (r *Route[T]) Parameter(name, in string, required bool, schema any) *Route[T] {
+	// store these until build time, or apply to route after Build:
+	// We can store them in the route struct and apply in Build()
+	r.parameters = append(r.parameters, Parameter{
+		Name:     name,
+		In:       in,
+		Required: required,
+		Schema:   schema,
+	})
+	return r
+}
+
+func (r *Route[T]) RequestBody(desc string, required bool, content map[string]any) *Route[T] {
+	r.requestBody = &RequestBody{
+		Description: desc,
+		Required:    required,
+		Content:     content,
 	}
-	for k, v := range responses {
-		r.responses[k] = v
-	}
+	return r
+}
+
+func (r *Route[T]) Response(code int, desc string, content map[string]any) *Route[T] {
+	r.responses = append(r.responses, Response{
+		Code:        code,
+		Description: desc,
+		Content:     content,
+	})
 	return r
 }
 
@@ -114,18 +141,28 @@ func (r *Route[T]) Build() error {
 	// Register the route and get the RouteInfo back
 	ri := r.builder.router.Handle(r.method, r.path, finalHandler)
 
-	// Apply metadata to RouteInfo
 	if r.name != "" {
 		ri = ri.Name(r.name)
 	}
+
 	if r.description != "" {
 		ri = ri.Description(r.description)
 	}
+
 	if len(r.tags) > 0 {
 		ri = ri.Tags(r.tags...)
 	}
-	if len(r.responses) > 0 {
-		ri = ri.Responses(r.responses)
+
+	for _, p := range r.parameters {
+		ri = ri.AddParameter(p.Name, p.In, p.Required, p.Schema)
+	}
+
+	if r.requestBody != nil {
+		ri = ri.SetRequestBody(r.requestBody.Description, r.requestBody.Required, r.requestBody.Content)
+	}
+
+	for _, resp := range r.responses {
+		ri = ri.AddResponse(resp.Code, resp.Description, resp.Content)
 	}
 
 	return nil

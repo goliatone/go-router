@@ -95,15 +95,6 @@ func (r *MockRouteInfo) Tags(t ...string) RouteInfo {
 	return r
 }
 
-func (r *MockRouteInfo) Responses(resp map[int]string) RouteInfo {
-	if r.ResponsesVal == nil {
-		r.ResponsesVal = make(map[int]string)
-	}
-	for k, v := range resp {
-		r.ResponsesVal[k] = v
-	}
-	return r
-}
 func (r *MockRouteInfo) AddParameter(name, in string, required bool, schema any) RouteInfo {
 	return r
 }
@@ -111,7 +102,12 @@ func (r *MockRouteInfo) AddParameter(name, in string, required bool, schema any)
 func (r *MockRouteInfo) SetRequestBody(desc string, required bool, content map[string]any) RouteInfo {
 	return r
 }
+
 func (r *MockRouteInfo) AddResponse(code int, desc string, content map[string]any) RouteInfo {
+	if r.ResponsesVal == nil {
+		r.ResponsesVal = make(map[int]string)
+	}
+	r.ResponsesVal[code] = desc
 	return r
 }
 
@@ -120,9 +116,7 @@ func TestRouteBuilder_BasicRoute(t *testing.T) {
 	mockRouter := &MockRouter{}
 	builder := NewRouteBuilder(mockRouter)
 
-	// wasCalled := false
 	handler := func(c Context) error {
-		// wasCalled = true
 		return c.JSON(http.StatusOK, map[string]string{"msg": "hello"})
 	}
 

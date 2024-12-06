@@ -188,22 +188,25 @@ func createUser(store *UserStore) router.HandlerFunc {
 	return func(c router.Context) error {
 		var req CreateUserRequest
 		if err := c.Bind(&req); err != nil {
-			return router.NewValidationError("Invalid request body", map[string]any{
-				"error": err.Error(),
-			})
+			return router.NewBadRequestError("Invalid request body")
 		}
 
 		if req.Name == "" || req.Email == "" {
-			return router.NewValidationError("Invalid request body", map[string]any{
-				"error": "name and email are required",
+			return router.NewValidationError("Invalid request body", []router.ValidationError{
+				{
+					Field:   "name",
+					Message: "name required",
+				},
+				{
+					Field:   "email",
+					Message: "email required",
+				},
 			})
 		}
 
 		id, err := hashid.New(req.Email)
 		if err != nil {
-			return router.NewValidationError("Invalid request body", map[string]any{
-				"error": "error parsing payload",
-			})
+			return router.NewBadRequestError("Invalid request body")
 		}
 
 		user := User{
@@ -266,9 +269,7 @@ func updateUser(store *UserStore) router.HandlerFunc {
 
 		var req UpdateUserRequest
 		if err := c.Bind(&req); err != nil {
-			return router.NewValidationError("Invalid request body", map[string]any{
-				"error": err.Error(),
-			})
+			return router.NewBadRequestError("Invalid request body")
 		}
 
 		store.Lock()

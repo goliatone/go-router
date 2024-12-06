@@ -18,6 +18,7 @@ type Route[T any] struct {
 	middleware  []MiddlewareFunc
 	name        string
 	description string
+	summary     string
 	tags        []string
 	responses   []Response
 	parameters  []Parameter
@@ -63,6 +64,10 @@ func (r *Route[T]) Method(method HTTPMethod) *Route[T] {
 }
 
 func (r *Route[T]) Path(path string) *Route[T] {
+	// TODO: Sanitize path, e.g.
+	if path == "" {
+		path = "/"
+	}
 	r.path = path
 	return r
 }
@@ -84,6 +89,11 @@ func (r *Route[T]) Name(name string) *Route[T] {
 
 func (r *Route[T]) Description(description string) *Route[T] {
 	r.description = description
+	return r
+}
+
+func (r *Route[T]) Summary(summary string) *Route[T] {
+	r.summary = summary
 	return r
 }
 
@@ -144,6 +154,12 @@ func (r *Route[T]) Build() error {
 	if r.description != "" {
 		ri = ri.Description(r.description)
 	}
+
+	if r.summary != "" {
+		ri = ri.Summary(r.summary)
+	}
+
+	//TODO: Make sure if we don't have summary or description we use the other.
 
 	if len(r.tags) > 0 {
 		ri = ri.Tags(r.tags...)

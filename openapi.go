@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"gopkg.in/yaml.v2"
 )
 
 // Functional options for configuring ServeOpenAPI
 type openAPIConfig struct {
 	docsPath    string
 	openapiPath string
+	title       string
 }
 
 type OpenAPIOption func(*openAPIConfig)
@@ -25,12 +28,18 @@ func WithOpenAPIPath(path string) OpenAPIOption {
 		cfg.openapiPath = path
 	}
 }
+func WithTitle(title string) OpenAPIOption {
+	return func(cfg *openAPIConfig) {
+		cfg.title = title
+	}
+}
 
 // Default paths: /meta/docs and /openapi.json
 func defaultOpenAPIConfig() *openAPIConfig {
 	return &openAPIConfig{
-		docsPath:    "/meta/docs",
-		openapiPath: "/openapi.json",
+		docsPath:    "/meta/docs/",
+		openapiPath: "/openapi",
+		title:       "API Documentation",
 	}
 }
 
@@ -111,34 +120,58 @@ func ServeOpenAPI[T any](router Router[T], renderer *OpenAPIRenderer, opts ...Op
 		opt(cfg)
 	}
 
-	// Serve OpenAPI JSON
-	router.Get(cfg.openapiPath, func(c Context) error {
-		doc := renderer.GenerateOpenAPI(router.Routes())
+	// We will serve /openapi.yaml by default: cfg.openapiPath + ".yaml"
+	yamlPath := cfg.openapiPath
+	if !strings.HasSuffix(yamlPath, ".yaml") {
+		yamlPath = yamlPath + ".yaml"
+	}
+
+	jsonPath := cfg.openapiPath
+	if !strings.HasSuffix(yamlPath, ".json") {
+		yamlPath = yamlPath + ".json"
+	}
+
+	doc := renderer.GenerateOpenAPI(router.Routes())
+
+	router.Get(jsonPath, func(c Context) error {
 		return c.JSON(http.StatusOK, doc)
+	})
+
+	// Serve OpenAPI YAML
+	router.Get(yamlPath, func(c Context) error {
+		yamlBytes, err := yaml.Marshal(doc)
+		if err != nil {
+			return NewInternalError(err, "failed to geenrate yaml")
+		}
+		c.SetHeader("Content-Type", "application/yaml")
+		return c.Send(yamlBytes)
 	})
 
 	// Serve Stoplight Elements UI
 	router.Get(cfg.docsPath, func(c Context) error {
-		html := `
-<!DOCTYPE html>
-<html>
-<head>
-<title>API Docs</title>
-<link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
-</head>
-<body>
-<div id="elements"></div>
-<script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
-<script>
-  const Elements = window["@stoplight/elements"];
-  Elements.loadElements(document.getElementById('elements'), {
-    layout: 'sidebar',
-    apiDescriptionUrl: '` + cfg.openapiPath + `'
-  });
-</script>
-</body>
-</html>
-`
+		html := `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="referrer" content="same-origin" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>` + cfg.title + `</title>
+    <link href="https://unpkg.com/@stoplight/elements@8.1.0/styles.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/@stoplight/elements@8.1.0/web-components.min.js"
+            integrity="sha256-985sDMZYbGa0LDS8jYmC4VbkVlh7DZ0TWejFv+raZII="
+            crossorigin="anonymous"></script>
+  </head>
+  <body style="height: 100vh;">
+
+    <elements-api
+      apiDescriptionUrl="` + yamlPath + `"
+      router="hash"
+      layout="sidebar"
+      tryItCredentialsPolicy="same-origin"
+    ></elements-api>
+
+  </body>
+</html>`
 		return c.Send([]byte(html))
 	})
 }

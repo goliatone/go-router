@@ -39,8 +39,12 @@ type Logger interface {
 type RequestContext interface {
 	Method() string
 	Path() string
-	Param(name string) string
-	Query(name string) string
+
+	Param(name string, defaultValue string) string
+	ParamsInt(key string, defaultValue int) int
+
+	Query(name string, defaultValue string) string
+	QueryInt(name string, defaultValue int) int
 	Queries() map[string]string
 }
 

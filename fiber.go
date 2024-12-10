@@ -159,10 +159,28 @@ func (c *fiberContext) setHandlers(h []NamedHandler) {
 }
 
 // Context methods
-func (c *fiberContext) Method() string           { return c.ctx.Method() }
-func (c *fiberContext) Path() string             { return c.ctx.Path() }
-func (c *fiberContext) Param(name string) string { return c.ctx.Params(name) }
-func (c *fiberContext) Query(name string) string { return c.ctx.Query(name) }
+func (c *fiberContext) Method() string { return c.ctx.Method() }
+func (c *fiberContext) Path() string   { return c.ctx.Path() }
+
+func (c *fiberContext) Param(name, defaultValue string) string {
+	return c.ctx.Params(name, defaultValue)
+}
+
+func (c *fiberContext) ParamsInt(name string, defaultValue int) int {
+	if out, err := c.ctx.ParamsInt(name, defaultValue); err == nil {
+		return out
+	}
+	return defaultValue
+}
+
+func (c *fiberContext) Query(name, defaultValue string) string {
+	return c.ctx.Query(name, defaultValue)
+}
+
+func (c *fiberContext) QueryInt(name string, defaultValue int) int {
+	return c.ctx.QueryInt(name, defaultValue)
+}
+
 func (c *fiberContext) Queries() map[string]string {
 	queries := make(map[string]string)
 	c.ctx.QueryParser(&queries)

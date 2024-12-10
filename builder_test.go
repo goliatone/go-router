@@ -76,6 +76,7 @@ type MockRouteInfo struct {
 
 	NameVal        string
 	DescriptionVal string
+	SummaryVal     string
 	TagsVal        []string
 	ResponsesVal   map[int]string
 }
@@ -87,6 +88,11 @@ func (r *MockRouteInfo) Name(n string) RouteInfo {
 
 func (r *MockRouteInfo) Description(d string) RouteInfo {
 	r.DescriptionVal = d
+	return r
+}
+
+func (r *MockRouteInfo) Summary(d string) RouteInfo {
+	r.SummaryVal = d
 	return r
 }
 
@@ -225,16 +231,18 @@ func newMockContext() *mockContext {
 	return &mockContext{store: make(map[string]any)}
 }
 
-func (m *mockContext) Method() string                 { return "GET" }
-func (m *mockContext) Path() string                   { return "/test" }
-func (m *mockContext) Param(name string) string       { return "" }
-func (m *mockContext) Query(name string) string       { return "" }
-func (m *mockContext) Queries() map[string]string     { return map[string]string{} }
-func (m *mockContext) Status(code int) ResponseWriter { return m }
-func (m *mockContext) Send(body []byte) error         { return nil }
-func (m *mockContext) JSON(code int, v any) error     { return nil }
-func (m *mockContext) NoContent(code int) error       { return nil }
-func (m *mockContext) Bind(v any) error               { return nil }
+func (m *mockContext) Method() string                     { return "GET" }
+func (m *mockContext) Path() string                       { return "/test" }
+func (m *mockContext) Param(name, def string) string      { return "" }
+func (m *mockContext) ParamsInt(name string, def int) int { return 0 }
+func (m *mockContext) Query(name, def string) string      { return "" }
+func (m *mockContext) QueryInt(name string, def int) int  { return 0 }
+func (m *mockContext) Queries() map[string]string         { return map[string]string{} }
+func (m *mockContext) Status(code int) ResponseWriter     { return m }
+func (m *mockContext) Send(body []byte) error             { return nil }
+func (m *mockContext) JSON(code int, v any) error         { return nil }
+func (m *mockContext) NoContent(code int) error           { return nil }
+func (m *mockContext) Bind(v any) error                   { return nil }
 func (m *mockContext) Context() context.Context {
 	// Return a non-nil context. You can return context.Background() or context.TODO() for tests.
 	return context.Background()

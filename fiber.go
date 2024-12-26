@@ -159,6 +159,9 @@ func (c *fiberContext) setHandlers(h []NamedHandler) {
 }
 
 // Context methods
+
+func (c *fiberContext) Body() []byte { return c.ctx.Body() }
+
 func (c *fiberContext) Method() string { return c.ctx.Method() }
 func (c *fiberContext) Path() string   { return c.ctx.Path() }
 

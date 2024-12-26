@@ -1,9 +1,11 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"strconv"
@@ -193,6 +195,21 @@ func (c *httpRouterContext) setHandlers(h []NamedHandler) {
 	c.handlers = h
 }
 
+func (c *httpRouterContext) Body() []byte {
+	if c.r.ContentLength == 0 {
+		return []byte{}
+	}
+
+	b, err := io.ReadAll(c.r.Body)
+	if err != nil {
+		return []byte{}
+	}
+
+	c.r.Body = io.NopCloser(bytes.NewBuffer(b))
+
+	return b
+}
+
 func (c *httpRouterContext) Method() string { return c.r.Method }
 func (c *httpRouterContext) Path() string   { return c.r.URL.Path }
 
@@ -247,12 +264,14 @@ func (c *httpRouterContext) Queries() map[string]string {
 	}
 	return queries
 }
+
 func (c *httpRouterContext) Status(code int) ResponseWriter {
 	if code > 0 {
 		c.w.WriteHeader(code)
 	}
 	return c
 }
+
 func (c *httpRouterContext) Send(body []byte) error {
 	if body == nil {
 		return c.NoContent(http.StatusNoContent)

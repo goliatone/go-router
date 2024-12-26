@@ -46,6 +46,28 @@ type RequestContext interface {
 	Query(name string, defaultValue string) string
 	QueryInt(name string, defaultValue int) int
 	Queries() map[string]string
+
+	Body() []byte
+
+	// BodyRaw() []byte
+
+	// GetRouteURL(routeName string, params Map) (string, error)
+	// RedirectToRoute(routeName string, params Map, status ...int) error
+	// Render(name string, bind interface{}, layouts ...string) error
+	// Redirect(location string, status ...int) error
+	// BindVars(vars Map) error
+	// Path(override ...string) string
+	// AllParams() map[string]string
+	// ParamsParser(out interface{}) error
+
+	// QueryBool(key string, defaultValue ...bool) bool
+	// QueryFloat(key string, defaultValue ...float64) float64
+	// QueryParser(out interface{}) error
+	// SendFile(file string, compress ...bool) error
+	// IsSecure() bool
+	// IsFromLocal() bool
+	// SendString(body string) error
+	// SendStream(stream io.Reader, size ...int) error
 }
 
 type ResponseWriter interface {

@@ -20,12 +20,23 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 
-		// Skip unexported fields
+		// skip unexported fields
 		if !field.IsExported() {
 			continue
 		}
 
-		// Get JSON field name
+		// check crud tag first, if it's "-" skip the field
+		if crudTag := field.Tag.Get("crud"); crudTag == "-" {
+			continue
+		}
+
+		// embedded fields
+		if field.Anonymous {
+			// e.g. bun.BaseModel
+			continue
+		}
+
+		// get JSON field name
 		jsonTag := field.Tag.Get("json")
 		if jsonTag == "-" {
 			continue
@@ -35,12 +46,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 			jsonName = field.Name
 		}
 
-		// Check for crud tag
-		if crudTag := field.Tag.Get("crud"); crudTag == "-" {
-			continue
-		}
-
-		// Get bun tags for additional metadata
+		// get bun tags with additional metadata
 		bunTag := field.Tag.Get("bun")
 		isRequired := strings.Contains(bunTag, "notnull")
 		if isRequired {
@@ -49,14 +55,13 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 
 		prop := extractPropertyInfo(field.Type)
 
-		// Add additional metadata
+		// add additional metadata
 		prop.Description = field.Tag.Get("description")
 		prop.Required = isRequired
 		prop.Nullable = field.Type.Kind() == reflect.Ptr
 		prop.ReadOnly = isReadOnly(field)
 		prop.WriteOnly = isWriteOnly(field)
 
-		// Check for JSON omitempty
 		if strings.Contains(jsonTag, "omitempty") {
 			prop.Required = false
 		}
@@ -130,7 +135,6 @@ func extractPropertyInfo(t reflect.Type) PropertyInfo {
 	case reflect.Map:
 		prop.Type = "object"
 		// TODO: for maps, we could potentially add additionalProperties schema
-		// but for now we'll keep it simple
 	}
 
 	return prop
@@ -151,18 +155,16 @@ func handleSpecialType(t reflect.Type) (PropertyInfo, bool) {
 			Format: "uuid",
 		}, true
 
-	// Add more special types as needed
+	// TODO: add more special types as needed
 	default:
 		return PropertyInfo{}, false
 	}
 }
 
-// Helper function to determine if a field should be read-only
 func isReadOnly(field reflect.StructField) bool {
 	return strings.Contains(field.Tag.Get("crud"), "readonly")
 }
 
-// Helper function to determine if a field should be write-only
 func isWriteOnly(field reflect.StructField) bool {
 	return strings.Contains(field.Tag.Get("crud"), "writeonly")
 }

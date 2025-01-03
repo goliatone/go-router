@@ -243,6 +243,7 @@ func (m *mockContext) Send(body []byte) error             { return nil }
 func (m *mockContext) JSON(code int, v any) error         { return nil }
 func (m *mockContext) NoContent(code int) error           { return nil }
 func (m *mockContext) Bind(v any) error                   { return nil }
+func (m *mockContext) Body() []byte                       { return nil }
 func (m *mockContext) Context() context.Context {
 	// Return a non-nil context. You can return context.Background() or context.TODO() for tests.
 	return context.Background()

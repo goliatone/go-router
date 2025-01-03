@@ -38,6 +38,43 @@ type RouteDefinition struct {
 	Handlers  []NamedHandler
 }
 
+func (r *RouteDefinition) FromRouteDefinition(r2 *RouteDefinition) RouteInfo {
+
+	if r2.name != "" {
+		r.name = r2.name
+	}
+
+	if r2.Operation.Description != "" {
+		r.Description(r2.Operation.Description)
+	}
+
+	if r2.Operation.Summary != "" {
+		r.Summary(r2.Operation.Summary)
+	}
+
+	if len(r2.Operation.Tags) > 0 {
+		r.Tags(r2.Operation.Tags...)
+	}
+
+	for _, p := range r2.Operation.Parameters {
+		r.AddParameter(p.Name, p.In, p.Required, p.Schema)
+	}
+
+	if r2.Operation.RequestBody != nil {
+		r.SetRequestBody(
+			r2.Operation.RequestBody.Description,
+			r2.Operation.RequestBody.Required,
+			r2.Operation.RequestBody.Content,
+		)
+	}
+
+	for _, resp := range r2.Operation.Responses {
+		r.AddResponse(resp.Code, resp.Description, resp.Content)
+	}
+
+	return r
+}
+
 // Ensure RouteDefinition implements RouteInfo
 
 func (r *RouteDefinition) Name(n string) RouteInfo {

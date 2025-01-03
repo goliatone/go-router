@@ -11,18 +11,10 @@ type RouteBuilder[T any] struct {
 }
 
 type Route[T any] struct {
-	builder     *RouteBuilder[T]
-	path        string
-	method      HTTPMethod
-	handler     HandlerFunc
-	middleware  []MiddlewareFunc
-	name        string
-	description string
-	summary     string
-	tags        []string
-	responses   []Response
-	parameters  []Parameter
-	requestBody *RequestBody
+	builder    *RouteBuilder[T]
+	middleware []MiddlewareFunc
+	handler    HandlerFunc
+	definition *RouteDefinition
 }
 
 func NewRouteBuilder[T any](router Router[T]) *RouteBuilder[T] {
@@ -37,7 +29,13 @@ func (b *RouteBuilder[T]) NewRoute() *Route[T] {
 	route := &Route[T]{
 		builder:    b,
 		middleware: make([]MiddlewareFunc, 0),
-		responses:  make([]Response, 0),
+		definition: &RouteDefinition{
+			Operation: Operation{
+				Parameters: make([]Parameter, 0),
+				Responses:  make([]Response, 0),
+				Tags:       make([]string, 0),
+			},
+		},
 	}
 	b.routes = append(b.routes, route)
 	return route
@@ -52,14 +50,14 @@ func (b *RouteBuilder[T]) BuildAll() error {
 	var errs error
 	for _, route := range b.routes {
 		if err := route.Build(); err != nil {
-			errs = errors.Join(errs, fmt.Errorf("failed to build route %s: %w", route.path, err))
+			errs = errors.Join(errs, fmt.Errorf("failed to build route %s: %w", route.definition.Path, err))
 		}
 	}
 	return errs
 }
 
 func (r *Route[T]) Method(method HTTPMethod) *Route[T] {
-	r.method = method
+	r.definition.Method = method
 	return r
 }
 
@@ -68,7 +66,7 @@ func (r *Route[T]) Path(path string) *Route[T] {
 	if path == "" {
 		path = "/"
 	}
-	r.path = path
+	r.definition.Path = path
 	return r
 }
 
@@ -83,32 +81,32 @@ func (r *Route[T]) Middleware(middleware ...MiddlewareFunc) *Route[T] {
 }
 
 func (r *Route[T]) Name(name string) *Route[T] {
-	r.name = name
+	r.definition.name = name
 	return r
 }
 
 func (r *Route[T]) Description(description string) *Route[T] {
-	r.description = description
+	r.definition.Operation.Description = description
 	return r
 }
 
 func (r *Route[T]) Summary(summary string) *Route[T] {
-	r.summary = summary
+	r.definition.Operation.Summary = summary
 	return r
 }
 
 func (r *Route[T]) Tags(tags ...string) *Route[T] {
-	r.tags = append(r.tags, tags...)
+	r.definition.Operation.Tags = append(r.definition.Operation.Tags, tags...)
 	return r
 }
 
 func (r *Route[T]) Responses(responses []Response) *Route[T] {
-	r.responses = append(r.responses, responses...)
+	r.definition.Operation.Responses = append(r.definition.Operation.Responses, responses...)
 	return r
 }
 
 func (r *Route[T]) Parameter(name, in string, required bool, schema any) *Route[T] {
-	r.parameters = append(r.parameters, Parameter{
+	r.definition.Operation.Parameters = append(r.definition.Operation.Parameters, Parameter{
 		Name:     name,
 		In:       in,
 		Required: required,
@@ -118,7 +116,7 @@ func (r *Route[T]) Parameter(name, in string, required bool, schema any) *Route[
 }
 
 func (r *Route[T]) RequestBody(desc string, required bool, content map[string]any) *Route[T] {
-	r.requestBody = &RequestBody{
+	r.definition.Operation.RequestBody = &RequestBody{
 		Description: desc,
 		Required:    required,
 		Content:     content,
@@ -127,7 +125,7 @@ func (r *Route[T]) RequestBody(desc string, required bool, content map[string]an
 }
 
 func (r *Route[T]) Response(code int, desc string, content map[string]any) *Route[T] {
-	r.responses = append(r.responses, Response{
+	r.definition.Operation.Responses = append(r.definition.Operation.Responses, Response{
 		Code:        code,
 		Description: desc,
 		Content:     content,
@@ -145,47 +143,32 @@ func (r *Route[T]) Build() error {
 		finalHandler = r.middleware[i](finalHandler)
 	}
 
-	ri := r.builder.router.Handle(r.method, r.path, finalHandler)
-
-	if r.name != "" {
-		ri = ri.Name(r.name)
+	var handlers []NamedHandler
+	for _, mw := range r.middleware {
+		handlers = append(handlers, NamedHandler{
+			Name:    funcName(mw),
+			Handler: mw(finalHandler),
+		})
 	}
+	handlers = append(handlers, NamedHandler{
+		Name:    r.definition.name,
+		Handler: finalHandler,
+	})
+	r.definition.Handlers = handlers
 
-	if r.description != "" {
-		ri = ri.Description(r.description)
-	}
+	ri := r.builder.router.Handle(r.definition.Method, r.definition.Path, finalHandler)
 
-	if r.summary != "" {
-		ri = ri.Summary(r.summary)
-	}
-
-	//TODO: Make sure if we don't have summary or description we use the other.
-
-	if len(r.tags) > 0 {
-		ri = ri.Tags(r.tags...)
-	}
-
-	for _, p := range r.parameters {
-		ri = ri.AddParameter(p.Name, p.In, p.Required, p.Schema)
-	}
-
-	if r.requestBody != nil {
-		ri = ri.SetRequestBody(r.requestBody.Description, r.requestBody.Required, r.requestBody.Content)
-	}
-
-	for _, resp := range r.responses {
-		ri = ri.AddResponse(resp.Code, resp.Description, resp.Content)
-	}
+	ri.FromRouteDefinition(r.definition)
 
 	return nil
 }
 
 func (r *Route[T]) validate() error {
-	if r.method == "" {
+	if r.definition.Method == "" {
 		return NewValidationError("method is required", nil)
 	}
 
-	if r.path == "" {
+	if r.definition.Path == "" {
 		return NewValidationError("path is required", nil)
 	}
 

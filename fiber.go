@@ -255,3 +255,34 @@ func (c *fiberContext) Next() error {
 	}
 	return nil
 }
+
+// FromFiberMiddleware will create a middleware from a fiber middleware
+func FromFiberMiddleware(fiberMw func(*fiber.Ctx) error) MiddlewareFunc {
+	return func(next HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			if fc, ok := ctx.(*fiberContext); ok {
+				// set up handler for curr req
+				fc.handlers = append(fc.handlers, NamedHandler{
+					Name: "fiber_mw",
+					Handler: func(c Context) error {
+						if fctx, ok := c.(*fiberContext); ok {
+							return fiberMw(fctx.ctx)
+						}
+						return nil
+					},
+				})
+
+				fc.handlers = append(fc.handlers, NamedHandler{
+					Name:    "next_handler",
+					Handler: next,
+				})
+
+				// start the handler chain...
+				fc.index = -1
+				return fc.Next()
+			}
+			// not a fiber context, continue along...
+			return next(ctx)
+		}
+	}
+}

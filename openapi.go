@@ -54,11 +54,17 @@ type OpenAPIRenderer struct {
 	Version     string
 	Description string
 	Contact     OpenAPIFieldContact
+	Routes      []RouteDefinition
+	Paths       map[string]any
+	Tags        []any
+	Components  map[string]any
 }
 
-func (o *OpenAPIRenderer) GenerateOpenAPI(routes []RouteDefinition) map[string]any {
+func (o *OpenAPIRenderer) SetRouteInfo(routes []RouteDefinition) {
+	o.Routes = append(o.Routes, routes...)
+
 	paths := make(map[string]any)
-	for _, rt := range routes {
+	for _, rt := range o.Routes {
 		op := map[string]any{
 			"summary":     rt.Operation.Summary,
 			"description": rt.Operation.Description,
@@ -109,7 +115,10 @@ func (o *OpenAPIRenderer) GenerateOpenAPI(routes []RouteDefinition) map[string]a
 		pathItem[methodLower] = op
 		paths[rt.Path] = pathItem
 	}
+	o.Paths = paths
+}
 
+func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
 	return map[string]any{
 		"openapi": "3.0.3",
 		"info": map[string]any{
@@ -122,11 +131,17 @@ func (o *OpenAPIRenderer) GenerateOpenAPI(routes []RouteDefinition) map[string]a
 				"url":   o.Contact.URL,
 			},
 		},
-		"paths": paths,
+		"components": o.Components,
+		"paths":      o.Paths,
+		"tags":       o.Tags,
 	}
 }
 
-func ServeOpenAPI[T any](router Router[T], renderer *OpenAPIRenderer, opts ...OpenAPIOption) {
+type OpenApiMetaGenerator interface {
+	GenerateOpenAPI() map[string]any
+}
+
+func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts ...OpenAPIOption) {
 	cfg := defaultOpenAPIConfig()
 	for _, opt := range opts {
 		opt(cfg)
@@ -143,7 +158,7 @@ func ServeOpenAPI[T any](router Router[T], renderer *OpenAPIRenderer, opts ...Op
 		jsonPath = jsonPath + ".json"
 	}
 
-	doc := renderer.GenerateOpenAPI(router.Routes())
+	doc := renderer.GenerateOpenAPI()
 
 	router.Get(jsonPath, func(c Context) error {
 		return c.JSON(http.StatusOK, doc)

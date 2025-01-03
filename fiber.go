@@ -12,6 +12,7 @@ import (
 type FiberAdapter struct {
 	app    *fiber.App
 	router *FiberRouter
+	opts   []func(*fiber.App) *fiber.App
 }
 
 func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
@@ -29,7 +30,7 @@ func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 		app = opt(app)
 	}
 
-	return &FiberAdapter{app: app}
+	return &FiberAdapter{app: app, opts: opts}
 }
 
 func DefaultFiberOptions(app *fiber.App) *fiber.App {
@@ -256,33 +257,34 @@ func (c *fiberContext) Next() error {
 	return nil
 }
 
-// FromFiberMiddleware will create a middleware from a fiber middleware
-func FromFiberMiddleware(fiberMw func(*fiber.Ctx) error) MiddlewareFunc {
+// MiddlewareFromFiber adapts a user-provided Fiber middleware to
+// your router's chain, preserving c.Next() semantics by spinning
+// up a sub-Fiber app for each request.
+func MiddlewareFromFiber(userFiberMw func(*fiber.Ctx) error) MiddlewareFunc {
 	return func(next HandlerFunc) HandlerFunc {
-		return func(ctx Context) error {
-			if fc, ok := ctx.(*fiberContext); ok {
-				// set up handler for curr req
-				fc.handlers = append(fc.handlers, NamedHandler{
-					Name: "fiber_mw",
-					Handler: func(c Context) error {
-						if fctx, ok := c.(*fiberContext); ok {
-							return fiberMw(fctx.ctx)
-						}
-						return nil
-					},
-				})
-
-				fc.handlers = append(fc.handlers, NamedHandler{
-					Name:    "next_handler",
-					Handler: next,
-				})
-
-				// start the handler chain...
-				fc.index = -1
-				return fc.Next()
+		return func(c Context) error {
+			fc, ok := c.(*fiberContext)
+			if !ok {
+				return next(c)
 			}
-			// not a fiber context, continue along...
-			return next(ctx)
+
+			reqCtx := fc.ctx.Context() // *fasthttp.RequestCtx
+
+			subApp := fiber.New(fiber.Config{
+				DisableStartupMessage: true,
+			})
+
+			subApp.Use(func(ctx *fiber.Ctx) error {
+				return userFiberMw(ctx)
+			})
+
+			subApp.Use(func(ctx *fiber.Ctx) error {
+				return next(c)
+			})
+
+			subApp.Handler()(reqCtx)
+
+			return nil
 		}
 	}
 }

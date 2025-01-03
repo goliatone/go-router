@@ -122,6 +122,7 @@ type RouteInfo interface {
 	AddParameter(name, in string, required bool, schema any) RouteInfo
 	SetRequestBody(desc string, required bool, content map[string]any) RouteInfo
 	AddResponse(code int, desc string, content map[string]any) RouteInfo
+	FromRouteDefinition(r2 *RouteDefinition) RouteInfo
 }
 
 // Router represents a generic router interface

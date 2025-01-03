@@ -119,18 +119,17 @@ func extractPropertyInfo(t reflect.Type) PropertyInfo {
 	case reflect.Struct:
 		// For structs, we only set the type and reference
 		prop.Type = "object"
-		// Don't recursively extract properties here
-		// Instead, these should be handled as separate schema components
+		// NOTE: We don't wnat to recursively extract properties here
+		// instead, these should be handled as separate schema components
 
 	case reflect.Slice, reflect.Array:
 		prop.Type = "array"
-		// Create item property info without the field's tags
 		prop.Items = &PropertyInfo{}
 		*prop.Items = extractPropertyInfo(t.Elem())
 
 	case reflect.Map:
 		prop.Type = "object"
-		// For maps, we could potentially add additionalProperties schema
+		// TODO: for maps, we could potentially add additionalProperties schema
 		// but for now we'll keep it simple
 	}
 

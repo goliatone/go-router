@@ -176,8 +176,8 @@ func (ma *MetadataAggregator) GenerateOpenAPI() map[string]any {
 	return map[string]any{
 		"openapi":    "3.0.3",
 		"paths":      ma.Paths,
-		"components": ma.Components,
 		"tags":       ma.Tags,
+		"components": ma.Components,
 	}
 }
 

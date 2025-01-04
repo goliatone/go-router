@@ -9,7 +9,7 @@ type routerRoot struct {
 }
 
 // Common fields for both FiberRouter and HTTPRouter
-type baseRouter struct {
+type BaseRouter struct {
 	prefix      string
 	middlewares []namedMiddleware
 	routes      []*RouteDefinition
@@ -56,7 +56,7 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 //		}
 //	}
 
-func (br *baseRouter) PrintRoutes() {
+func (br *BaseRouter) PrintRoutes() {
 	for _, rt := range br.root.routes {
 		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.Name)
 		if rt.Description != "" {
@@ -75,7 +75,7 @@ func (br *baseRouter) PrintRoutes() {
 	}
 }
 
-func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *RouteDefinition {
+func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *RouteDefinition {
 	chain := chainHandlers(finalHandler, routeName, allMw)
 	r :=
 		&RouteDefinition{
@@ -89,7 +89,7 @@ func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 	return r
 }
 
-func (br *baseRouter) Routes() []RouteDefinition {
+func (br *BaseRouter) Routes() []RouteDefinition {
 	defs := make([]RouteDefinition, len(br.root.routes))
 	for i, rt := range br.root.routes {
 		defs[i] = *rt

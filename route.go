@@ -3,6 +3,8 @@ package router
 import (
 	"errors"
 	"fmt"
+	"path"
+	"strings"
 )
 
 type RouteBuilder[T any] struct {
@@ -11,6 +13,7 @@ type RouteBuilder[T any] struct {
 	parent   *RouteBuilder[T] // Parent builder reference
 	children []*RouteBuilder[T]
 	prefix   string // Path prefix for this group
+	meta     []RouteDefinition
 }
 
 type Route[T any] struct {
@@ -21,10 +24,15 @@ type Route[T any] struct {
 }
 
 func NewRouteBuilder[T any](router Router[T]) *RouteBuilder[T] {
+	prefix := ""
+	if pr, ok := router.(PrefixedRouter); ok {
+		prefix = pr.GetPrefix()
+	}
 	return &RouteBuilder[T]{
 		router:   router,
 		routes:   make([]*Route[T], 0),
 		children: make([]*RouteBuilder[T], 0),
+		prefix:   prefix, // Set the initial prefix from router
 	}
 }
 
@@ -63,13 +71,37 @@ func (b *RouteBuilder[T]) BuildAll() error {
 	}
 
 	var errs error
+	var meta []RouteDefinition
+
 	for _, route := range allRoutes {
 		if err := route.Build(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to build route %s: %w", route.definition.Path, err))
+			continue
 		}
+
+		routeMeta := RouteDefinition{
+			Method:      route.definition.Method,
+			Path:        getFullPath(route),
+			Name:        route.definition.Name,
+			Summary:     route.definition.Summary,
+			Description: route.definition.Description,
+			Tags:        route.definition.Tags,
+			Parameters:  route.definition.Parameters,
+			RequestBody: route.definition.RequestBody,
+			Responses:   route.definition.Responses,
+			Handlers:    route.definition.Handlers,
+		}
+
+		meta = append(meta, routeMeta)
 	}
 
+	b.meta = meta
+
 	return errs
+}
+
+func (b *RouteBuilder[T]) GetMetadata() []RouteDefinition {
+	return b.meta
 }
 
 func (b *RouteBuilder[T]) getAllRoutes() []*Route[T] {
@@ -256,4 +288,35 @@ func (r *Route[T]) DELETE() *Route[T] {
 
 func (r *Route[T]) PATCH() *Route[T] {
 	return r.Method(PATCH)
+}
+
+// Get the full path by walking up the builder hierarchy
+func getFullPath[T any](route *Route[T]) string {
+	fullPath := route.definition.Path
+	currentBuilder := route.builder
+
+	// Walk up the builder hierarchy
+	var prefixes []string
+	for currentBuilder != nil {
+		if currentBuilder.prefix != "" {
+			prefixes = append([]string{currentBuilder.prefix}, prefixes...)
+		}
+		currentBuilder = currentBuilder.parent
+	}
+
+	// Join all prefixes with the route path
+	if len(prefixes) > 0 {
+		prefix := path.Join(prefixes...)
+		if fullPath == "" || fullPath == "/" {
+			fullPath = prefix
+		} else {
+			fullPath = path.Join(prefix, fullPath)
+		}
+	}
+
+	// Clean the path
+	if !strings.HasPrefix(fullPath, "/") {
+		fullPath = "/" + fullPath
+	}
+	return fullPath
 }

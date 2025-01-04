@@ -142,6 +142,11 @@ type Router[T any] interface {
 	PrintRoutes()
 }
 
+// TODO: Maybe incorporate into Router[T]
+type PrefixedRouter interface {
+	GetPrefix() string
+}
+
 // Server represents a generic server interface
 type Server[T any] interface {
 	Router() Router[T]

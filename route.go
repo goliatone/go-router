@@ -6,8 +6,11 @@ import (
 )
 
 type RouteBuilder[T any] struct {
-	router Router[T]
-	routes []*Route[T]
+	router   Router[T]
+	routes   []*Route[T]
+	parent   *RouteBuilder[T] // Parent builder reference
+	children []*RouteBuilder[T]
+	prefix   string // Path prefix for this group
 }
 
 type Route[T any] struct {
@@ -19,8 +22,9 @@ type Route[T any] struct {
 
 func NewRouteBuilder[T any](router Router[T]) *RouteBuilder[T] {
 	return &RouteBuilder[T]{
-		router: router,
-		routes: make([]*Route[T], 0),
+		router:   router,
+		routes:   make([]*Route[T], 0),
+		children: make([]*RouteBuilder[T], 0),
 	}
 }
 
@@ -29,13 +33,7 @@ func (b *RouteBuilder[T]) NewRoute() *Route[T] {
 	route := &Route[T]{
 		builder:    b,
 		middleware: make([]MiddlewareFunc, 0),
-		definition: &RouteDefinition{
-			Operation: Operation{
-				Parameters: make([]Parameter, 0),
-				Responses:  make([]Response, 0),
-				Tags:       make([]string, 0),
-			},
-		},
+		definition: NewRouteDefinition(),
 	}
 	b.routes = append(b.routes, route)
 	return route
@@ -43,17 +41,47 @@ func (b *RouteBuilder[T]) NewRoute() *Route[T] {
 
 // Group creates a new RouteBuilder with a prefix path
 func (b *RouteBuilder[T]) Group(prefix string) *RouteBuilder[T] {
-	return NewRouteBuilder(b.router.Group(prefix))
+	child := &RouteBuilder[T]{
+		router:   b.router.Group(prefix),
+		routes:   make([]*Route[T], 0),
+		parent:   b,
+		children: make([]*RouteBuilder[T], 0),
+		prefix:   prefix,
+	}
+	b.children = append(b.children, child)
+	return child
 }
 
 func (b *RouteBuilder[T]) BuildAll() error {
+	if b.parent != nil {
+		return b.parent.BuildAll()
+	}
+
+	allRoutes := b.getAllRoutes()
+	if len(allRoutes) == 0 {
+		return errors.New("no routes to build")
+	}
+
 	var errs error
-	for _, route := range b.routes {
+	for _, route := range allRoutes {
 		if err := route.Build(); err != nil {
 			errs = errors.Join(errs, fmt.Errorf("failed to build route %s: %w", route.definition.Path, err))
 		}
 	}
+
 	return errs
+}
+
+func (b *RouteBuilder[T]) getAllRoutes() []*Route[T] {
+	var allRoutes []*Route[T]
+
+	allRoutes = append(allRoutes, b.routes...)
+
+	for _, child := range b.children {
+		allRoutes = append(allRoutes, child.getAllRoutes()...)
+	}
+
+	return allRoutes
 }
 
 func (r *Route[T]) Method(method HTTPMethod) *Route[T] {
@@ -81,6 +109,7 @@ func (r *Route[T]) Middleware(middleware ...MiddlewareFunc) *Route[T] {
 }
 
 func (r *Route[T]) Name(name string) *Route[T] {
+	fmt.Println("== adding route: " + name)
 	r.definition.name = name
 	return r
 }
@@ -158,7 +187,37 @@ func (r *Route[T]) Build() error {
 
 	ri := r.builder.router.Handle(r.definition.Method, r.definition.Path, finalHandler)
 
-	ri.FromRouteDefinition(r.definition)
+	if r.definition.name != "" {
+		ri.Name(r.definition.name)
+	}
+
+	if r.definition.Operation.Description != "" {
+		ri.Description(r.definition.Operation.Description)
+	}
+
+	if r.definition.Operation.Summary != "" {
+		ri.Summary(r.definition.Operation.Summary)
+	}
+
+	if len(r.definition.Operation.Tags) > 0 {
+		ri.Tags(r.definition.Operation.Tags...)
+	}
+
+	for _, p := range r.definition.Operation.Parameters {
+		ri.AddParameter(p.Name, p.In, p.Required, p.Schema)
+	}
+
+	if r.definition.Operation.RequestBody != nil {
+		ri.SetRequestBody(
+			r.definition.Operation.RequestBody.Description,
+			r.definition.Operation.RequestBody.Required,
+			r.definition.Operation.RequestBody.Content,
+		)
+	}
+
+	for _, resp := range r.definition.Operation.Responses {
+		ri.AddResponse(resp.Code, resp.Description, resp.Content)
+	}
 
 	return nil
 }

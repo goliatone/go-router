@@ -43,7 +43,7 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 	if a.router == nil {
 		a.router = &HTTPRouter{
 			router: a.httpRouter,
-			baseRouter: baseRouter{
+			BaseRouter: BaseRouter{
 				logger:      &defaultLogger{},
 				routes:      []*RouteDefinition{},
 				middlewares: []namedMiddleware{},
@@ -85,14 +85,18 @@ func (a *HTTPServer) Shutdown(ctx context.Context) error {
 
 // HTTPRouter implements Router for httprouter
 type HTTPRouter struct {
-	baseRouter
+	BaseRouter
 	router *httprouter.Router
+}
+
+func (r *HTTPRouter) GetPrefix() string {
+	return r.prefix
 }
 
 func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
 		router: r.router,
-		baseRouter: baseRouter{
+		BaseRouter: BaseRouter{
 			prefix:      path.Join(r.prefix, prefix),
 			middlewares: append([]namedMiddleware{}, r.middlewares...),
 			logger:      r.logger,
@@ -168,7 +172,7 @@ func (r *HTTPRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFun
 }
 
 func (r *HTTPRouter) PrintRoutes() {
-	r.baseRouter.PrintRoutes()
+	r.BaseRouter.PrintRoutes()
 }
 
 // httpRouterContext implements Context for httprouter

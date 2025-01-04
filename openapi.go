@@ -115,6 +115,7 @@ func (o *OpenAPIRenderer) SetRouteInfo(routes []RouteDefinition) {
 		pathItem[methodLower] = op
 		paths[rt.Path] = pathItem
 	}
+
 	o.Paths = paths
 }
 

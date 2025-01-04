@@ -115,10 +115,10 @@ type NamedHandler struct {
 }
 
 type RouteInfo interface {
-	Name(string) RouteInfo
-	Description(string) RouteInfo
-	Summary(s string) RouteInfo
-	Tags(...string) RouteInfo
+	SetName(string) RouteInfo
+	SetDescription(string) RouteInfo
+	SetSummary(s string) RouteInfo
+	AddTags(...string) RouteInfo
 	AddParameter(name, in string, required bool, schema any) RouteInfo
 	SetRequestBody(desc string, required bool, content map[string]any) RouteInfo
 	AddResponse(code int, desc string, content map[string]any) RouteInfo

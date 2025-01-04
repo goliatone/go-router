@@ -119,7 +119,7 @@ type RouteInfo interface {
 	SetDescription(string) RouteInfo
 	SetSummary(s string) RouteInfo
 	AddTags(...string) RouteInfo
-	AddParameter(name, in string, required bool, schema any) RouteInfo
+	AddParameter(name, in string, required bool, schema map[string]any) RouteInfo
 	SetRequestBody(desc string, required bool, content map[string]any) RouteInfo
 	AddResponse(code int, desc string, content map[string]any) RouteInfo
 	// FromRouteDefinition(r2 *RouteDefinition) RouteInfo

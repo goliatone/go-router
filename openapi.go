@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"dario.cat/mergo"
 	"gopkg.in/yaml.v2"
 )
 
@@ -58,69 +59,33 @@ type OpenAPIRenderer struct {
 	Paths       map[string]any
 	Tags        []any
 	Components  map[string]any
+	providers   []OpenApiMetaGenerator
 }
 
-func (o *OpenAPIRenderer) SetRouteInfo(routes []RouteDefinition) {
-	o.Routes = append(o.Routes, routes...)
+func (o *OpenAPIRenderer) WithMetadataProviders(providers ...OpenApiMetaGenerator) *OpenAPIRenderer {
+	o.providers = append(o.providers, providers...)
+	return o
+}
 
-	paths := make(map[string]any)
-	for _, rt := range o.Routes {
-		op := map[string]any{
-			"summary":     rt.Summary,
-			"description": rt.Description,
-			"tags":        rt.Tags,
-			"responses":   map[string]any{},
-		}
-
-		// Parameters
-		var params []any
-		for _, p := range rt.Parameters {
-			params = append(params, map[string]any{
-				"name":     p.Name,
-				"in":       p.In,
-				"required": p.Required,
-				"schema":   p.Schema,
-			})
-		}
-		if len(params) > 0 {
-			op["parameters"] = params
-		}
-
-		// RequestBody
-		if rb := rt.RequestBody; rb != nil {
-			op["requestBody"] = map[string]any{
-				"description": rb.Description,
-				"required":    rb.Required,
-				"content":     rb.Content,
-			}
-		}
-
-		// Responses
-		respObj := map[string]any{}
-		for _, r := range rt.Responses {
-			respObj[fmt.Sprintf("%d", r.Code)] = map[string]any{
-				"description": r.Description,
-				"content":     r.Content,
-			}
-		}
-		if len(respObj) > 0 {
-			op["responses"] = respObj
-		}
-
-		pathItem, ok := paths[rt.Path].(map[string]any)
-		if !ok {
-			pathItem = map[string]any{}
-		}
-		methodLower := strings.ToLower(string(rt.Method))
-		pathItem[methodLower] = op
-		paths[rt.Path] = pathItem
+// AppenRouteInfo updates the renderer with route information
+func (o *OpenAPIRenderer) AppenRouteInfo(routes []RouteDefinition) {
+	if o.Paths == nil {
+		o.Paths = make(map[string]any)
 	}
 
-	o.Paths = paths
+	for _, rt := range o.Routes {
+		o.addRouteToPath(rt)
+	}
+
+	for _, rt := range routes {
+		o.addRouteToPath(rt)
+	}
+
+	o.Routes = append(o.Routes, routes...)
 }
 
 func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
-	return map[string]any{
+	base := map[string]any{
 		"openapi": "3.0.3",
 		"info": map[string]any{
 			"title":       o.Title,
@@ -132,10 +97,53 @@ func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
 				"url":   o.Contact.URL,
 			},
 		},
-		"components": o.Components,
 		"paths":      o.Paths,
+		"components": o.Components,
 		"tags":       o.Tags,
 	}
+
+	for _, provider := range o.providers {
+		overlay := provider.GenerateOpenAPI()
+
+		// paths need special handling...
+		if overlayPaths, ok := overlay["paths"].(map[string]any); ok {
+			if base["paths"] == nil {
+				base["paths"] = make(map[string]any)
+			}
+			basePaths := base["paths"].(map[string]any)
+
+			// we need to merge each path individually
+			for path, pathItem := range overlayPaths {
+				fullPath := joinPaths(path)
+				if existing, exists := basePaths[fullPath]; exists {
+					merged := make(map[string]any)
+					if existingMap, ok := existing.(map[string]any); ok {
+						if err := mergo.Merge(&merged, existingMap, mergo.WithOverride); err != nil {
+							continue
+						}
+					}
+					if pathItemMap, ok := pathItem.(map[string]any); ok {
+						if err := mergo.Merge(&merged, pathItemMap, mergo.WithOverride); err != nil {
+							continue
+						}
+					}
+					basePaths[fullPath] = merged
+				} else {
+					basePaths[fullPath] = pathItem
+				}
+			}
+
+			// remove to prevent double merging
+			delete(overlay, "paths")
+		}
+
+		// Merge the rest
+		if err := mergo.Merge(&base, overlay, mergo.WithOverride, mergo.WithAppendSlice); err != nil {
+			continue
+		}
+	}
+
+	return base
 }
 
 type OpenApiMetaGenerator interface {
@@ -202,4 +210,81 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 </html>`
 		return c.Send([]byte(html))
 	})
+}
+
+func (o *OpenAPIRenderer) addRouteToPath(rt RouteDefinition) {
+	// Clean up the path and ensure it starts with /
+	fullPath := joinPaths(rt.Path)
+
+	op := map[string]any{
+		"summary":     rt.Summary,
+		"description": rt.Description,
+		"tags":        rt.Tags,
+		"responses":   make(map[string]any),
+	}
+
+	// Parameters
+	var params []any
+	for _, p := range rt.Parameters {
+		params = append(params, map[string]any{
+			"name":        p.Name,
+			"in":          p.In,
+			"required":    p.Required,
+			"schema":      p.Schema,
+			"description": p.Description,
+		})
+	}
+	if len(params) > 0 {
+		op["parameters"] = params
+	}
+
+	// RequestBody
+	if rb := rt.RequestBody; rb != nil {
+		op["requestBody"] = map[string]any{
+			"description": rb.Description,
+			"required":    rb.Required,
+			"content":     rb.Content,
+		}
+	}
+
+	// Responses
+	for _, r := range rt.Responses {
+		op["responses"].(map[string]any)[fmt.Sprintf("%d", r.Code)] = map[string]any{
+			"description": r.Description,
+			"content":     r.Content,
+		}
+	}
+
+	// Get or create path item
+	pathItem, exists := o.Paths[fullPath]
+	if !exists {
+		pathItem = make(map[string]any)
+	}
+
+	// Convert to map if it isn't already
+	pathItemMap, ok := pathItem.(map[string]any)
+	if !ok {
+		pathItemMap = make(map[string]any)
+	}
+
+	// Add operation to path
+	methodLower := strings.ToLower(string(rt.Method))
+	pathItemMap[methodLower] = op
+
+	// Update paths
+	fmt.Printf("==== update paths %s\n", fullPath)
+	o.Paths[fullPath] = pathItemMap
+}
+
+func joinPaths(parts ...string) string {
+	cleanParts := make([]string, 0)
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" && p != "/" {
+			cleanParts = append(cleanParts, strings.Trim(p, "/"))
+		}
+	}
+	if len(cleanParts) == 0 {
+		return "/"
+	}
+	return "/" + strings.Join(cleanParts, "/")
 }

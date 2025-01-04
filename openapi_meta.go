@@ -14,16 +14,16 @@ type ResourceMetadata struct {
 	Tags        []string `json:"tags"`
 
 	// Routes metadata
-	Routes []RouteMetadata `json:"routes"`
+	Routes []RouteDefinition `json:"routes"`
 
 	// Schema information
 	Schema SchemaMetadata `json:"schema"`
 }
 
-// RouteMetadata represents all metadata about a route,
+// RouteDefinition represents all metadata about a route,
 // combining both runtime routing information and
 // metadata
-type RouteMetadata struct {
+type RouteDefinition struct {
 	// Core routing
 	Method   HTTPMethod     `json:"method"`
 	Path     string         `json:"path"`
@@ -189,7 +189,7 @@ func convertMapToArray(m map[string]any) []any {
 	return result
 }
 
-func convertRouteToPathItem(route RouteMetadata) map[string]any {
+func convertRouteToPathItem(route RouteDefinition) map[string]any {
 	operation := map[string]any{
 		"summary":     route.Summary,
 		"description": route.Description,

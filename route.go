@@ -65,7 +65,7 @@ func (b *RouteBuilder[T]) BuildAll() error {
 	var errs error
 	for _, route := range allRoutes {
 		if err := route.Build(); err != nil {
-			errs = errors.Join(errs, fmt.Errorf("failed to build route %s: %w", route.definition.metadata.Path, err))
+			errs = errors.Join(errs, fmt.Errorf("failed to build route %s: %w", route.definition.Path, err))
 		}
 	}
 
@@ -85,7 +85,7 @@ func (b *RouteBuilder[T]) getAllRoutes() []*Route[T] {
 }
 
 func (r *Route[T]) Method(method HTTPMethod) *Route[T] {
-	r.definition.metadata.Method = method
+	r.definition.Method = method
 	return r
 }
 
@@ -94,7 +94,7 @@ func (r *Route[T]) Path(path string) *Route[T] {
 	if path == "" {
 		path = "/"
 	}
-	r.definition.metadata.Path = path
+	r.definition.Path = path
 	return r
 }
 
@@ -110,42 +110,42 @@ func (r *Route[T]) Middleware(middleware ...MiddlewareFunc) *Route[T] {
 
 func (r *Route[T]) Name(name string) *Route[T] {
 	fmt.Println("== adding route: " + name)
-	r.definition.metadata.Name = name
+	r.definition.Name = name
 	return r
 }
 
 func (r *Route[T]) Description(description string) *Route[T] {
-	r.definition.metadata.Description = description
+	r.definition.Description = description
 	return r
 }
 
 func (r *Route[T]) Summary(summary string) *Route[T] {
-	r.definition.metadata.Summary = summary
+	r.definition.Summary = summary
 	return r
 }
 
 func (r *Route[T]) Tags(tags ...string) *Route[T] {
-	r.definition.metadata.Tags = append(r.definition.metadata.Tags, tags...)
+	r.definition.Tags = append(r.definition.Tags, tags...)
 	return r
 }
 
 func (r *Route[T]) Responses(responses []Response) *Route[T] {
-	r.definition.metadata.Responses = append(r.definition.metadata.Responses, responses...)
+	r.definition.Responses = append(r.definition.Responses, responses...)
 	return r
 }
 
-func (r *Route[T]) Parameter(name, in string, required bool, schema any) *Route[T] {
-	r.definition.metadata.Parameters = append(r.definition.metadata.Parameters, Parameter{
+func (r *Route[T]) Parameter(name, in string, required bool, schema map[string]any) *Route[T] {
+	r.definition.Parameters = append(r.definition.Parameters, Parameter{
 		Name:     name,
 		In:       in,
 		Required: required,
-		Schema:   schema.(map[string]any),
+		Schema:   schema,
 	})
 	return r
 }
 
 func (r *Route[T]) RequestBody(desc string, required bool, content map[string]any) *Route[T] {
-	r.definition.metadata.RequestBody = &RequestBody{
+	r.definition.RequestBody = &RequestBody{
 		Description: desc,
 		Required:    required,
 		Content:     content,
@@ -154,7 +154,7 @@ func (r *Route[T]) RequestBody(desc string, required bool, content map[string]an
 }
 
 func (r *Route[T]) Response(code int, desc string, content map[string]any) *Route[T] {
-	r.definition.metadata.Responses = append(r.definition.metadata.Responses, Response{
+	r.definition.Responses = append(r.definition.Responses, Response{
 		Code:        code,
 		Description: desc,
 		Content:     content,
@@ -180,42 +180,42 @@ func (r *Route[T]) Build() error {
 		})
 	}
 	handlers = append(handlers, NamedHandler{
-		Name:    r.definition.metadata.Name,
+		Name:    r.definition.Name,
 		Handler: finalHandler,
 	})
-	r.definition.metadata.Handlers = handlers
+	r.definition.Handlers = handlers
 
-	ri := r.builder.router.Handle(r.definition.metadata.Method, r.definition.metadata.Path, finalHandler)
+	ri := r.builder.router.Handle(r.definition.Method, r.definition.Path, finalHandler)
 
-	if r.definition.metadata.Name != "" {
-		ri.SetName(r.definition.metadata.Name)
+	if r.definition.Name != "" {
+		ri.SetName(r.definition.Name)
 	}
 
-	if r.definition.metadata.Description != "" {
-		ri.SetDescription(r.definition.metadata.Description)
+	if r.definition.Description != "" {
+		ri.SetDescription(r.definition.Description)
 	}
 
-	if r.definition.metadata.Summary != "" {
-		ri.SetSummary(r.definition.metadata.Summary)
+	if r.definition.Summary != "" {
+		ri.SetSummary(r.definition.Summary)
 	}
 
-	if len(r.definition.metadata.Tags) > 0 {
-		ri.AddTags(r.definition.metadata.Tags...)
+	if len(r.definition.Tags) > 0 {
+		ri.AddTags(r.definition.Tags...)
 	}
 
-	for _, p := range r.definition.metadata.Parameters {
+	for _, p := range r.definition.Parameters {
 		ri.AddParameter(p.Name, p.In, p.Required, p.Schema)
 	}
 
-	if r.definition.metadata.RequestBody != nil {
+	if r.definition.RequestBody != nil {
 		ri.SetRequestBody(
-			r.definition.metadata.RequestBody.Description,
-			r.definition.metadata.RequestBody.Required,
-			r.definition.metadata.RequestBody.Content,
+			r.definition.RequestBody.Description,
+			r.definition.RequestBody.Required,
+			r.definition.RequestBody.Content,
 		)
 	}
 
-	for _, resp := range r.definition.metadata.Responses {
+	for _, resp := range r.definition.Responses {
 		ri.AddResponse(resp.Code, resp.Description, resp.Content)
 	}
 
@@ -223,11 +223,11 @@ func (r *Route[T]) Build() error {
 }
 
 func (r *Route[T]) validate() error {
-	if r.definition.metadata.Method == "" {
+	if r.definition.Method == "" {
 		return NewValidationError("method is required", nil)
 	}
 
-	if r.definition.metadata.Path == "" {
+	if r.definition.Path == "" {
 		return NewValidationError("path is required", nil)
 	}
 

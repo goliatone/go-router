@@ -5,6 +5,7 @@ go 1.23
 toolchain go1.23.4
 
 require (
+	dario.cat/mergo v1.0.1
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/go-jose/go-jose/v3 v3.0.3
 	github.com/gofiber/fiber/v2 v2.52.5

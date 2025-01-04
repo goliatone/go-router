@@ -66,15 +66,15 @@ func (o *OpenAPIRenderer) SetRouteInfo(routes []RouteDefinition) {
 	paths := make(map[string]any)
 	for _, rt := range o.Routes {
 		op := map[string]any{
-			"summary":     rt.metadata.Summary,
-			"description": rt.metadata.Description,
-			"tags":        rt.metadata.Tags,
+			"summary":     rt.Summary,
+			"description": rt.Description,
+			"tags":        rt.Tags,
 			"responses":   map[string]any{},
 		}
 
 		// Parameters
 		var params []any
-		for _, p := range rt.metadata.Parameters {
+		for _, p := range rt.Parameters {
 			params = append(params, map[string]any{
 				"name":     p.Name,
 				"in":       p.In,
@@ -87,7 +87,7 @@ func (o *OpenAPIRenderer) SetRouteInfo(routes []RouteDefinition) {
 		}
 
 		// RequestBody
-		if rb := rt.metadata.RequestBody; rb != nil {
+		if rb := rt.RequestBody; rb != nil {
 			op["requestBody"] = map[string]any{
 				"description": rb.Description,
 				"required":    rb.Required,
@@ -97,7 +97,7 @@ func (o *OpenAPIRenderer) SetRouteInfo(routes []RouteDefinition) {
 
 		// Responses
 		respObj := map[string]any{}
-		for _, r := range rt.metadata.Responses {
+		for _, r := range rt.Responses {
 			respObj[fmt.Sprintf("%d", r.Code)] = map[string]any{
 				"description": r.Description,
 				"content":     r.Content,
@@ -107,13 +107,13 @@ func (o *OpenAPIRenderer) SetRouteInfo(routes []RouteDefinition) {
 			op["responses"] = respObj
 		}
 
-		pathItem, ok := paths[rt.metadata.Path].(map[string]any)
+		pathItem, ok := paths[rt.Path].(map[string]any)
 		if !ok {
 			pathItem = map[string]any{}
 		}
-		methodLower := strings.ToLower(string(rt.metadata.Method))
+		methodLower := strings.ToLower(string(rt.Method))
 		pathItem[methodLower] = op
-		paths[rt.metadata.Path] = pathItem
+		paths[rt.Path] = pathItem
 	}
 
 	o.Paths = paths

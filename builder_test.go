@@ -442,7 +442,7 @@ func (r *MockRouteInfo) AddTags(t ...string) RouteInfo {
 	return r
 }
 
-func (r *MockRouteInfo) AddParameter(name, in string, required bool, schema any) RouteInfo {
+func (r *MockRouteInfo) AddParameter(name, in string, required bool, schema map[string]any) RouteInfo {
 	return r
 }
 

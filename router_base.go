@@ -58,17 +58,17 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 
 func (br *baseRouter) PrintRoutes() {
 	for _, rt := range br.root.routes {
-		fmt.Printf("%s %s (%s)\n", rt.metadata.Method, rt.metadata.Path, rt.metadata.Name)
-		if rt.metadata.Description != "" {
-			fmt.Printf("  Description: %s\n", rt.metadata.Description)
+		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.Name)
+		if rt.Description != "" {
+			fmt.Printf("  Description: %s\n", rt.Description)
 		}
-		if len(rt.metadata.Tags) > 0 {
-			fmt.Printf("  Tags: %v\n", rt.metadata.Tags)
+		if len(rt.Tags) > 0 {
+			fmt.Printf("  Tags: %v\n", rt.Tags)
 		}
-		if len(rt.metadata.Responses) > 0 {
-			fmt.Printf("  Responses: %v\n", rt.metadata.Responses)
+		if len(rt.Responses) > 0 {
+			fmt.Printf("  Responses: %v\n", rt.Responses)
 		}
-		for i, h := range rt.metadata.Handlers {
+		for i, h := range rt.Handlers {
 			fmt.Printf("  %02d: %s\n", i, h.Name)
 		}
 		fmt.Println()
@@ -77,14 +77,13 @@ func (br *baseRouter) PrintRoutes() {
 
 func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *RouteDefinition {
 	chain := chainHandlers(finalHandler, routeName, allMw)
-	r := &RouteDefinition{
-		metadata: &RouteMetadata{
+	r :=
+		&RouteDefinition{
 			Method:   method,
 			Path:     fullPath,
 			Name:     routeName,
 			Handlers: chain,
-		},
-	}
+		}
 
 	br.root.routes = append(br.root.routes, r)
 	return r

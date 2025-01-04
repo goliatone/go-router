@@ -422,22 +422,22 @@ type MockRouteInfo struct {
 	ResponsesVal   map[int]string
 }
 
-func (r *MockRouteInfo) Name(n string) RouteInfo {
+func (r *MockRouteInfo) SetName(n string) RouteInfo {
 	r.NameVal = n
 	return r
 }
 
-func (r *MockRouteInfo) Description(d string) RouteInfo {
+func (r *MockRouteInfo) SetDescription(d string) RouteInfo {
 	r.DescriptionVal = d
 	return r
 }
 
-func (r *MockRouteInfo) Summary(d string) RouteInfo {
+func (r *MockRouteInfo) SetSummary(d string) RouteInfo {
 	r.SummaryVal = d
 	return r
 }
 
-func (r *MockRouteInfo) Tags(t ...string) RouteInfo {
+func (r *MockRouteInfo) AddTags(t ...string) RouteInfo {
 	r.TagsVal = append(r.TagsVal, t...)
 	return r
 }

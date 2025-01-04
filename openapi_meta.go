@@ -20,38 +20,48 @@ type ResourceMetadata struct {
 	Schema SchemaMetadata `json:"schema"`
 }
 
+// RouteMetadata represents all metadata about a route,
+// combining both runtime routing information and
+// metadata
 type RouteMetadata struct {
-	Method      HTTPMethod       `json:"method"`
-	Path        string           `json:"path"`
-	Name        string           `json:"name"`
-	Summary     string           `json:"summary"`
-	Description string           `json:"description"`
-	Tags        []string         `json:"tags"`
-	Parameters  []ParameterInfo  `json:"parameters"`
-	RequestBody *RequestBodyInfo `json:"request_body,omitempty"`
-	Responses   []ResponseInfo   `json:"responses"`
+	// Core routing
+	Method   HTTPMethod     `json:"method"`
+	Path     string         `json:"path"`
+	Name     string         `json:"name"`
+	Handlers []NamedHandler `json:"-"` // Runtime only, not exported to JSON
+
+	// metadata e.g. OpenAPI
+	Summary     string       `json:"summary,omitempty"`
+	Description string       `json:"description,omitempty"`
+	Tags        []string     `json:"tags,omitempty"`
+	Parameters  []Parameter  `json:"parameters,omitempty"`
+	RequestBody *RequestBody `json:"request_body,omitempty"`
+	Responses   []Response   `json:"responses,omitempty"`
 }
 
-type ParameterInfo struct {
+// Parameter unifies the parameter definitions
+type Parameter struct {
 	Name        string         `json:"name"`
 	In          string         `json:"in"` // query, path, header, cookie
 	Required    bool           `json:"required"`
-	Description string         `json:"description"`
-	Schema      map[string]any `json:"schema"`
+	Description string         `json:"description,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
 	Example     any            `json:"example,omitempty"`
 }
 
-type RequestBodyInfo struct {
-	Description string         `json:"description"`
+// RequestBody unifies the request body definitions
+type RequestBody struct {
+	Description string         `json:"description,omitempty"`
 	Required    bool           `json:"required"`
-	Content     map[string]any `json:"content"`
+	Content     map[string]any `json:"content,omitempty"`
 }
 
-type ResponseInfo struct {
+// Response unifies the response definitions
+type Response struct {
 	Code        int            `json:"code"`
 	Description string         `json:"description"`
 	Headers     map[string]any `json:"headers,omitempty"`
-	Content     map[string]any `json:"content"`
+	Content     map[string]any `json:"content,omitempty"`
 }
 
 type SchemaMetadata struct {
@@ -206,7 +216,7 @@ func convertSchemaToOpenAPI(schema SchemaMetadata) map[string]any {
 	}
 }
 
-func convertParameters(params []ParameterInfo) []map[string]any {
+func convertParameters(params []Parameter) []map[string]any {
 	result := make([]map[string]any, len(params))
 	for i, p := range params {
 		param := map[string]any{
@@ -224,7 +234,7 @@ func convertParameters(params []ParameterInfo) []map[string]any {
 	return result
 }
 
-func convertRequestBody(rb *RequestBodyInfo) map[string]any {
+func convertRequestBody(rb *RequestBody) map[string]any {
 	if rb == nil {
 		return nil
 	}
@@ -235,7 +245,7 @@ func convertRequestBody(rb *RequestBodyInfo) map[string]any {
 	}
 }
 
-func convertResponses(responses []ResponseInfo) map[string]any {
+func convertResponses(responses []Response) map[string]any {
 	result := make(map[string]any)
 	for _, r := range responses {
 		response := map[string]any{

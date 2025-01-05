@@ -191,7 +191,10 @@ func (c *fiberContext) QueryInt(name string, defaultValue int) int {
 
 func (c *fiberContext) Queries() map[string]string {
 	queries := make(map[string]string)
-	c.ctx.QueryParser(&queries)
+	args := c.ctx.Request().URI().QueryArgs()
+	args.VisitAll(func(key, value []byte) {
+		queries[string(key)] = string(value)
+	})
 	return queries
 }
 

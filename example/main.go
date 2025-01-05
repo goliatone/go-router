@@ -350,7 +350,7 @@ func listUsers(store *UserStore) router.HandlerFunc {
 
 func getUser(store *UserStore) router.HandlerFunc {
 	return func(c router.Context) error {
-		id := c.Param("id")
+		id := c.Param("id", "")
 
 		store.RLock()
 		user, exists := store.users[id]
@@ -375,7 +375,7 @@ type UpdateUserRequest struct {
 
 func updateUser(store *UserStore) router.HandlerFunc {
 	return func(c router.Context) error {
-		id := c.Param("id")
+		id := c.Param("id", "")
 
 		var req UpdateUserRequest
 		if err := c.Bind(&req); err != nil {
@@ -412,7 +412,7 @@ func updateUser(store *UserStore) router.HandlerFunc {
 
 func deleteUser(store *UserStore) router.HandlerFunc {
 	return func(c router.Context) error {
-		id := c.Param("id")
+		id := c.Param("id", "")
 
 		store.Lock()
 		_, exists := store.users[id]

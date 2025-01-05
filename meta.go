@@ -1,67 +1,37 @@
 package router
 
-type Parameter struct {
-	Name     string
-	In       string
-	Required bool
-	Schema   any // Could be a JSON schema snippet
-}
-
-type RequestBody struct {
-	Description string
-	Content     map[string]any
-	Required    bool
-}
-
-type Response struct {
-	Code        int
-	Description string
-	Content     map[string]any
-}
-
-type Operation struct {
-	Summary     string
-	Description string
-	Tags        []string
-	Parameters  []Parameter
-	RequestBody *RequestBody
-	Responses   []Response
-	//TODO: Additional fields like security, deprecated, operationId could be added
-}
-
-// TODO: Either use lowercase or functions
-type RouteDefinition struct {
-	Method    HTTPMethod
-	Path      string
-	name      string
-	Operation Operation
-	Handlers  []NamedHandler
+func NewRouteDefinition() *RouteDefinition {
+	return &RouteDefinition{
+		Tags:       make([]string, 0),
+		Parameters: make([]Parameter, 0),
+		Responses:  make([]Response, 0),
+	}
 }
 
 // Ensure RouteDefinition implements RouteInfo
 
-func (r *RouteDefinition) Name(n string) RouteInfo {
-	r.name = n
+func (r *RouteDefinition) SetName(n string) RouteInfo {
+	r.Name = n
 	return r
 }
 
-func (r *RouteDefinition) Description(d string) RouteInfo {
-	r.Operation.Description = d
+func (r *RouteDefinition) SetDescription(d string) RouteInfo {
+	r.Description = d
 	return r
 }
 
-func (r *RouteDefinition) Summary(s string) RouteInfo {
-	r.Operation.Summary = s
+func (r *RouteDefinition) SetSummary(s string) RouteInfo {
+	r.Summary = s
 	return r
 }
 
-func (r *RouteDefinition) Tags(t ...string) RouteInfo {
-	r.Operation.Tags = append(r.Operation.Tags, t...)
+func (r *RouteDefinition) AddTags(t ...string) RouteInfo {
+	r.Tags = append(r.Tags, t...)
 	return r
 }
 
-func (r *RouteDefinition) AddParameter(name, in string, required bool, schema any) RouteInfo {
-	r.Operation.Parameters = append(r.Operation.Parameters, Parameter{
+func (r *RouteDefinition) AddParameter(name, in string, required bool, schema map[string]any) RouteInfo {
+	r.Parameters = append(r.Parameters, Parameter{
 		Name:     name,
 		In:       in,
 		Required: required,
@@ -71,7 +41,7 @@ func (r *RouteDefinition) AddParameter(name, in string, required bool, schema an
 }
 
 func (r *RouteDefinition) SetRequestBody(desc string, required bool, content map[string]any) RouteInfo {
-	r.Operation.RequestBody = &RequestBody{
+	r.RequestBody = &RequestBody{
 		Description: desc,
 		Required:    required,
 		Content:     content,
@@ -80,7 +50,7 @@ func (r *RouteDefinition) SetRequestBody(desc string, required bool, content map
 }
 
 func (r *RouteDefinition) AddResponse(code int, desc string, content map[string]any) RouteInfo {
-	r.Operation.Responses = append(r.Operation.Responses, Response{
+	r.Responses = append(r.Responses, Response{
 		Code:        code,
 		Description: desc,
 		Content:     content,

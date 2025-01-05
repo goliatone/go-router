@@ -199,12 +199,12 @@ func TestFiber_Context(t *testing.T) {
 			t.Errorf("Expected path /context/test/123, got %s", ctx.Path())
 		}
 
-		id := ctx.Param("id")
+		id := ctx.Param("id", "")
 		if id != "123" {
 			t.Errorf("Expected param id=123, got %s", id)
 		}
 
-		q := ctx.Query("q")
+		q := ctx.Query("q", "")
 		if q != "test" {
 			t.Errorf("Expected query q=test, got %s", q)
 		}

@@ -1,11 +1,14 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
+	"strconv"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -40,7 +43,7 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 	if a.router == nil {
 		a.router = &HTTPRouter{
 			router: a.httpRouter,
-			baseRouter: baseRouter{
+			BaseRouter: BaseRouter{
 				logger:      &defaultLogger{},
 				routes:      []*RouteDefinition{},
 				middlewares: []namedMiddleware{},
@@ -82,14 +85,18 @@ func (a *HTTPServer) Shutdown(ctx context.Context) error {
 
 // HTTPRouter implements Router for httprouter
 type HTTPRouter struct {
-	baseRouter
+	BaseRouter
 	router *httprouter.Router
+}
+
+func (r *HTTPRouter) GetPrefix() string {
+	return r.prefix
 }
 
 func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
 		router: r.router,
-		baseRouter: baseRouter{
+		BaseRouter: BaseRouter{
 			prefix:      path.Join(r.prefix, prefix),
 			middlewares: append([]namedMiddleware{}, r.middlewares...),
 			logger:      r.logger,
@@ -165,7 +172,7 @@ func (r *HTTPRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFun
 }
 
 func (r *HTTPRouter) PrintRoutes() {
-	r.baseRouter.PrintRoutes()
+	r.BaseRouter.PrintRoutes()
 }
 
 // httpRouterContext implements Context for httprouter
@@ -192,14 +199,66 @@ func (c *httpRouterContext) setHandlers(h []NamedHandler) {
 	c.handlers = h
 }
 
+func (c *httpRouterContext) Body() []byte {
+	if c.r.ContentLength == 0 {
+		return []byte{}
+	}
+
+	b, err := io.ReadAll(c.r.Body)
+	if err != nil {
+		return []byte{}
+	}
+
+	c.r.Body = io.NopCloser(bytes.NewBuffer(b))
+
+	return b
+}
+
 func (c *httpRouterContext) Method() string { return c.r.Method }
 func (c *httpRouterContext) Path() string   { return c.r.URL.Path }
-func (c *httpRouterContext) Param(name string) string {
-	return c.params.ByName(name)
+
+func (c *httpRouterContext) Param(name, defaultValue string) string {
+	if out := c.params.ByName(name); out != "" {
+		return out
+	}
+	return defaultValue
 }
-func (c *httpRouterContext) Query(name string) string {
-	return c.r.URL.Query().Get(name)
+
+func (c *httpRouterContext) ParamsInt(name string, defaultValue int) int {
+	p := ""
+	if p = c.Param(name, ""); p == "" {
+		return defaultValue
+	}
+
+	v, err := strconv.ParseInt(p, 0, 64)
+	if err != nil {
+		return defaultValue
+	}
+
+	return int(v)
 }
+
+func (c *httpRouterContext) Query(name, defaultValue string) string {
+	if out := c.r.URL.Query().Get(name); out != "" {
+		return out
+	}
+	return defaultValue
+}
+
+func (c *httpRouterContext) QueryInt(name string, defaultValue int) int {
+	q := ""
+	if q = c.r.URL.Query().Get(name); q == "" {
+		return defaultValue
+	}
+
+	v, err := strconv.ParseInt(q, 0, 64)
+	if err != nil {
+		return defaultValue
+	}
+
+	return int(v)
+}
+
 func (c *httpRouterContext) Queries() map[string]string {
 	queries := make(map[string]string)
 	for k, v := range c.r.URL.Query() {
@@ -209,12 +268,14 @@ func (c *httpRouterContext) Queries() map[string]string {
 	}
 	return queries
 }
+
 func (c *httpRouterContext) Status(code int) ResponseWriter {
 	if code > 0 {
 		c.w.WriteHeader(code)
 	}
 	return c
 }
+
 func (c *httpRouterContext) Send(body []byte) error {
 	if body == nil {
 		return c.NoContent(http.StatusNoContent)

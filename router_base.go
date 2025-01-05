@@ -9,7 +9,7 @@ type routerRoot struct {
 }
 
 // Common fields for both FiberRouter and HTTPRouter
-type baseRouter struct {
+type BaseRouter struct {
 	prefix      string
 	middlewares []namedMiddleware
 	routes      []*RouteDefinition
@@ -56,17 +56,17 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 //		}
 //	}
 
-func (br *baseRouter) PrintRoutes() {
+func (br *BaseRouter) PrintRoutes() {
 	for _, rt := range br.root.routes {
-		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.name)
-		if rt.Operation.Description != "" {
-			fmt.Printf("  Description: %s\n", rt.Operation.Description)
+		fmt.Printf("%s %s (%s)\n", rt.Method, rt.Path, rt.Name)
+		if rt.Description != "" {
+			fmt.Printf("  Description: %s\n", rt.Description)
 		}
-		if len(rt.Operation.Tags) > 0 {
-			fmt.Printf("  Tags: %v\n", rt.Operation.Tags)
+		if len(rt.Tags) > 0 {
+			fmt.Printf("  Tags: %v\n", rt.Tags)
 		}
-		if len(rt.Operation.Responses) > 0 {
-			fmt.Printf("  Responses: %v\n", rt.Operation.Responses)
+		if len(rt.Responses) > 0 {
+			fmt.Printf("  Responses: %v\n", rt.Responses)
 		}
 		for i, h := range rt.Handlers {
 			fmt.Printf("  %02d: %s\n", i, h.Name)
@@ -75,20 +75,21 @@ func (br *baseRouter) PrintRoutes() {
 	}
 }
 
-func (br *baseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *RouteDefinition {
+func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler HandlerFunc, routeName string, allMw []namedMiddleware) *RouteDefinition {
 	chain := chainHandlers(finalHandler, routeName, allMw)
-	r := &RouteDefinition{
-		Method:    method,
-		Path:      fullPath,
-		name:      routeName,
-		Handlers:  chain,
-		Operation: Operation{},
-	}
+	r :=
+		&RouteDefinition{
+			Method:   method,
+			Path:     fullPath,
+			Name:     routeName,
+			Handlers: chain,
+		}
+
 	br.root.routes = append(br.root.routes, r)
 	return r
 }
 
-func (br *baseRouter) Routes() []RouteDefinition {
+func (br *BaseRouter) Routes() []RouteDefinition {
 	defs := make([]RouteDefinition, len(br.root.routes))
 	for i, rt := range br.root.routes {
 		defs[i] = *rt

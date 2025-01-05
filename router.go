@@ -39,9 +39,35 @@ type Logger interface {
 type RequestContext interface {
 	Method() string
 	Path() string
-	Param(name string) string
-	Query(name string) string
+
+	Param(name string, defaultValue string) string
+	ParamsInt(key string, defaultValue int) int
+
+	Query(name string, defaultValue string) string
+	QueryInt(name string, defaultValue int) int
 	Queries() map[string]string
+
+	Body() []byte
+
+	// BodyRaw() []byte
+
+	// GetRouteURL(routeName string, params Map) (string, error)
+	// RedirectToRoute(routeName string, params Map, status ...int) error
+	// Render(name string, bind interface{}, layouts ...string) error
+	// Redirect(location string, status ...int) error
+	// BindVars(vars Map) error
+	// Path(override ...string) string
+	// AllParams() map[string]string
+	// ParamsParser(out interface{}) error
+
+	// QueryBool(key string, defaultValue ...bool) bool
+	// QueryFloat(key string, defaultValue ...float64) float64
+	// QueryParser(out interface{}) error
+	// SendFile(file string, compress ...bool) error
+	// IsSecure() bool
+	// IsFromLocal() bool
+	// SendString(body string) error
+	// SendStream(stream io.Reader, size ...int) error
 }
 
 type ResponseWriter interface {
@@ -89,13 +115,14 @@ type NamedHandler struct {
 }
 
 type RouteInfo interface {
-	Name(string) RouteInfo
-	Description(string) RouteInfo
-	Summary(s string) RouteInfo
-	Tags(...string) RouteInfo
-	AddParameter(name, in string, required bool, schema any) RouteInfo
+	SetName(string) RouteInfo
+	SetDescription(string) RouteInfo
+	SetSummary(s string) RouteInfo
+	AddTags(...string) RouteInfo
+	AddParameter(name, in string, required bool, schema map[string]any) RouteInfo
 	SetRequestBody(desc string, required bool, content map[string]any) RouteInfo
 	AddResponse(code int, desc string, content map[string]any) RouteInfo
+	// FromRouteDefinition(r2 *RouteDefinition) RouteInfo
 }
 
 // Router represents a generic router interface
@@ -113,6 +140,11 @@ type Router[T any] interface {
 	// For debugging: Print a table of routes and their middleware chain
 	Routes() []RouteDefinition // New method to retrieve registered routes
 	PrintRoutes()
+}
+
+// TODO: Maybe incorporate into Router[T]
+type PrefixedRouter interface {
+	GetPrefix() string
 }
 
 // Server represents a generic server interface

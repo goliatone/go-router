@@ -155,11 +155,11 @@ func TestHTTPRouter_ContextMethods(t *testing.T) {
 		if ctx.Path() != "/context/test/123" {
 			t.Errorf("Expected path /context/test/123, got %s", ctx.Path())
 		}
-		id := ctx.Param("id")
+		id := ctx.Param("id", "")
 		if id != "123" {
 			t.Errorf("Expected param id=123, got %s", id)
 		}
-		q := ctx.Query("q")
+		q := ctx.Query("q", "")
 		if q != "test" {
 			t.Errorf("Expected query q=test, got %s", q)
 		}

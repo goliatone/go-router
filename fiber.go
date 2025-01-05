@@ -12,6 +12,7 @@ import (
 type FiberAdapter struct {
 	app    *fiber.App
 	router *FiberRouter
+	opts   []func(*fiber.App) *fiber.App
 }
 
 func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
@@ -29,7 +30,7 @@ func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 		app = opt(app)
 	}
 
-	return &FiberAdapter{app: app}
+	return &FiberAdapter{app: app, opts: opts}
 }
 
 func DefaultFiberOptions(app *fiber.App) *fiber.App {
@@ -42,7 +43,7 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 	if a.router == nil {
 		a.router = &FiberRouter{
 			app: a.app,
-			baseRouter: baseRouter{
+			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
 				root:   &routerRoot{},
 			},
@@ -60,6 +61,10 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) interface{} {
 	}
 }
 
+func (r *FiberRouter) GetPrefix() string {
+	return r.prefix
+}
+
 func (a *FiberAdapter) Serve(address string) error {
 	return a.app.Listen(address)
 }
@@ -73,14 +78,14 @@ func (a *FiberAdapter) WrappedRouter() *fiber.App {
 }
 
 type FiberRouter struct {
+	BaseRouter
 	app *fiber.App
-	baseRouter
 }
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
 		app: r.app,
-		baseRouter: baseRouter{
+		BaseRouter: BaseRouter{
 			prefix:      path.Join(r.prefix, prefix),
 			middlewares: append([]namedMiddleware{}, r.middlewares...),
 			logger:      r.logger,
@@ -140,7 +145,7 @@ func (r *FiberRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFu
 }
 
 func (r *FiberRouter) PrintRoutes() {
-	r.baseRouter.PrintRoutes()
+	r.BaseRouter.PrintRoutes()
 }
 
 type fiberContext struct {
@@ -159,10 +164,31 @@ func (c *fiberContext) setHandlers(h []NamedHandler) {
 }
 
 // Context methods
-func (c *fiberContext) Method() string           { return c.ctx.Method() }
-func (c *fiberContext) Path() string             { return c.ctx.Path() }
-func (c *fiberContext) Param(name string) string { return c.ctx.Params(name) }
-func (c *fiberContext) Query(name string) string { return c.ctx.Query(name) }
+
+func (c *fiberContext) Body() []byte { return c.ctx.Body() }
+
+func (c *fiberContext) Method() string { return c.ctx.Method() }
+func (c *fiberContext) Path() string   { return c.ctx.Path() }
+
+func (c *fiberContext) Param(name, defaultValue string) string {
+	return c.ctx.Params(name, defaultValue)
+}
+
+func (c *fiberContext) ParamsInt(name string, defaultValue int) int {
+	if out, err := c.ctx.ParamsInt(name, defaultValue); err == nil {
+		return out
+	}
+	return defaultValue
+}
+
+func (c *fiberContext) Query(name, defaultValue string) string {
+	return c.ctx.Query(name, defaultValue)
+}
+
+func (c *fiberContext) QueryInt(name string, defaultValue int) int {
+	return c.ctx.QueryInt(name, defaultValue)
+}
+
 func (c *fiberContext) Queries() map[string]string {
 	queries := make(map[string]string)
 	c.ctx.QueryParser(&queries)

@@ -43,7 +43,7 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 	if a.router == nil {
 		a.router = &FiberRouter{
 			app: a.app,
-			baseRouter: baseRouter{
+			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
 				root:   &routerRoot{},
 			},
@@ -61,6 +61,10 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) interface{} {
 	}
 }
 
+func (r *FiberRouter) GetPrefix() string {
+	return r.prefix
+}
+
 func (a *FiberAdapter) Serve(address string) error {
 	return a.app.Listen(address)
 }
@@ -74,14 +78,14 @@ func (a *FiberAdapter) WrappedRouter() *fiber.App {
 }
 
 type FiberRouter struct {
+	BaseRouter
 	app *fiber.App
-	baseRouter
 }
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
 		app: r.app,
-		baseRouter: baseRouter{
+		BaseRouter: BaseRouter{
 			prefix:      path.Join(r.prefix, prefix),
 			middlewares: append([]namedMiddleware{}, r.middlewares...),
 			logger:      r.logger,
@@ -141,7 +145,7 @@ func (r *FiberRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFu
 }
 
 func (r *FiberRouter) PrintRoutes() {
-	r.baseRouter.PrintRoutes()
+	r.BaseRouter.PrintRoutes()
 }
 
 type fiberContext struct {
@@ -255,36 +259,4 @@ func (c *fiberContext) Next() error {
 		return c.handlers[c.index].Handler(c)
 	}
 	return nil
-}
-
-// MiddlewareFromFiber adapts a user-provided Fiber middleware to
-// your router's chain, preserving c.Next() semantics by spinning
-// up a sub-Fiber app for each request.
-func MiddlewareFromFiber(userFiberMw func(*fiber.Ctx) error) MiddlewareFunc {
-	return func(next HandlerFunc) HandlerFunc {
-		return func(c Context) error {
-			fc, ok := c.(*fiberContext)
-			if !ok {
-				return next(c)
-			}
-
-			reqCtx := fc.ctx.Context() // *fasthttp.RequestCtx
-
-			subApp := fiber.New(fiber.Config{
-				DisableStartupMessage: true,
-			})
-
-			subApp.Use(func(ctx *fiber.Ctx) error {
-				return userFiberMw(ctx)
-			})
-
-			subApp.Use(func(ctx *fiber.Ctx) error {
-				return next(c)
-			})
-
-			subApp.Handler()(reqCtx)
-
-			return nil
-		}
-	}
 }

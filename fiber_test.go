@@ -5,8 +5,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 func TestFiberAdapter_Router(t *testing.T) {
@@ -503,5 +506,327 @@ func TestFiberContext_GetSet(t *testing.T) {
 	_, err := app.Test(req)
 	if err != nil {
 		t.Fatalf("Error testing request: %v", err)
+	}
+}
+
+func TestFiberContext_QueryMethods(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	tests := []struct {
+		name         string
+		path         string
+		queryString  string
+		handler      func(Context) error
+		expectedCode int
+		expectedBody string
+		validateFunc func(*testing.T, *http.Response)
+	}{
+		{
+			name:        "Single Query Parameter",
+			path:        "/query/single",
+			queryString: "name=john",
+			handler: func(c Context) error {
+				val := c.Query("name", "")
+				if val != "john" {
+					t.Errorf("Expected query param 'name' to be 'john', got '%s'", val)
+				}
+				return c.JSON(200, map[string]string{"value": val})
+			},
+			expectedCode: 200,
+		},
+		{
+			name:        "Multiple Query Parameters",
+			path:        "/query/multiple",
+			queryString: "name=john&age=25&city=nyc",
+			handler: func(c Context) error {
+				queries := c.Queries()
+				expected := map[string]string{
+					"name": "john",
+					"age":  "25",
+					"city": "nyc",
+				}
+				for k, v := range expected {
+					if queries[k] != v {
+						t.Errorf("Expected query param '%s' to be '%s', got '%s'", k, v, queries[k])
+					}
+				}
+				return c.JSON(200, queries)
+			},
+			expectedCode: 200,
+		},
+		{
+			name:        "URL Encoded Query Parameters",
+			path:        "/query/encoded",
+			queryString: "text=hello%20world&special=%21%40%23",
+			handler: func(c Context) error {
+				queries := c.Queries()
+				expected := map[string]string{
+					"text":    "hello world",
+					"special": "!@#",
+				}
+				for k, v := range expected {
+					if queries[k] != v {
+						t.Errorf("Expected query param '%s' to be '%s', got '%s'", k, v, queries[k])
+					}
+				}
+				return c.JSON(200, queries)
+			},
+			expectedCode: 200,
+		},
+		{
+			name:        "Query Integer Parameter",
+			path:        "/query/int",
+			queryString: "age=25&invalid=abc",
+			handler: func(c Context) error {
+				age := c.QueryInt("age", 0)
+				if age != 25 {
+					t.Errorf("Expected QueryInt 'age' to be 25, got %d", age)
+				}
+
+				// Test with invalid integer
+				defaultVal := c.QueryInt("invalid", 100)
+				if defaultVal != 100 {
+					t.Errorf("Expected QueryInt 'invalid' to return default 100, got %d", defaultVal)
+				}
+
+				// Test non-existent parameter
+				missing := c.QueryInt("missing", 50)
+				if missing != 50 {
+					t.Errorf("Expected QueryInt 'missing' to return default 50, got %d", missing)
+				}
+
+				return c.JSON(200, map[string]int{"age": age})
+			},
+			expectedCode: 200,
+		},
+		{
+			name:        "Empty Query Parameters",
+			path:        "/query/empty",
+			queryString: "",
+			handler: func(c Context) error {
+				queries := c.Queries()
+				if len(queries) != 0 {
+					t.Errorf("Expected empty queries map, got %v", queries)
+				}
+
+				// Test default values
+				defStr := c.Query("missing", "default")
+				if defStr != "default" {
+					t.Errorf("Expected default string 'default', got '%s'", defStr)
+				}
+
+				defInt := c.QueryInt("missing", 42)
+				if defInt != 42 {
+					t.Errorf("Expected default int 42, got %d", defInt)
+				}
+
+				return c.JSON(200, queries)
+			},
+			expectedCode: 200,
+		},
+		{
+			name:        "Query Parameters with Same Key",
+			path:        "/query/duplicate",
+			queryString: "tag=golang&tag=fiber",
+			handler: func(c Context) error {
+				// Fiber keeps the first value
+				val := c.Query("tag", "")
+				if val != "golang" {
+					t.Errorf("Expected first tag value to be 'golang', got '%s'", val)
+				}
+				return c.JSON(200, map[string]string{"tag": val})
+			},
+			expectedCode: 200,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router.Get(tt.path, tt.handler)
+
+			app := adapter.WrappedRouter()
+			url := tt.path
+			if tt.queryString != "" {
+				url += "?" + tt.queryString
+			}
+
+			req := httptest.NewRequest("GET", url, nil)
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatalf("Failed to test request: %v", err)
+			}
+
+			if resp.StatusCode != tt.expectedCode {
+				t.Errorf("Expected status code %d, got %d", tt.expectedCode, resp.StatusCode)
+			}
+
+			if tt.validateFunc != nil {
+				tt.validateFunc(t, resp)
+			}
+
+			resp.Body.Close()
+		})
+	}
+}
+
+func TestFiberContext_QueryStressCases(t *testing.T) {
+	adapter := NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			UnescapePath:      true,
+			EnablePrintRoutes: true,
+			StrictRouting:     false,
+			ReadBufferSize:    1024 * 1024, // 1MB
+		})
+	})
+
+	router := adapter.Router()
+
+	// Configure Fiber for larger requests
+	app := adapter.WrappedRouter()
+
+	tests := []struct {
+		name        string
+		path        string
+		queryString string
+		handler     func(Context) error
+	}{
+		{
+			name:        "Moderate Number of Parameters",
+			path:        "/query/moderate",
+			queryString: strings.Repeat("p=v&", 9) + "last=value", // 10 parameters
+			handler: func(c Context) error {
+				queries := c.Queries()
+				if len(queries) != 10 {
+					t.Errorf("Expected 10 query parameters, got %d", len(queries))
+				}
+				return c.JSON(200, queries)
+			},
+		},
+		{
+			name:        "Moderate Length Parameter Values",
+			path:        "/query/moderate-length",
+			queryString: "text=" + strings.Repeat("value", 100), // 500 bytes
+			handler: func(c Context) error {
+				val := c.Query("text", "")
+				if len(val) != 500 {
+					t.Errorf("Expected value length 500, got %d", len(val))
+				}
+				return c.JSON(200, map[string]int{"length": len(val)})
+			},
+		},
+		{
+			name:        "Special Characters in Parameters",
+			path:        "/query/special",
+			queryString: "param=" + url.QueryEscape("!@#$%^&*()"),
+			handler: func(c Context) error {
+				val := c.Query("param", "")
+				if val != "!@#$%^&*()" {
+					t.Errorf("Expected special characters to be preserved, got '%s'", val)
+				}
+				return c.JSON(200, map[string]string{"value": val})
+			},
+		},
+		{
+			name:        "Unicode Characters in Parameters",
+			path:        "/query/unicode",
+			queryString: "param=" + url.QueryEscape("🚀世界"),
+			handler: func(c Context) error {
+				val := c.Query("param", "")
+				if val != "🚀世界" {
+					t.Errorf("Expected unicode characters to be preserved, got '%s'", val)
+				}
+				return c.JSON(200, map[string]string{"value": val})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router.Get(tt.path, tt.handler)
+
+			url := tt.path
+			if tt.queryString != "" {
+				url += "?" + tt.queryString
+			}
+
+			req := httptest.NewRequest("GET", url, nil)
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatalf("Failed to test request: %v", err)
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", resp.StatusCode)
+			}
+
+			resp.Body.Close()
+		})
+	}
+}
+
+func TestFiberContext_QueryErrorCases(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	tests := []struct {
+		name        string
+		path        string
+		queryString string
+		handler     func(Context) error
+	}{
+		{
+			name:        "Malformed Query String",
+			path:        "/query/malformed",
+			queryString: "param=%invalid",
+			handler: func(c Context) error {
+				queries := c.Queries()
+				val, exists := queries["param"]
+				if !exists {
+					t.Error("Expected param to exist even if malformed")
+				}
+				if val != "%invalid" {
+					t.Errorf("Expected raw value '%%invalid', got '%s'", val)
+				}
+				return c.JSON(200, queries)
+			},
+		},
+		{
+			name:        "Integer Overflow",
+			path:        "/query/overflow",
+			queryString: "num=99999999999999999999",
+			handler: func(c Context) error {
+				// Should return default value for out-of-range integer
+				val := c.QueryInt("num", 42)
+				if val != 42 {
+					t.Errorf("Expected default value 42 for overflow, got %d", val)
+				}
+				return c.JSON(200, map[string]int{"value": val})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router.Get(tt.path, tt.handler)
+
+			app := adapter.WrappedRouter()
+			url := tt.path
+			if tt.queryString != "" {
+				url += "?" + tt.queryString
+			}
+
+			req := httptest.NewRequest("GET", url, nil)
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatalf("Failed to test request: %v", err)
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", resp.StatusCode)
+			}
+
+			resp.Body.Close()
+		})
 	}
 }

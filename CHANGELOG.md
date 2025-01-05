@@ -1,5 +1,79 @@
 # Changelog
 
+# [0.0.3](https://github.com/goliatone/go-router/compare/v0.0.2...v0.0.3) - (2025-01-05)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Make sure RouteBuilder tracks prefix in all routes ([462cc37](https://github.com/goliatone/go-router/commit/462cc375eb2ada3716fd3b8b4cdd02e9193b241b))  - (goliatone)
+- Make BaseRouter public to access Routes ([57737db](https://github.com/goliatone/go-router/commit/57737db120972e71d54eec5756f106f618e84f75))  - (goliatone)
+- Use prefix in routes ([b1f0e41](https://github.com/goliatone/go-router/commit/b1f0e4122b0ba3514f0ecf621f37ddeffca1c412))  - (goliatone)
+- Make BaseRouter public to access Routes ([1fbfee1](https://github.com/goliatone/go-router/commit/1fbfee1dc277654bc0e16a0cff2032771df7357f))  - (goliatone)
+- Add route definition ([6626d16](https://github.com/goliatone/go-router/commit/6626d16c54ed8b3e22babe7874e35188fa5a4d21))  - (goliatone)
+- Track parent/child to build all routes ([4ce4dc1](https://github.com/goliatone/go-router/commit/4ce4dc10ad571cfb402cf10f01b0dd49df68f320))  - (goliatone)
+- Implement ctx interface in test ([c5dee2b](https://github.com/goliatone/go-router/commit/c5dee2b848fe9a0d795d6ecf3e1c08faef71472f))  - (goliatone)
+- Update tests ([8aa4058](https://github.com/goliatone/go-router/commit/8aa4058cca73a6e27e00c822e45cdd1ba4b9409b))  - (goliatone)
+- Update tests ([0e1633b](https://github.com/goliatone/go-router/commit/0e1633b021662532d4186b017cda40fc2aeebe79))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.0.3 ([5d3e017](https://github.com/goliatone/go-router/commit/5d3e017ab4a6388e981d62e8e33bb949aa2e5f1b))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Fiber middleware adapter ([990d494](https://github.com/goliatone/go-router/commit/990d494d2911c6f55101aba1e63d49d59e55c513))  - (goliatone)
+- New GetPrefix route ([22fed17](https://github.com/goliatone/go-router/commit/22fed17630606819c7ce3100bd9ff397372575f8))  - (goliatone)
+- Test for nested builder ([a04e3e4](https://github.com/goliatone/go-router/commit/a04e3e46239a87d53187a98f7044af5c0596182b))  - (goliatone)
+- FromROuteDefinition to clone an existing route ([3d349b7](https://github.com/goliatone/go-router/commit/3d349b7f086d7882a8c5de4cb6cb18a3166e5230))  - (goliatone)
+- FromROuteDefinition to clone an existing route ([ea35389](https://github.com/goliatone/go-router/commit/ea35389f38094dac61af344d64253383c2edca8c))  - (goliatone)
+- Adapt fiber middleware ([d4e527d](https://github.com/goliatone/go-router/commit/d4e527d9199f123310f31a9b4dba8fd3a89af6f9))  - (goliatone)
+- Body to methods ([cd96dab](https://github.com/goliatone/go-router/commit/cd96dab7e1d8b4abf8ae2c2421567b9a75b4b797))  - (goliatone)
+- Body to methods ([3ea956a](https://github.com/goliatone/go-router/commit/3ea956a53e53c08c070f870044897717b8ede571))  - (goliatone)
+- New context functions ([e7e957a](https://github.com/goliatone/go-router/commit/e7e957a0e65384654ec05f7b6d83b98c965ed32c))  - (goliatone)
+- New context functions ([7c2ac41](https://github.com/goliatone/go-router/commit/7c2ac414d7e26cefab5eda7380c70e0e35ec1209))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Handle prefix ([590c1c3](https://github.com/goliatone/go-router/commit/590c1c3ffadaf71cefd53761c84d0a1e014eaf8d))  - (goliatone)
+- Combine meta structs ([e9a8e94](https://github.com/goliatone/go-router/commit/e9a8e94dc81316a51b91ba173deec42473d3865d))  - (goliatone)
+- Combine meta structs ([9b860e0](https://github.com/goliatone/go-router/commit/9b860e048741593c13cd47ce0a7009e8aedf5a21))  - (goliatone)
+- Combine meta structs ([464be65](https://github.com/goliatone/go-router/commit/464be65043732b9a60b08929e3df9e821ecda8aa))  - (goliatone)
+- Combine meta structs ([e2d3b65](https://github.com/goliatone/go-router/commit/e2d3b6588f7b0e06bb88474ed02f05b765beb639))  - (goliatone)
+- Combine meta structs ([a9c1d92](https://github.com/goliatone/go-router/commit/a9c1d92acbe4fd607510965de91a66817b0a2c8d))  - (goliatone)
+- Combine meta structs ([1737476](https://github.com/goliatone/go-router/commit/1737476aa2292a98c5f7aceb8953709eb41c0dfa))  - (goliatone)
+- Combine meta structs ([ed82031](https://github.com/goliatone/go-router/commit/ed82031d839c5c41eb16e9ff20d53928c4e2f5b5))  - (goliatone)
+- Combine meta structs ([783c79f](https://github.com/goliatone/go-router/commit/783c79fbe3c8908b4c40111500d77932223092d7))  - (goliatone)
+- Combine meta structs ([ed8a764](https://github.com/goliatone/go-router/commit/ed8a7648a47b4415b893404c48a68c1a903fe890))  - (goliatone)
+- Combine meta structs ([776a7c9](https://github.com/goliatone/go-router/commit/776a7c9bcaa67b73cbb31e22cfa25fa625ab7f2c))  - (goliatone)
+- Combine meta structs ([b8d785e](https://github.com/goliatone/go-router/commit/b8d785eb32e9356318a46dc7d6293bf668e4a67c))  - (goliatone)
+- Combine meta structs ([a388a39](https://github.com/goliatone/go-router/commit/a388a398c3fb70f9c7a216503b366445b4a923d4))  - (goliatone)
+- Combine meta structs ([8d976ac](https://github.com/goliatone/go-router/commit/8d976ac480b0c1d721c679857af8bc7eb911c652))  - (goliatone)
+- Combine meta structs ([e79b9ec](https://github.com/goliatone/go-router/commit/e79b9ec2d037188ac669613146a2aae86b433669))  - (goliatone)
+- Combine meta structs ([532b49c](https://github.com/goliatone/go-router/commit/532b49cc47a5b03e85e2cc0005868bee1badb5b0))  - (goliatone)
+- Combine meta structs ([bfb380b](https://github.com/goliatone/go-router/commit/bfb380b23407524ae9e10c28911ba386750b956c))  - (goliatone)
+- Route should use RouteInfo ([a93f425](https://github.com/goliatone/go-router/commit/a93f425cae60cd4b8e30cfcab6f1d3fd75fdcb19))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Fiber middleware converter ([ca0c016](https://github.com/goliatone/go-router/commit/ca0c0165710fdfa00b484e8a047ec678ac5b87ee))  - (goliatone)
+- Add OpenAPI integration ([99818aa](https://github.com/goliatone/go-router/commit/99818aaccf14bfeea35512b794ee944b3066d233))  - (goliatone)
+- Add OpenAPI integration ([ea76250](https://github.com/goliatone/go-router/commit/ea76250fb859dbcff61b7ef66527144d0c4e936b))  - (goliatone)
+- Build OpenAPI metadata ([8ed2dc9](https://github.com/goliatone/go-router/commit/8ed2dc99808ed3fe1d6af0856cea321d523dfd66))  - (goliatone)
+- Build OpenAPI metadata ([260cc6e](https://github.com/goliatone/go-router/commit/260cc6eac5cbb1be09d4ebfd704253f8b0054e18))  - (goliatone)
+- Build OpenAPI metadata ([661e584](https://github.com/goliatone/go-router/commit/661e584bc17376ed1c8db81b06ac789199200594))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.0.2 ([89a45b6](https://github.com/goliatone/go-router/commit/89a45b632ad9c17f26cd64829f9f12168a1b61e1))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#3](https://github.com/goliatone/go-router/pull/3): methods to context ([73af594](https://github.com/goliatone/go-router/commit/73af594e853aa9fe52ca92cca53d05b415ce5255))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Add deps ([3357cfa](https://github.com/goliatone/go-router/commit/3357cfab9c4ac34d60e5d04d6db4774cf01c35be))  - (goliatone)
+- Update deps ([02cb336](https://github.com/goliatone/go-router/commit/02cb336f3a02f6759c0f96b62a2f8f0e29cb45c1))  - (goliatone)
+
 # [0.0.2](https://github.com/goliatone/go-router/compare/v0.0.1...v0.0.2) - (2024-12-06)
 
 ## <!-- 1 -->🐛 Bug Fixes

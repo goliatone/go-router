@@ -188,7 +188,7 @@ This endpoint will create a new User, just for you
 	private := api.Group("/secret")
 	{
 		private.Use(auth.AsMiddlware())
-		private.Get("/:name", getSecret()).Name("secrets.get")
+		private.Get("/:name", getSecret()).SetName("secrets.get")
 	}
 
 	builder.NewRoute().

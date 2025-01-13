@@ -95,6 +95,12 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	}
 }
 
+func (r *FiberRouter) WithGroup(path string, cb func(r Router[*fiber.App])) Router[*fiber.App] {
+	g := r.Group(path)
+	cb(g)
+	return r
+}
+
 func (r *FiberRouter) Use(m ...MiddlewareFunc) Router[*fiber.App] {
 	for _, mw := range m {
 		r.middlewares = append(r.middlewares, namedMiddleware{

@@ -106,6 +106,12 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	}
 }
 
+func (r *HTTPRouter) WithGroup(path string, cb func(r Router[*httprouter.Router])) Router[*httprouter.Router] {
+	g := r.Group(path)
+	cb(g)
+	return r
+}
+
 func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 	for _, mw := range m {
 		r.middlewares = append(r.middlewares, namedMiddleware{

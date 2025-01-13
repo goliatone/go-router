@@ -129,6 +129,7 @@ type RouteInfo interface {
 type Router[T any] interface {
 	Handle(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) RouteInfo
 	Group(prefix string) Router[T]
+	WithGroup(path string, cb func(r Router[T])) Router[T]
 	Use(m ...MiddlewareFunc) Router[T]
 	Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo

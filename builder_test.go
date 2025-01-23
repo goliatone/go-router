@@ -371,6 +371,12 @@ func (m *MockRouter) Group(prefix string) Router[*MockRouter] {
 	}
 }
 
+func (m *MockRouter) WithGroup(path string, cb func(r Router[*MockRouter])) Router[*MockRouter] {
+	g := m.Group(path)
+	cb(g)
+	return m
+}
+
 func (m *MockRouter) Clear() {
 	m.rootRouter.routes = m.rootRouter.routes[:0]
 }

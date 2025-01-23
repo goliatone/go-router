@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strconv"
+	"text/template"
 
-	"github.com/gofiber/template/django/v3"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -33,11 +35,11 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 		router = opt(router)
 	}
 
-	engine := django.New("./views", ".html")
+	// engine := django.New("./views", ".html")
 
 	return &HTTPServer{
 		httpRouter: router,
-		views:      engine,
+		// views:      engine,
 	}
 }
 
@@ -289,13 +291,43 @@ func (c *httpRouterContext) Render(name string, bind any, layouts ...string) err
 	}
 
 	buf := new(bytes.Buffer)
-	if err := c.views.Render(buf, name, data, layouts...); err != nil {
-		return err
+
+	if c.views != nil {
+		if err := c.views.Render(buf, name, data, layouts...); err != nil {
+			return err
+		}
+	} else {
+		// Render raw template using 'name' as filepath if no engine is set
+		var tmpl *template.Template
+		if _, err := readContent(buf, name); err != nil {
+			return err
+		}
+		// Parse template
+		tmpl, err := template.New("").Parse(string(buf.Bytes()))
+		if err != nil {
+			return fmt.Errorf("failed to parse: %w", err)
+		}
+		buf.Reset()
+		if err := tmpl.Execute(buf, bind); err != nil {
+			return fmt.Errorf("failed to execute: %w", err)
+		}
 	}
 
+	c.SetHeader("Content-Type", "text/html; charset=utf-8")
 	_, err = buf.WriteTo(c.w)
 
 	return err
+}
+
+func readContent(rf io.ReaderFrom, name string) (int64, error) {
+	f, err := os.Open(filepath.Clean(name))
+	if err != nil {
+		return 0, fmt.Errorf("failed to open: %w", err)
+	}
+	if n, err := rf.ReadFrom(f); err != nil {
+		return n, fmt.Errorf("failed to read: %w", err)
+	}
+	return 0, nil
 }
 
 func (c *httpRouterContext) Method() string { return c.r.Method }

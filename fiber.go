@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"path"
 
 	"github.com/gofiber/fiber/v2"
@@ -20,6 +21,7 @@ func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 		UnescapePath:      true,
 		EnablePrintRoutes: true,
 		StrictRouting:     false,
+		PassLocalsToViews: true,
 	})
 
 	if len(opts) == 0 {
@@ -170,6 +172,18 @@ func (c *fiberContext) setHandlers(h []NamedHandler) {
 }
 
 // Context methods
+
+func (c *fiberContext) Locals(key any, value ...any) any {
+	return c.ctx.Locals(key, value...)
+}
+
+func (c *fiberContext) Render(name string, bind any, layouts ...string) error {
+	data, err := SerializeAsContext(bind)
+	if err != nil {
+		return fmt.Errorf("render: error serializing vars: %w", err)
+	}
+	return c.ctx.Render(name, data, layouts...)
+}
 
 func (c *fiberContext) Body() []byte { return c.ctx.Body() }
 

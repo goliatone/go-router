@@ -10,11 +10,13 @@ type routerRoot struct {
 
 // Common fields for both FiberRouter and HTTPRouter
 type BaseRouter struct {
-	prefix      string
-	middlewares []namedMiddleware
-	routes      []*RouteDefinition
-	logger      Logger
-	root        *routerRoot
+	prefix            string
+	middlewares       []namedMiddleware
+	routes            []*RouteDefinition
+	logger            Logger
+	root              *routerRoot
+	views             Views
+	passLocalsToViews bool
 }
 
 type namedMiddleware struct {

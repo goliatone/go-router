@@ -10,13 +10,16 @@ import (
 	"path"
 	"strconv"
 
+	"github.com/gofiber/template/django/v3"
 	"github.com/julienschmidt/httprouter"
 )
 
 type HTTPServer struct {
-	httpRouter *httprouter.Router
-	server     *http.Server
-	router     *HTTPRouter
+	httpRouter        *httprouter.Router
+	server            *http.Server
+	router            *HTTPRouter
+	views             Views
+	passLocalsToViews bool
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -30,7 +33,12 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 		router = opt(router)
 	}
 
-	return &HTTPServer{httpRouter: router}
+	engine := django.New("./views", ".html")
+
+	return &HTTPServer{
+		httpRouter: router,
+		views:      engine,
+	}
 }
 
 func DefaultHTTPRouterOptions(router *httprouter.Router) *httprouter.Router {
@@ -48,6 +56,7 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 				routes:      []*RouteDefinition{},
 				middlewares: []namedMiddleware{},
 				root:        &routerRoot{routes: []*RouteDefinition{}},
+				views:       a.views,
 			},
 		}
 	}
@@ -56,7 +65,7 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 
 func (a *HTTPServer) WrapHandler(h HandlerFunc) interface{} {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		c := NewHTTPRouterContext(w, r, ps)
+		c := NewHTTPRouterContext(w, r, ps, a.views)
 		if err := h(c); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -68,6 +77,13 @@ func (a *HTTPServer) WrappedRouter() *httprouter.Router {
 }
 
 func (a *HTTPServer) Serve(address string) error {
+
+	if a.views != nil {
+		if err := a.views.Load(); err != nil {
+			return err
+		}
+	}
+
 	srv := &http.Server{
 		Addr:    address,
 		Handler: a.httpRouter,
@@ -97,11 +113,13 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
 		router: r.router,
 		BaseRouter: BaseRouter{
-			prefix:      path.Join(r.prefix, prefix),
-			middlewares: append([]namedMiddleware{}, r.middlewares...),
-			logger:      r.logger,
-			routes:      r.routes,
-			root:        r.root,
+			prefix:            path.Join(r.prefix, prefix),
+			middlewares:       append([]namedMiddleware{}, r.middlewares...),
+			logger:            r.logger,
+			routes:            r.routes,
+			root:              r.root,
+			views:             r.views,
+			passLocalsToViews: r.passLocalsToViews,
 		},
 	}
 }
@@ -147,7 +165,7 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 
 	// Register final handler with httprouter
 	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
-		ctx := NewHTTPRouterContext(w, req, params)
+		ctx := NewHTTPRouterContext(w, req, params, r.views)
 		if rh, ok := ctx.(*httpRouterContext); ok {
 			rh.setHandlers(route.Handlers)
 		}
@@ -183,26 +201,39 @@ func (r *HTTPRouter) PrintRoutes() {
 
 // httpRouterContext implements Context for httprouter
 type httpRouterContext struct {
-	w        http.ResponseWriter
-	r        *http.Request
-	params   httprouter.Params
-	handlers []NamedHandler
-	index    int
-	store    ContextStore
+	w                 http.ResponseWriter
+	r                 *http.Request
+	params            httprouter.Params
+	handlers          []NamedHandler
+	index             int
+	store             ContextStore
+	views             Views
+	passLocalsToViews bool
+	locals            ViewContext
 }
 
-func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params) Context {
+func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) Context {
 	return &httpRouterContext{
 		w:      w,
 		r:      r,
 		params: ps,
 		index:  -1,
 		store:  NewContextStore(),
+		views:  views,
+		locals: make(ViewContext),
 	}
 }
 
 func (c *httpRouterContext) setHandlers(h []NamedHandler) {
 	c.handlers = h
+}
+
+func (c *httpRouterContext) Locals(key any, value ...any) any {
+	if len(value) > 0 {
+		c.locals[fmt.Sprint(key)] = value[0]
+		return value[0]
+	}
+	return c.locals[fmt.Sprint(key)]
 }
 
 func (c *httpRouterContext) Body() []byte {
@@ -218,6 +249,49 @@ func (c *httpRouterContext) Body() []byte {
 	c.r.Body = io.NopCloser(bytes.NewBuffer(b))
 
 	return b
+}
+
+func (c *httpRouterContext) buildContext(bind any) (map[string]any, error) {
+	if bind == nil {
+		bind = make(ViewContext)
+	}
+
+	m, err := SerializeAsContext(bind)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.passLocalsToViews {
+		for k, v := range c.locals {
+			m[k] = v
+		}
+	}
+
+	return m, nil
+}
+
+func (c *httpRouterContext) Render(name string, bind any, layouts ...string) error {
+	if c.views == nil {
+		return fmt.Errorf("no template engine registered")
+	}
+
+	if bind == nil {
+		bind = make(ViewContext)
+	}
+
+	data, err := SerializeAsContext(bind)
+	if err != nil {
+		return fmt.Errorf("render: error serializing vars: %w", err)
+	}
+
+	buf := new(bytes.Buffer)
+	if err := c.views.Render(buf, name, data, layouts...); err != nil {
+		return err
+	}
+
+	_, err = buf.WriteTo(c.w)
+
+	return err
 }
 
 func (c *httpRouterContext) Method() string { return c.r.Method }

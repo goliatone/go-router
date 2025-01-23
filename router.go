@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -36,6 +37,19 @@ type Logger interface {
 	Error(format string, args ...any)
 }
 
+// ViewContext provide template values
+type ViewContext map[string]any
+
+// Views is the interface that wraps the Render function.
+type Views interface {
+	Load() error
+	Render(io.Writer, string, interface{}, ...string) error
+}
+
+type Serializer interface {
+	Serialize() ([]byte, error)
+}
+
 type RequestContext interface {
 	Method() string
 	Path() string
@@ -51,9 +65,10 @@ type RequestContext interface {
 
 	// BodyRaw() []byte
 
+	Locals(key any, value ...any) any
+	Render(name string, bind interface{}, layouts ...string) error
 	// GetRouteURL(routeName string, params Map) (string, error)
 	// RedirectToRoute(routeName string, params Map, status ...int) error
-	// Render(name string, bind interface{}, layouts ...string) error
 	// Redirect(location string, status ...int) error
 	// BindVars(vars Map) error
 	// Path(override ...string) string
@@ -100,7 +115,7 @@ type Context interface {
 	ResponseWriter
 	ContextStore
 	// Body parsing
-	Bind(any) error // TODO: Myabe rename to ParseBody
+	Bind(v any) error // TODO: Myabe rename to ParseBody
 
 	// Context methods
 	Context() context.Context
@@ -138,8 +153,8 @@ type Router[T any] interface {
 	Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 
 	// TODO: Move to a different interface e.g. MetaRouter
+	Routes() []RouteDefinition
 	// For debugging: Print a table of routes and their middleware chain
-	Routes() []RouteDefinition // New method to retrieve registered routes
 	PrintRoutes()
 }
 

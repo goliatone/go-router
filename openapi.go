@@ -90,8 +90,16 @@ func (o *OpenAPIRenderer) WithMetadataProviders(providers ...OpenApiMetaGenerato
 	return o
 }
 
+func (o *OpenAPIRenderer) AppendServer(url, description string) *OpenAPIRenderer {
+	o.Servers = append(o.Servers, OpenAPIServer{
+		Url:         url,
+		Description: description,
+	})
+	return o
+}
+
 // AppenRouteInfo updates the renderer with route information
-func (o *OpenAPIRenderer) AppenRouteInfo(routes []RouteDefinition) {
+func (o *OpenAPIRenderer) AppenRouteInfo(routes []RouteDefinition) *OpenAPIRenderer {
 	if o.Paths == nil {
 		o.Paths = make(map[string]any)
 	}
@@ -105,6 +113,8 @@ func (o *OpenAPIRenderer) AppenRouteInfo(routes []RouteDefinition) {
 	}
 
 	o.Routes = append(o.Routes, routes...)
+
+	return o
 }
 
 type OpenAPIInfo struct {
@@ -159,7 +169,7 @@ func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
 
 	base := map[string]any{
 		"openapi": "3.0.3",
-		// "servers": []OpenAPIServer{},
+		"servers": []map[string]any{},
 		"info": map[string]any{
 			"title":            either(o.Info.Title, o.Title),
 			"version":          either(o.Info.Version, o.Version),
@@ -179,6 +189,15 @@ func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
 		"components": o.Components,
 		"tags":       o.Tags,
 	}
+
+	baseServers := base["servers"].([]map[string]any)
+	for _, server := range o.Servers {
+		baseServers = append(baseServers, map[string]any{
+			"url":         server.Url,
+			"description": server.Description,
+		})
+	}
+	base["servers"] = baseServers
 
 	for _, provider := range o.providers {
 		overlay := provider.GenerateOpenAPI()
@@ -257,7 +276,7 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 		if err != nil {
 			return NewInternalError(err, "failed to geenrate yaml")
 		}
-		c.SetHeader("Content-Type", "application/yaml")
+		c.SetHeader("Content-Type", "text/plain; charset=utf-8")
 		return c.Send(yamlBytes)
 	})
 
@@ -286,6 +305,7 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 
   </body>
 </html>`
+		c.SetHeader("Content-Type", "text/html; charset=utf-8")
 		return c.Send([]byte(html))
 	})
 }

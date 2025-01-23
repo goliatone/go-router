@@ -65,7 +65,8 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 
 func (a *HTTPServer) WrapHandler(h HandlerFunc) interface{} {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		c := NewHTTPRouterContext(w, r, ps, a.views)
+		c := newHTTPRouterContext(w, r, ps, a.views)
+		c.passLocalsToViews = a.passLocalsToViews
 		if err := h(c); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -165,10 +166,9 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 
 	// Register final handler with httprouter
 	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
-		ctx := NewHTTPRouterContext(w, req, params, r.views)
-		if rh, ok := ctx.(*httpRouterContext); ok {
-			rh.setHandlers(route.Handlers)
-		}
+		ctx := newHTTPRouterContext(w, req, params, r.views)
+		ctx.passLocalsToViews = r.passLocalsToViews
+		ctx.setHandlers(route.Handlers)
 
 		if err := ctx.Next(); err != nil {
 			r.logger.Error("handler chain error: %v", err)
@@ -213,6 +213,10 @@ type httpRouterContext struct {
 }
 
 func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) Context {
+	return newHTTPRouterContext(w, r, ps, views)
+}
+
+func newHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) *httpRouterContext {
 	return &httpRouterContext{
 		w:      w,
 		r:      r,

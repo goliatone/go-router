@@ -139,6 +139,8 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 		return ctx.Next()
 	})
 
+	// If we later call route.SetName then we run this callback
+	// to propagate
 	route.onSetName = func(name string) {
 		r.app.Name(name)
 	}
@@ -276,7 +278,7 @@ func (c *fiberContext) Queries() map[string]string {
 	return queries
 }
 
-func (c *fiberContext) Status(code int) ResponseWriter {
+func (c *fiberContext) Status(code int) Context {
 	c.ctx.Status(code)
 	return c
 }
@@ -309,7 +311,7 @@ func (c *fiberContext) Header(key string) string {
 	return c.ctx.Get(key)
 }
 
-func (c *fiberContext) SetHeader(key string, value string) ResponseWriter {
+func (c *fiberContext) SetHeader(key string, value string) Context {
 	c.ctx.Set(key, value)
 	return c
 }

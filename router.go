@@ -54,7 +54,7 @@ type RequestContext interface {
 	Method() string
 	Path() string
 
-	Param(name string, defaultValue string) string
+	Param(name string, defaultValue ...string) string
 	ParamsInt(key string, defaultValue int) int
 
 	Query(name string, defaultValue string) string
@@ -67,6 +67,14 @@ type RequestContext interface {
 
 	Locals(key any, value ...any) any
 	Render(name string, bind interface{}, layouts ...string) error
+
+	Cookie(cookie *Cookie)
+	Cookies(key string, defaultValue ...string) string
+	CookieParser(out interface{}) error
+	Redirect(location string, status ...int) error
+	RedirectToRoute(routeName string, params ViewContext, status ...int) error
+	RedirectBack(fallback string, status ...int) error
+
 	// GetRouteURL(routeName string, params Map) (string, error)
 	// RedirectToRoute(routeName string, params Map, status ...int) error
 	// Redirect(location string, status ...int) error

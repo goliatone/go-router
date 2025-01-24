@@ -5,7 +5,8 @@ import (
 )
 
 type routerRoot struct {
-	routes []*RouteDefinition
+	routes      []*RouteDefinition
+	namedRoutes map[string]*RouteDefinition
 }
 
 // Common fields for both FiberRouter and HTTPRouter
@@ -88,6 +89,15 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 		}
 
 	br.root.routes = append(br.root.routes, r)
+
+	// If the route has a name, also store it in the map
+	if routeName != "" {
+		if br.root.namedRoutes == nil {
+			br.root.namedRoutes = make(map[string]*RouteDefinition)
+		}
+		br.root.namedRoutes[routeName] = r
+	}
+
 	return r
 }
 
@@ -97,4 +107,11 @@ func (br *BaseRouter) Routes() []RouteDefinition {
 		defs[i] = *rt
 	}
 	return defs
+}
+
+func (br *BaseRouter) GetRoute(name string) *RouteDefinition {
+	if br.root.namedRoutes == nil {
+		return nil
+	}
+	return br.root.namedRoutes[name]
 }

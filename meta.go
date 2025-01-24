@@ -12,6 +12,9 @@ func NewRouteDefinition() *RouteDefinition {
 
 func (r *RouteDefinition) SetName(n string) RouteInfo {
 	r.Name = n
+	if r.onSetName != nil {
+		r.onSetName(n)
+	}
 	return r
 }
 

@@ -67,7 +67,7 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 	return a.router
 }
 
-func (a *HTTPServer) WrapHandler(h HandlerFunc) interface{} {
+func (a *HTTPServer) WrapHandler(h HandlerFunc) any {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		c := newHTTPRouterContext(w, r, ps, a.views)
 		c.router = a.router
@@ -240,11 +240,12 @@ func (c *httpRouterContext) setHandlers(h []NamedHandler) {
 }
 
 func (c *httpRouterContext) Locals(key any, value ...any) any {
-	if len(value) > 0 {
-		c.locals[fmt.Sprint(key)] = value[0]
-		return value[0]
+	if len(value) == 0 {
+		return c.locals[fmt.Sprint(key)]
 	}
-	return c.locals[fmt.Sprint(key)]
+
+	c.locals[fmt.Sprint(key)] = value[0]
+	return value[0]
 }
 
 func (c *httpRouterContext) Body() []byte {
@@ -274,7 +275,9 @@ func (c *httpRouterContext) buildContext(bind any) (map[string]any, error) {
 
 	if c.passLocalsToViews {
 		for k, v := range c.locals {
-			m[k] = v
+			if _, ok := m[k]; !ok {
+				m[k] = v
+			}
 		}
 	}
 
@@ -402,7 +405,7 @@ func (c *httpRouterContext) Cookies(key string, defaultValue ...string) string {
 
 // CookieParser is a simple implementation that collects all cookies into a map
 // and then decodes them into 'out' via JSON. Adjust parsing logic as needed.
-func (c *httpRouterContext) CookieParser(out interface{}) error {
+func (c *httpRouterContext) CookieParser(out any) error {
 	if out == nil {
 		return fmt.Errorf("CookieParser: out is nil")
 	}
@@ -534,7 +537,7 @@ func (c *httpRouterContext) Send(body []byte) error {
 	return err
 }
 
-func (c *httpRouterContext) JSON(code int, v interface{}) error {
+func (c *httpRouterContext) JSON(code int, v any) error {
 	c.w.Header().Set("Content-Type", "application/json")
 	c.w.WriteHeader(code)
 	if v == nil {
@@ -548,7 +551,7 @@ func (c *httpRouterContext) NoContent(code int) error {
 	return nil
 }
 
-func (c *httpRouterContext) Bind(v interface{}) error {
+func (c *httpRouterContext) Bind(v any) error {
 	if v == nil {
 		return fmt.Errorf("bind: nil interface provided")
 	}

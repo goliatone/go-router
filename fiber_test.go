@@ -1,16 +1,19 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/template/django/v3"
 )
 
 func TestFiberAdapter_Router(t *testing.T) {
@@ -836,6 +839,263 @@ func TestFiberContext_QueryErrorCases(t *testing.T) {
 			}
 
 			resp.Body.Close()
+		})
+	}
+}
+
+func TestFiberContext_LocalsAndRender(t *testing.T) {
+	adapter := NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		engine := django.New("./test/testdata/views", ".html")
+		return fiber.New(fiber.Config{
+			UnescapePath:      true,
+			EnablePrintRoutes: true,
+			StrictRouting:     false,
+			PassLocalsToViews: true,
+			Views:             engine,
+		})
+	})
+
+	router := adapter.Router()
+
+	handler := func(ctx Context) error {
+		// Test Locals
+		ctx.Locals("username", "john")
+		if val := ctx.Locals("username"); val != "john" {
+			t.Errorf("Expected locals value 'john', got '%v'", val)
+		}
+
+		return ctx.Render("user", ViewContext{
+			"title": "Test",
+		})
+	}
+
+	router.Get("/render", handler)
+	app := adapter.WrappedRouter()
+
+	req := httptest.NewRequest("GET", "/render", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+
+	gold := ReadGolFile("./test/testdata/views/user.gold.html", t)
+
+	if !bytes.Equal(body, gold) {
+		t.Errorf("Body mismatch.\nGot:\n%s\nWant:\n%s", body, gold)
+	}
+
+}
+
+func ReadGolFile(path string, t *testing.T) []byte {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("Error reading test file: %v", err)
+	}
+	return content
+}
+
+type mockViewEngine struct {
+	renderFunc func(io.Writer, string, any, ...string) error
+}
+
+func (m *mockViewEngine) Load() error {
+	return nil
+}
+
+func (m *mockViewEngine) Render(w io.Writer, name string, bind any, layouts ...string) error {
+	return m.renderFunc(w, name, bind, layouts...)
+}
+
+func TestFiberContext_MockRender(t *testing.T) {
+
+	// Mock view engine
+	mockEngine := &mockViewEngine{
+		renderFunc: func(w io.Writer, name string, bind any, layout ...string) error {
+			if name != "index" {
+				t.Errorf("Expected template name 'index', got '%s'", name)
+			}
+			t.Log("========== MOCK ===========")
+			t.Logf("bind: %T %v", bind, bind)
+			t.Log("============================")
+			data, ok := bind.(map[string]any)
+			if !ok {
+				t.Error("Expected bind data to be Map")
+			}
+			if data["title"] != "Test" {
+				t.Errorf("Expected title 'Test', got '%v'", data["title"])
+			}
+			_, err := w.Write([]byte("<h1>Test</h1>"))
+			return err
+		},
+	}
+
+	adapter := NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			UnescapePath:      true,
+			EnablePrintRoutes: true,
+			StrictRouting:     false,
+			PassLocalsToViews: true,
+			Views:             mockEngine,
+		})
+	})
+	router := adapter.Router()
+
+	handler := func(ctx Context) error {
+		ctx.Locals("user", "john")
+		if val := ctx.Locals("user"); val != "john" {
+			t.Errorf("Expected locals value 'john', got '%v'", val)
+		}
+		return ctx.Render("index", ViewContext{"title": "Test"})
+	}
+
+	router.Get("/render", handler)
+	app := adapter.WrappedRouter()
+
+	req := httptest.NewRequest("GET", "/render", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "<h1>Test</h1>" {
+		t.Errorf("Expected body '<h1>Test</h1>', got '%s'", string(body))
+	}
+}
+
+func TestFiberContext_Cookies(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	handler := func(ctx Context) error {
+		ctx.Cookie(&Cookie{
+			Name:     "session",
+			Value:    "123",
+			Path:     "/",
+			MaxAge:   3600,
+			HTTPOnly: true,
+		})
+		return ctx.Send([]byte("OK"))
+	}
+
+	checker := func(ctx Context) error {
+		val := ctx.Cookies("session")
+		if val != "123" {
+			t.Errorf("Expected cookie value '123', got '%s'", val)
+		}
+
+		var cookies struct {
+			Session string `cookie:"session"`
+		}
+		if err := ctx.CookieParser(&cookies); err != nil {
+			t.Errorf("CookieParser error: %v", err)
+		}
+		if cookies.Session != "123" {
+			t.Errorf("Expected parsed cookie '123', got '%s'", cookies.Session)
+		}
+		return ctx.Send([]byte("OK"))
+	}
+
+	router.Get("/set-cookie", handler)
+	router.Get("/check-cookie", checker)
+	app := adapter.WrappedRouter()
+
+	// First request to set cookie
+	req := httptest.NewRequest("GET", "/set-cookie", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+
+	// Extract cookie from response
+	cookie := resp.Header.Get("Set-Cookie")
+	if cookie == "" {
+		t.Fatal("No cookie set in response")
+	}
+
+	// Second request to verify cookie
+	req = httptest.NewRequest("GET", "/check-cookie", nil)
+	req.Header.Set("Cookie", cookie)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+}
+
+func TestFiberContext_Redirects(t *testing.T) {
+	adapter := NewFiberAdapter()
+	router := adapter.Router()
+
+	route := router.Get("/user/:id", func(ctx Context) error { return nil })
+	fmt.Printf("Route before SetName: %+v\n", route)
+	route.SetName("user.profile")
+	fmt.Printf("Route after SetName: %+v\n", route)
+
+	app := adapter.WrappedRouter()
+	fmt.Printf("Routes: %+v\n", app.GetRoutes())
+	router.PrintRoutes()
+
+	tests := []struct {
+		name     string
+		setup    func(*testing.T, Router[*fiber.App])
+		handler  HandlerFunc
+		wantCode int
+		wantLoc  string
+		headers  map[string]string
+	}{
+		{
+			name: "Basic Redirect",
+			handler: func(c Context) error {
+				return c.Redirect("/target", 302)
+			},
+			wantCode: 302,
+			wantLoc:  "/target",
+		},
+		{
+			name: "Named Route Redirect",
+			handler: func(c Context) error {
+				return c.RedirectToRoute("user.profile", ViewContext{"id": "123"})
+			},
+			wantCode: 302,
+			wantLoc:  "/user/123",
+		},
+		{
+			name: "Redirect Back",
+			handler: func(c Context) error {
+				return c.RedirectBack("/fallback")
+			},
+			headers: map[string]string{
+				"Referer": "/previous",
+			},
+			wantCode: 302,
+			wantLoc:  "/previous",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router.Get("/redirect", tt.handler)
+			app := adapter.WrappedRouter()
+
+			req := httptest.NewRequest("GET", "/redirect", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatalf("Error testing request: %v", err)
+			}
+			if resp.StatusCode != tt.wantCode {
+				t.Errorf("Expected status %d, got %d", tt.wantCode, resp.StatusCode)
+			}
+			if loc := resp.Header.Get("Location"); loc != tt.wantLoc {
+				t.Errorf("Expected Location '%s', got '%s'", tt.wantLoc, loc)
+			}
 		})
 	}
 }

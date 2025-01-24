@@ -522,7 +522,7 @@ func (c *httpRouterContext) Queries() map[string]string {
 	return queries
 }
 
-func (c *httpRouterContext) Status(code int) ResponseWriter {
+func (c *httpRouterContext) Status(code int) Context {
 	if code > 0 {
 		c.w.WriteHeader(code)
 	}
@@ -575,7 +575,7 @@ func (c *httpRouterContext) Header(key string) string {
 	return c.r.Header.Get(key)
 }
 
-func (c *httpRouterContext) SetHeader(key string, value string) ResponseWriter {
+func (c *httpRouterContext) SetHeader(key string, value string) Context {
 	c.w.Header().Set(key, value)
 	return c
 }

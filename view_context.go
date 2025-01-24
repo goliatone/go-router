@@ -3,11 +3,11 @@ package router
 import (
 	"encoding/json"
 
-	"github.com/flosch/pongo2/v6"
+	"github.com/gofiber/fiber/v2"
 )
 
 // // PageContext holds template data
-type PageContextx pongo2.Context
+// type PageContextx pongo2.Context
 
 // Update updates this context with the key/value-pairs from another context.
 func (c ViewContext) Update(other ViewContext) ViewContext {
@@ -15,6 +15,10 @@ func (c ViewContext) Update(other ViewContext) ViewContext {
 		c[k] = v
 	}
 	return c
+}
+
+func (c ViewContext) asFiberMap() fiber.Map {
+	return fiber.Map(c)
 }
 
 // SerializeAsContext will return any object as a PageContext instance

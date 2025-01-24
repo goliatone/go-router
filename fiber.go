@@ -54,7 +54,7 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 	return a.router
 }
 
-func (a *FiberAdapter) WrapHandler(h HandlerFunc) interface{} {
+func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 	// Wrap a HandlerFunc into a fiber handler
 	return func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c)
@@ -190,8 +190,43 @@ func (c *fiberContext) Body() []byte { return c.ctx.Body() }
 func (c *fiberContext) Method() string { return c.ctx.Method() }
 func (c *fiberContext) Path() string   { return c.ctx.Path() }
 
-func (c *fiberContext) Param(name, defaultValue string) string {
-	return c.ctx.Params(name, defaultValue)
+func (c *fiberContext) Param(name string, defaultValue ...string) string {
+	return c.ctx.Params(name, defaultValue...)
+}
+
+func (c *fiberContext) Cookie(cookie *Cookie) {
+	c.ctx.Cookie(&fiber.Cookie{
+		Name:        cookie.Name,
+		Value:       cookie.Value,
+		Path:        cookie.Path,
+		Domain:      cookie.Domain,
+		MaxAge:      cookie.MaxAge,
+		Expires:     cookie.Expires,
+		Secure:      cookie.Secure,
+		HTTPOnly:    cookie.HTTPOnly,
+		SameSite:    cookie.SameSite,
+		SessionOnly: cookie.SessionOnly,
+	})
+}
+
+func (c *fiberContext) Cookies(key string, defaultValue ...string) string {
+	return c.ctx.Cookies(key, defaultValue...)
+}
+
+func (c *fiberContext) CookieParser(out any) error {
+	return c.ctx.CookieParser(out)
+}
+
+func (c *fiberContext) Redirect(location string, status ...int) error {
+	return c.ctx.Redirect(location, status...)
+}
+
+func (c *fiberContext) RedirectToRoute(routeName string, params ViewContext, status ...int) error {
+	return c.ctx.RedirectToRoute(routeName, params.asFiberMap(), status...)
+}
+
+func (c *fiberContext) RedirectBack(fallback string, status ...int) error {
+	return c.ctx.RedirectBack(fallback, status...)
 }
 
 func (c *fiberContext) ParamsInt(name string, defaultValue int) int {
@@ -227,7 +262,7 @@ func (c *fiberContext) Send(body []byte) error {
 	return c.ctx.Send(body)
 }
 
-func (c *fiberContext) JSON(code int, v interface{}) error {
+func (c *fiberContext) JSON(code int, v any) error {
 	return c.ctx.Status(code).JSON(v)
 }
 
@@ -235,7 +270,7 @@ func (c *fiberContext) NoContent(code int) error {
 	return c.ctx.SendStatus(code)
 }
 
-func (c *fiberContext) Bind(v interface{}) error {
+func (c *fiberContext) Bind(v any) error {
 	return c.ctx.BodyParser(v)
 }
 

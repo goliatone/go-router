@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/julienschmidt/httprouter"
@@ -68,6 +70,7 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 func (a *HTTPServer) WrapHandler(h HandlerFunc) interface{} {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		c := newHTTPRouterContext(w, r, ps, a.views)
+		c.router = a.router
 		c.passLocalsToViews = a.passLocalsToViews
 		if err := h(c); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -169,6 +172,7 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	// Register final handler with httprouter
 	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		ctx := newHTTPRouterContext(w, req, params, r.views)
+		ctx.router = r
 		ctx.passLocalsToViews = r.passLocalsToViews
 		ctx.setHandlers(route.Handlers)
 
@@ -212,6 +216,7 @@ type httpRouterContext struct {
 	views             Views
 	passLocalsToViews bool
 	locals            ViewContext
+	router            *HTTPRouter
 }
 
 func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) Context {
@@ -333,11 +338,140 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 func (c *httpRouterContext) Method() string { return c.r.Method }
 func (c *httpRouterContext) Path() string   { return c.r.URL.Path }
 
-func (c *httpRouterContext) Param(name, defaultValue string) string {
+func (c *httpRouterContext) Param(name string, defaultValue ...string) string {
 	if out := c.params.ByName(name); out != "" {
 		return out
 	}
-	return defaultValue
+
+	if len(defaultValue) == 0 {
+		return ""
+	}
+
+	return defaultValue[0]
+}
+
+func (c *httpRouterContext) Cookie(cookie *Cookie) {
+	if cookie == nil {
+		return
+	}
+	// Create a standard library cookie
+	stdCookie := &http.Cookie{
+		Name:     cookie.Name,
+		Value:    cookie.Value,
+		Path:     cookie.Path,
+		Domain:   cookie.Domain,
+		Secure:   cookie.Secure,
+		HttpOnly: cookie.HTTPOnly,
+	}
+
+	// Only set MaxAge and Expires if SessionOnly is false
+	if !cookie.SessionOnly {
+		if cookie.MaxAge > 0 {
+			stdCookie.MaxAge = cookie.MaxAge
+		}
+		if !cookie.Expires.IsZero() {
+			stdCookie.Expires = cookie.Expires
+		}
+	}
+
+	// Handle SameSite string
+	switch cookie.SameSite {
+	case CookieSameSiteStrictMode:
+		stdCookie.SameSite = http.SameSiteStrictMode
+	case CookieSameSiteNoneMode:
+		stdCookie.SameSite = http.SameSiteNoneMode
+	case CookieSameSiteDisabled:
+		stdCookie.SameSite = http.SameSiteDefaultMode
+	default:
+		stdCookie.SameSite = http.SameSiteLaxMode
+	}
+
+	http.SetCookie(c.w, stdCookie)
+}
+
+func (c *httpRouterContext) Cookies(key string, defaultValue ...string) string {
+	cookie, err := c.r.Cookie(key)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return ""
+	}
+	return cookie.Value
+}
+
+// CookieParser is a simple implementation that collects all cookies into a map
+// and then decodes them into 'out' via JSON. Adjust parsing logic as needed.
+func (c *httpRouterContext) CookieParser(out interface{}) error {
+	if out == nil {
+		return fmt.Errorf("CookieParser: out is nil")
+	}
+
+	// Gather all cookies into a map
+	cookieMap := make(map[string]string)
+	for _, cookie := range c.r.Cookies() {
+		cookieMap[cookie.Name] = cookie.Value
+	}
+
+	// Marshal that map to JSON, then unmarshal into 'out'
+	data, err := json.Marshal(cookieMap)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, out)
+}
+
+// Redirect sets the Location header and writes an HTTP redirect status code.
+func (c *httpRouterContext) Redirect(location string, status ...int) error {
+	code := http.StatusFound // default 302
+	if len(status) > 0 {
+		code = status[0]
+	}
+	http.Redirect(c.w, c.r, location, code)
+	return nil
+}
+
+func (c *httpRouterContext) RedirectToRoute(routeName string, params ViewContext, status ...int) error {
+
+	route := c.router.GetRoute(routeName)
+	if route == nil {
+		return fmt.Errorf("route not found: %s", routeName)
+	}
+
+	path := route.Path
+
+	// replace :param placeholders
+	for key, val := range params {
+		if key == "queries" {
+			continue
+		}
+		placeholder := ":" + key
+		path = strings.ReplaceAll(path, placeholder, fmt.Sprintf("%v", val))
+	}
+
+	// handle "queries" as a map that becomes a query string
+	if qs, ok := params["queries"].(map[string]string); ok {
+		q := url.Values{}
+		for k, v := range qs {
+			q.Set(k, v)
+		}
+		queryString := q.Encode()
+		if queryString != "" {
+			path += "?" + queryString
+		}
+	}
+
+	return c.Redirect(path, status...)
+}
+
+// RedirectBack attempts to redirect to the 'Referer' header, falling back
+// to the given 'fallback' if the header is empty.
+func (c *httpRouterContext) RedirectBack(fallback string, status ...int) error {
+	referer := c.Header("Referer")
+	if referer == "" {
+		referer = fallback
+	}
+	return c.Redirect(referer, status...)
 }
 
 func (c *httpRouterContext) ParamsInt(name string, defaultValue int) int {

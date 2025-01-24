@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -670,6 +671,14 @@ func TestFiberContext_QueryMethods(t *testing.T) {
 	}
 }
 
+func generateIndexedString(mask string, count int) string {
+	var builder strings.Builder
+	for i := 1; i <= count; i++ {
+		builder.WriteString(fmt.Sprintf(mask, i))
+	}
+	return builder.String()
+}
+
 func TestFiberContext_QueryStressCases(t *testing.T) {
 	adapter := NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return fiber.New(fiber.Config{
@@ -694,7 +703,7 @@ func TestFiberContext_QueryStressCases(t *testing.T) {
 		{
 			name:        "Moderate Number of Parameters",
 			path:        "/query/moderate",
-			queryString: strings.Repeat("p=v&", 9) + "last=value", // 10 parameters
+			queryString: generateIndexedString("p%d=%d&", 9) + "last=value", // 10 parameters
 			handler: func(c Context) error {
 				queries := c.Queries()
 				if len(queries) != 10 {

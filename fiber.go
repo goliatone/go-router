@@ -16,13 +16,19 @@ type FiberAdapter struct {
 	opts   []func(*fiber.App) *fiber.App
 }
 
-func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
-	app := fiber.New(fiber.Config{
+func newFiberInstance() *fiber.App {
+	return fiber.New(fiber.Config{
 		UnescapePath:      true,
 		EnablePrintRoutes: true,
 		StrictRouting:     false,
 		PassLocalsToViews: true,
 	})
+}
+
+// TODO: We should make this asynchronous so that we can gather options in our
+// app before we call fiber.New (since at that point it calls init and we are done)
+func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
+	app := newFiberInstance()
 
 	if len(opts) == 0 {
 		opts = append(opts, DefaultFiberOptions)
@@ -133,21 +139,29 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 		return ctx.Next()
 	})
 
+	route.onSetName = func(name string) {
+		r.app.Name(name)
+	}
+
 	return route
 }
 
 func (r *FiberRouter) Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(GET, path, handler, mw...)
 }
+
 func (r *FiberRouter) Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(POST, path, handler, mw...)
 }
+
 func (r *FiberRouter) Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(PUT, path, handler, mw...)
 }
+
 func (r *FiberRouter) Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(DELETE, path, handler, mw...)
 }
+
 func (r *FiberRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(PATCH, path, handler, mw...)
 }
@@ -182,6 +196,15 @@ func (c *fiberContext) Render(name string, bind any, layouts ...string) error {
 	if err != nil {
 		return fmt.Errorf("render: error serializing vars: %w", err)
 	}
+
+	if c.ctx.App().Config().PassLocalsToViews {
+		c.ctx.Context().VisitUserValues(func(key []byte, val any) {
+			if _, ok := data[string(key)]; !ok {
+				data[string(key)] = val
+			}
+		})
+	}
+
 	return c.ctx.Render(name, data, layouts...)
 }
 

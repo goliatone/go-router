@@ -43,7 +43,7 @@ type ViewContext map[string]any
 // Views is the interface that wraps the Render function.
 type Views interface {
 	Load() error
-	Render(io.Writer, string, interface{}, ...string) error
+	Render(io.Writer, string, any, ...string) error
 }
 
 type Serializer interface {
@@ -66,11 +66,11 @@ type RequestContext interface {
 	// BodyRaw() []byte
 
 	Locals(key any, value ...any) any
-	Render(name string, bind interface{}, layouts ...string) error
+	Render(name string, bind any, layouts ...string) error
 
 	Cookie(cookie *Cookie)
 	Cookies(key string, defaultValue ...string) string
-	CookieParser(out interface{}) error
+	CookieParser(out any) error
 	Redirect(location string, status ...int) error
 	RedirectToRoute(routeName string, params ViewContext, status ...int) error
 	RedirectBack(fallback string, status ...int) error
@@ -81,11 +81,11 @@ type RequestContext interface {
 	// BindVars(vars Map) error
 	// Path(override ...string) string
 	// AllParams() map[string]string
-	// ParamsParser(out interface{}) error
+	// ParamsParser(out any) error
 
 	// QueryBool(key string, defaultValue ...bool) bool
 	// QueryFloat(key string, defaultValue ...float64) float64
-	// QueryParser(out interface{}) error
+	// QueryParser(out any) error
 	// SendFile(file string, compress ...bool) error
 	// IsSecure() bool
 	// IsFromLocal() bool

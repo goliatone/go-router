@@ -23,10 +23,6 @@ func (c ViewContext) asFiberMap() fiber.Map {
 
 // SerializeAsContext will return any object as a PageContext instance
 func SerializeAsContext(m any) (map[string]any, error) {
-	// if ctx, ok := m.(map[string]any); ok {
-	// 	return ctx, nil
-	// }
-
 	var b []byte
 	var err error
 

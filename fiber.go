@@ -7,7 +7,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 type FiberAdapter struct {
@@ -42,7 +41,7 @@ func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 }
 
 func DefaultFiberOptions(app *fiber.App) *fiber.App {
-	app.Use(recover.New())
+	// app.Use(recover.New())
 	app.Use(logger.New())
 	return app
 }
@@ -120,7 +119,7 @@ func (r *FiberRouter) Use(m ...MiddlewareFunc) Router[*fiber.App] {
 }
 
 func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
-	fullPath := r.prefix + pathStr
+	fullPath := r.joinPath(r.prefix, pathStr)
 	allMw := append([]namedMiddleware{}, r.middlewares...)
 	for _, mw := range m {
 		allMw = append(allMw, namedMiddleware{
@@ -283,6 +282,10 @@ func (c *fiberContext) Status(code int) Context {
 	return c
 }
 
+func (c *fiberContext) SendString(body string) error {
+	return c.Send([]byte(body))
+}
+
 func (c *fiberContext) Send(body []byte) error {
 	return c.ctx.Send(body)
 }
@@ -309,6 +312,17 @@ func (c *fiberContext) SetContext(ctx context.Context) {
 
 func (c *fiberContext) Header(key string) string {
 	return c.ctx.Get(key)
+}
+
+func (c *fiberContext) Referer() string {
+	if referrer := c.Header("Referer"); referrer != "" {
+		return referrer
+	}
+	return c.Header("Referrer")
+}
+
+func (c *fiberContext) OriginalURL() string {
+	return c.ctx.OriginalURL()
 }
 
 func (c *fiberContext) SetHeader(key string, value string) Context {

@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"strings"
 )
 
 type routerRoot struct {
@@ -114,4 +115,25 @@ func (br *BaseRouter) GetRoute(name string) *RouteDefinition {
 		return nil
 	}
 	return br.root.namedRoutes[name]
+}
+
+func (br *BaseRouter) joinPath(prefix, path string) string {
+	// Trim excess slashes
+	prefix = strings.TrimRight(prefix, "/")
+	path = strings.TrimLeft(path, "/")
+
+	// Handle special cases where both are empty
+	if prefix == "" && path == "" {
+		return "/"
+	}
+
+	// Ensure proper concatenation
+	if prefix == "" {
+		return "/" + path
+	}
+	if path == "" {
+		return prefix
+	}
+
+	return prefix + "/" + path
 }

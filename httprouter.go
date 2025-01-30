@@ -147,8 +147,7 @@ func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 }
 
 func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
-	fullPath := r.prefix + pathStr
-
+	fullPath := r.joinPath(r.prefix, pathStr)
 	// Check for duplicates, since the behavior between fiber and httprouter differs
 	// we need to decide how to handle this case...
 	for _, route := range r.root.routes {
@@ -529,6 +528,10 @@ func (c *httpRouterContext) Status(code int) Context {
 	return c
 }
 
+func (c *httpRouterContext) SendString(body string) error {
+	return c.Send([]byte(body))
+}
+
 func (c *httpRouterContext) Send(body []byte) error {
 	if body == nil {
 		return c.NoContent(http.StatusNoContent)
@@ -573,6 +576,17 @@ func (c *httpRouterContext) Context() context.Context {
 
 func (c *httpRouterContext) Header(key string) string {
 	return c.r.Header.Get(key)
+}
+
+func (c *httpRouterContext) Referer() string {
+	if referrer := c.Header("Referer"); referrer != "" {
+		return referrer
+	}
+	return c.Header("Referrer")
+}
+
+func (c *httpRouterContext) OriginalURL() string {
+	return c.r.RequestURI
 }
 
 func (c *httpRouterContext) SetHeader(key string, value string) Context {

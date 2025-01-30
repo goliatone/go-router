@@ -21,6 +21,8 @@ func (h HandlerFunc) AsMiddlware() MiddlewareFunc {
 	return ToMiddleware(h)
 }
 
+type ErrorHandler = func(Context, error) error
+
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 const (
@@ -75,6 +77,9 @@ type RequestContext interface {
 	RedirectToRoute(routeName string, params ViewContext, status ...int) error
 	RedirectBack(fallback string, status ...int) error
 
+	Header(string) string
+	Referer() string
+	OriginalURL() string
 	// GetRouteURL(routeName string, params Map) (string, error)
 	// RedirectToRoute(routeName string, params Map, status ...int) error
 	// Redirect(location string, status ...int) error
@@ -96,10 +101,10 @@ type RequestContext interface {
 type ResponseWriter interface {
 	Status(code int) Context
 	Send(body []byte) error
+	SendString(body string) error
 	JSON(code int, v any) error
 	// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 	NoContent(code int) error
-	Header(string) string
 	SetHeader(string, string) Context
 }
 

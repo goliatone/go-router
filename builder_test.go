@@ -379,6 +379,10 @@ func (m *MockRouter) WithGroup(path string, cb func(r Router[*MockRouter])) Rout
 	return m
 }
 
+func (m *MockRouter) Static(prefix, root string, config ...Static) Router[*MockRouter] {
+	return m
+}
+
 func (m *MockRouter) Clear() {
 	m.rootRouter.routes = m.rootRouter.routes[:0]
 }
@@ -399,17 +403,25 @@ func (m *MockRouter) Use(mw ...MiddlewareFunc) Router[*MockRouter] {
 func (m *MockRouter) Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return m.Handle(GET, path, handler, mw...)
 }
+
 func (m *MockRouter) Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return m.Handle(POST, path, handler, mw...)
 }
+
 func (m *MockRouter) Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return m.Handle(PUT, path, handler, mw...)
 }
+
 func (m *MockRouter) Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return m.Handle(DELETE, path, handler, mw...)
 }
+
 func (m *MockRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return m.Handle(PATCH, path, handler, mw...)
+}
+
+func (m *MockRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return m.Handle(HEAD, path, handler, mw...)
 }
 
 func (m *MockRouter) PrintRoutes() {
@@ -481,6 +493,9 @@ func (m *mockContext) RedirectToRoute(routeName string, params ViewContext, stat
 }
 func (m *mockContext) RedirectBack(fallback string, status ...int) error { return nil }
 
+func (m *mockContext) SendString(body string) error                          { return nil }
+func (m *mockContext) Referer() string                                       { return "" }
+func (m *mockContext) OriginalURL() string                                   { return "" }
 func (m *mockContext) Cookie(cookie *Cookie)                                 {}
 func (m *mockContext) Cookies(key string, defaultValue ...string) string     { return "" }
 func (m *mockContext) CookieParser(out any) error                            { return nil }
@@ -493,7 +508,7 @@ func (m *mockContext) ParamsInt(name string, def int) int                    { r
 func (m *mockContext) Query(name, def string) string                         { return "" }
 func (m *mockContext) QueryInt(name string, def int) int                     { return 0 }
 func (m *mockContext) Queries() map[string]string                            { return map[string]string{} }
-func (m *mockContext) Status(code int) ResponseWriter                        { return m }
+func (m *mockContext) Status(code int) Context                               { return m }
 func (m *mockContext) Send(body []byte) error                                { return nil }
 func (m *mockContext) JSON(code int, v any) error                            { return nil }
 func (m *mockContext) NoContent(code int) error                              { return nil }
@@ -506,10 +521,10 @@ func (m *mockContext) Context() context.Context {
 func (m *mockContext) SetContext(ctx context.Context) {
 	// Optionally store the context if needed, or just ignore for tests.
 }
-func (m *mockContext) Header(key string) string                          { return "" }
-func (m *mockContext) SetHeader(key string, value string) ResponseWriter { return m }
-func (m *mockContext) Next() error                                       { return errors.New("not implemented") }
-func (m *mockContext) Set(k string, v any)                               { m.store[k] = v }
+func (m *mockContext) Header(key string) string                   { return "" }
+func (m *mockContext) SetHeader(key string, value string) Context { return m }
+func (m *mockContext) Next() error                                { return errors.New("not implemented") }
+func (m *mockContext) Set(k string, v any)                        { m.store[k] = v }
 func (m *mockContext) Get(k string, def any) any {
 	val, ok := m.store[k]
 	if !ok {

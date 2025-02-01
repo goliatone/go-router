@@ -68,6 +68,13 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 	}
 }
 
+func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
+	path, handler := r.makeStaticHandler(prefix, root, config...)
+	r.Get(path+"/*", handler)
+	r.Head(path+"/*", handler)
+	return r
+}
+
 func (r *FiberRouter) GetPrefix() string {
 	return r.prefix
 }
@@ -165,6 +172,10 @@ func (r *FiberRouter) Delete(path string, handler HandlerFunc, mw ...MiddlewareF
 
 func (r *FiberRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(PATCH, path, handler, mw...)
+}
+
+func (r *FiberRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return r.Handle(HEAD, path, handler, mw...)
 }
 
 func (r *FiberRouter) PrintRoutes() {

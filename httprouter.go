@@ -111,6 +111,13 @@ type HTTPRouter struct {
 	router *httprouter.Router
 }
 
+func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
+	path, handler := r.makeStaticHandler(prefix, root, config...)
+	r.Get(path+"/*", handler)
+	r.Head(path+"/*", handler)
+	return r
+}
+
 func (r *HTTPRouter) GetPrefix() string {
 	return r.prefix
 }
@@ -187,17 +194,25 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 func (r *HTTPRouter) Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(GET, path, handler, mw...)
 }
+
 func (r *HTTPRouter) Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(POST, path, handler, mw...)
 }
+
 func (r *HTTPRouter) Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(PUT, path, handler, mw...)
 }
+
 func (r *HTTPRouter) Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(DELETE, path, handler, mw...)
 }
+
 func (r *HTTPRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(PATCH, path, handler, mw...)
+}
+
+func (r *HTTPRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+	return r.Handle(HEAD, path, handler, mw...)
 }
 
 func (r *HTTPRouter) PrintRoutes() {

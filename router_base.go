@@ -1,7 +1,13 @@
 package router
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"mime"
+	"os"
+	"path"
 	"strings"
 )
 
@@ -136,4 +142,107 @@ func (br *BaseRouter) joinPath(prefix, path string) string {
 	}
 
 	return prefix + "/" + path
+}
+
+// Static file handler implementation
+func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (string, HandlerFunc) {
+	cfg := Static{
+		Root:  root,
+		Index: "index.html",
+	}
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+	if cfg.Root == "" {
+		cfg.Root = "."
+	}
+
+	// Normalize prefix and root
+	prefix = path.Clean("/" + prefix)
+
+	// Create filesystem
+	var fileSystem fs.FS
+	if cfg.FS != nil {
+		fileSystem = cfg.FS
+	} else {
+		fileSystem = os.DirFS(cfg.Root)
+	}
+
+	handler := func(c Context) error {
+		// Get path relative to prefix
+		reqPath := c.Path()
+		if !strings.HasPrefix(reqPath, prefix) {
+			return c.Next()
+		}
+
+		// Strip prefix and clean path
+		filePath := strings.TrimPrefix(reqPath, prefix)
+		filePath = strings.TrimPrefix(filePath, "/") // Remove leading slash for fs.FS
+
+		if filePath == "" {
+			filePath = cfg.Index
+		}
+
+		// Check if file exists and get info
+		f, err := fileSystem.Open(filePath)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return c.Status(404).SendString("Not Found")
+			}
+			return c.Status(500).SendString(err.Error())
+		}
+		defer f.Close()
+
+		stat, err := f.Stat()
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		// Handle directory
+		if stat.IsDir() {
+			if !cfg.Browse {
+				// Try to serve index file
+				indexPath := path.Join(filePath, cfg.Index)
+				if f, err := fileSystem.Open(indexPath); err == nil {
+					stat, _ = f.Stat()
+					filePath = indexPath
+					f.Close()
+				} else {
+					return c.Status(404).SendString("Not Found")
+				}
+			}
+		}
+
+		// Set headers
+		if cfg.MaxAge > 0 {
+			c.SetHeader("Cache-Control", fmt.Sprintf("public, max-age=%d", cfg.MaxAge))
+		}
+
+		// Set content type based on extension
+		ext := path.Ext(filePath)
+		mimeType := mime.TypeByExtension(ext)
+		if mimeType != "" {
+			c.SetHeader("Content-Type", mimeType)
+		}
+
+		if cfg.Download {
+			c.SetHeader("Content-Disposition", "attachment; filename="+path.Base(filePath))
+		}
+
+		// Read and send file
+		content, err := io.ReadAll(f)
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		if cfg.ModifyResponse != nil {
+			if err := cfg.ModifyResponse(c); err != nil {
+				return err
+			}
+		}
+
+		return c.Send(content)
+	}
+
+	return prefix, handler
 }

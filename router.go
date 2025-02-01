@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 )
 
@@ -31,6 +32,7 @@ const (
 	PUT    HTTPMethod = "PUT"
 	DELETE HTTPMethod = "DELETE"
 	PATCH  HTTPMethod = "PATCH"
+	HEAD   HTTPMethod = "HEAD"
 )
 
 type Logger interface {
@@ -153,6 +155,19 @@ type RouteInfo interface {
 	// FromRouteDefinition(r2 *RouteDefinition) RouteInfo
 }
 
+// Static configuration options
+type Static struct {
+	//TODO: make an array of fs.FS
+	FS             fs.FS               // Optional filesystem implementation
+	Root           string              // Root directory
+	Browse         bool                // Enable directory browsing
+	Index          string              // Index file (default: index.html)
+	MaxAge         int                 // Max-Age for cache control header
+	Download       bool                // Force download
+	Compress       bool                // Enable compression
+	ModifyResponse func(Context) error // Hook to modify response
+}
+
 // Router represents a generic router interface
 type Router[T any] interface {
 	Handle(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) RouteInfo
@@ -164,6 +179,9 @@ type Router[T any] interface {
 	Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+	Head(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+
+	Static(prefix, root string, config ...Static) Router[T]
 
 	// TODO: Move to a different interface e.g. MetaRouter
 	Routes() []RouteDefinition

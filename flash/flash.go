@@ -28,6 +28,16 @@ type Config struct {
 	SessionOnly bool      `json:"session_only"`
 }
 
+func ToMiddleware(f *Flash, key string) router.MiddlewareFunc {
+	return func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
+			values := f.Get(c)
+			c.Locals(key, values)
+			return c.Next()
+		}
+	}
+}
+
 var DefaultFlash *Flash
 
 func init() {

@@ -117,7 +117,7 @@ users := builder.Group("/users")
 ```go
 type Server[T any] interface {
     Router() Router[T]
-    WrapHandler(HandlerFunc) interface{}
+    WrapHandler(HandlerFunc) any
     WrappedRouter() T
     Serve(address string) error
     Shutdown(ctx context.Context) error
@@ -150,9 +150,9 @@ type Context interface {
     Queries() map[string]string
     Status(code int) Context
     Send(body []byte) error
-    JSON(code int, v interface{}) error
+    JSON(code int, v any) error
     NoContent(code int) error
-    Bind(interface{}) error
+    Bind(any) error
     Context() context.Context
     SetContext(context.Context)
     Header(string) string

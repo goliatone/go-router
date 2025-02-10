@@ -1,5 +1,94 @@
 # Changelog
 
+# [0.1.0](https://github.com/goliatone/go-router/compare/v0.0.3...v0.1.0) - (2025-02-10)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update mock to implement new methods ([3da76a9](https://github.com/goliatone/go-router/commit/3da76a9f12bd369ccab17335ae9ec9c3bd496a37))  - (goliatone)
+- Ensure we can chain methods ([c9b2fbf](https://github.com/goliatone/go-router/commit/c9b2fbfca199a1df64595efe009f7fe089a4005b))  - (goliatone)
+- Ensure we can chain methods ([67c06be](https://github.com/goliatone/go-router/commit/67c06be966035479575db657d09992d370376c04))  - (goliatone)
+- Ensure we can chain methods ([e2e4bef](https://github.com/goliatone/go-router/commit/e2e4befcf52bc4fee0b346eb99962d0a7cefad7c))  - (goliatone)
+- Redirects ([6474814](https://github.com/goliatone/go-router/commit/6474814fd6dd6c92a957f632d506114c66ada98f))  - (goliatone)
+- Generate random strings for qs ([cb148b7](https://github.com/goliatone/go-router/commit/cb148b7dd451b4e4080c30003773cadecf179aec))  - (goliatone)
+- Builder test mock ctx implement all interface methods ([2d68f7a](https://github.com/goliatone/go-router/commit/2d68f7a9c8aaf1aa25ee52dc28a3695753051987))  - (goliatone)
+- Add new methods to mock ([985db37](https://github.com/goliatone/go-router/commit/985db3740b7eec48e96de72a7e6b68aab49b268c))  - (goliatone)
+- Add missing method to MockRouter ([2598d77](https://github.com/goliatone/go-router/commit/2598d772a298954cb2d58c58b7ad64821f73923f))  - (goliatone)
+- Open api content types ([1bd0b19](https://github.com/goliatone/go-router/commit/1bd0b19ffc9e4887ac54be3061a95f14c693212e))  - (goliatone)
+- Use VisitAll to parse queries ([dac2297](https://github.com/goliatone/go-router/commit/dac2297c646265331437680e904137debda95c11))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.0 ([e6d38ab](https://github.com/goliatone/go-router/commit/e6d38ab9402c998f5ac64d232ccf198952d0c56e))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Status helper ([596a71c](https://github.com/goliatone/go-router/commit/596a71cc4d9d34631477439b8e9b7e9c53ad8106))  - (goliatone)
+- Views init with custom fucntions and more ([0f2b390](https://github.com/goliatone/go-router/commit/0f2b390b3f959f5957b6b866ae3e61e9e46ec394))  - (goliatone)
+- ToMiddleware for flash ([3dc78e5](https://github.com/goliatone/go-router/commit/3dc78e51b511b2a2e935dcbde2607be4121e1b55))  - (goliatone)
+- Static method and Head ([b6584a5](https://github.com/goliatone/go-router/commit/b6584a52af63c8399316286eaac3acc5c8eee8cc))  - (goliatone)
+- Static method and Head ([aff2b7d](https://github.com/goliatone/go-router/commit/aff2b7db4e14e0a9f8952f4eb1d8efb43cc7ffc3))  - (goliatone)
+- Base static file server imp ([d9f5efd](https://github.com/goliatone/go-router/commit/d9f5efd6c067e12acc728cf756eb7a1838a3ddea))  - (goliatone)
+- Static method and Head ([b85f621](https://github.com/goliatone/go-router/commit/b85f62141cbe6567e099dbf634d8bcb0c4fae82e))  - (goliatone)
+- Test base router ([b6481e5](https://github.com/goliatone/go-router/commit/b6481e5eee82eac03f9a744e385b2ad1ee7cfcbb))  - (goliatone)
+- Rendering view example ([995255b](https://github.com/goliatone/go-router/commit/995255b9b2cf0e526351b8607d313d9a414e457b))  - (goliatone)
+- Cookie imp ([5a57f5d](https://github.com/goliatone/go-router/commit/5a57f5dc185ce5cc304c45e3e42b2e3f85a90f52))  - (goliatone)
+- New context methods ([5e7d4cf](https://github.com/goliatone/go-router/commit/5e7d4cfd86a5cb936b931133bb07213086fcd59c))  - (goliatone)
+- New context methods ([e0c4f1f](https://github.com/goliatone/go-router/commit/e0c4f1fb0e42090db36844e02a750714cba18946))  - (goliatone)
+- JoinPath to sanitize routes ([edb59b3](https://github.com/goliatone/go-router/commit/edb59b312cb5bab4c4d047996cb0f72bbd22133a))  - (goliatone)
+- Test data for view rendering ([82c8b37](https://github.com/goliatone/go-router/commit/82c8b37bc0476e8890c42cd99a23318508894d86))  - (goliatone)
+- Test data for view rendering ([7c399e7](https://github.com/goliatone/go-router/commit/7c399e7040ce5be074cf3892580c94ea3494d9c7))  - (goliatone)
+- Flash middleware ([415232a](https://github.com/goliatone/go-router/commit/415232aca73e29a28c10e264af495bb959d16dff))  - (goliatone)
+- Flash middleware ([8d03228](https://github.com/goliatone/go-router/commit/8d0322822922af94c052900e6347f70aefefbbac))  - (goliatone)
+- We might want to register the name once is set ([248dd4e](https://github.com/goliatone/go-router/commit/248dd4e9ae27169266f9b2512042ec9235702244))  - (goliatone)
+- We might want to register the name once is set ([8bc7c0f](https://github.com/goliatone/go-router/commit/8bc7c0f3c5bc263cabce406a8c7a4f1e68cbf9fc))  - (goliatone)
+- Tests for new methods ([9473d3a](https://github.com/goliatone/go-router/commit/9473d3a07a2f6a0a4d7b3949435b0e173bf1f8ef))  - (goliatone)
+- View context ([64d506a](https://github.com/goliatone/go-router/commit/64d506aaf10bc44de9974eeab531a98b98b64073))  - (goliatone)
+- Track routes by name in base router ([aaffcc2](https://github.com/goliatone/go-router/commit/aaffcc27e66aad530e215faca5d40e51f490302a))  - (goliatone)
+- Context methods to render HTML and use views ([bfc4867](https://github.com/goliatone/go-router/commit/bfc4867a7e81d755cf7f13526732b5928639cc5f))  - (goliatone)
+- Context methods to render HTML and use views ([83bf97a](https://github.com/goliatone/go-router/commit/83bf97a3d56dfc4e3264f73d8e0189f370edd98d))  - (goliatone)
+- Context methods to render HTML and use views ([8fd761e](https://github.com/goliatone/go-router/commit/8fd761ee3f25908f588ae0f83bc4f34f51298551))  - (goliatone)
+- Default rendering using Go template ([83ab14e](https://github.com/goliatone/go-router/commit/83ab14eb514784d2bf1659c42d3cf87bdf72c8ff))  - (goliatone)
+- Default rendering using Go template ([1cb254e](https://github.com/goliatone/go-router/commit/1cb254e43691ffe3f17c2eb6130e663619f4162f))  - (goliatone)
+- Httprouter implement methods to render views ([44e6647](https://github.com/goliatone/go-router/commit/44e6647d0b97ff06de1d3232533e2c669e844baa))  - (goliatone)
+- View context to serialize variables ([46063ba](https://github.com/goliatone/go-router/commit/46063ba03edd1d62c219dd23b043ed4f06930fbf))  - (goliatone)
+- Base implementation for rendering ([ee8bfa1](https://github.com/goliatone/go-router/commit/ee8bfa16209c0945d6ab22ad062fc0c4ef8e72c9))  - (goliatone)
+- Interface methods needed to render views ([99588c5](https://github.com/goliatone/go-router/commit/99588c57a0c930b10b6abfa7b9424ae74eb9c734))  - (goliatone)
+- Fiber implement methods to render views ([766b0da](https://github.com/goliatone/go-router/commit/766b0da2cad31810fa9db6a0146b73c7d43b621b))  - (goliatone)
+- OperationId to open api definition ([565372d](https://github.com/goliatone/go-router/commit/565372d9ad6f884ce5085220a08b833188956cb8))  - (goliatone)
+- New router method, to register groups using a callback ([1f0bd14](https://github.com/goliatone/go-router/commit/1f0bd14bba6e90b6eab9943fd87eac4a9e41ee6c))  - (goliatone)
+- New router method, to register groups using a callback ([5b872f2](https://github.com/goliatone/go-router/commit/5b872f29b13bf2ce222187bcd65bd5563ecfad92))  - (goliatone)
+- New router method, to register groups using a callback ([315f202](https://github.com/goliatone/go-router/commit/315f20207c38268e8f535a7b78a0c9bd93a578a3))  - (goliatone)
+- Tests for fiber context ([181fb30](https://github.com/goliatone/go-router/commit/181fb30a385d71f930adb8061b06d943e8625209))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Disapble tests ([59e16a2](https://github.com/goliatone/go-router/commit/59e16a296d0d09fec9bf4a034b4a15ad5c01dd7d))  - (goliatone)
+- Make router init async with late routes ([6640bb4](https://github.com/goliatone/go-router/commit/6640bb4633c74a08faa0a30031ff861f584f114b))  - (goliatone)
+- Make router init async with late routes ([86e3b50](https://github.com/goliatone/go-router/commit/86e3b502a5453f7798e1e9d6a360c42fa30c1a9c))  - (goliatone)
+- Make router init async with late routes ([7a1e0cb](https://github.com/goliatone/go-router/commit/7a1e0cb3af5c8079a9cd2194cf001f9008003441))  - (goliatone)
+- Make router init async with late routes ([83757e2](https://github.com/goliatone/go-router/commit/83757e26f2b62e32ad6b13ccfbc69ba73057a66b))  - (goliatone)
+- Make router init async ([7e03792](https://github.com/goliatone/go-router/commit/7e0379203817f7c2dfde579977722da25f516f80))  - (goliatone)
+- Make router init async ([abbdd35](https://github.com/goliatone/go-router/commit/abbdd35d80b046ded55bc9955f78e833c7de205e))  - (goliatone)
+- New methods in httprouter ([97c4aa4](https://github.com/goliatone/go-router/commit/97c4aa46bcd2fb5188d7822ec58154d179e30dc1))  - (goliatone)
+- Add more fields to openapi yaml ([7f6ef66](https://github.com/goliatone/go-router/commit/7f6ef668c901bf1837e6d3816ed10add76ee7aa6))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.0.3 ([194d6eb](https://github.com/goliatone/go-router/commit/194d6ebc28a07b2955e2dd4e9cf3dda3ad27cdd4))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#4](https://github.com/goliatone/go-router/pull/4): fiber adapter ([2e27c4a](https://github.com/goliatone/go-router/commit/2e27c4af6a170597920cdb0caaa84e7d9ef0c019))  - (goliatone)
+- Clean up ([5f71a48](https://github.com/goliatone/go-router/commit/5f71a48bf4313010d579db468f50b92912c3e822))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([6592e06](https://github.com/goliatone/go-router/commit/6592e061f2313a2e005272b9bcc387781546fd68))  - (goliatone)
+- Update docs ([d2846e2](https://github.com/goliatone/go-router/commit/d2846e2a44d17ffa2766cd23aa6bf70d811c88d0))  - (goliatone)
+- Update deps ([382362d](https://github.com/goliatone/go-router/commit/382362d2566301663da10b8e5bef2960c9b4a0fe))  - (goliatone)
+- Clean up code style ([4d1b63f](https://github.com/goliatone/go-router/commit/4d1b63fe035d3a57b7416792ff2a07525016a43a))  - (goliatone)
+- Update deps ([53ed081](https://github.com/goliatone/go-router/commit/53ed081513fef6ef4f0294233a44f521c4440191))  - (goliatone)
+
 # [0.0.3](https://github.com/goliatone/go-router/compare/v0.0.2...v0.0.3) - (2025-01-05)
 
 ## <!-- 1 -->🐛 Bug Fixes

@@ -21,6 +21,7 @@ type BaseRouter struct {
 	prefix            string
 	middlewares       []namedMiddleware
 	routes            []*RouteDefinition
+	lateRoutes        []*lateRoute
 	logger            Logger
 	root              *routerRoot
 	views             Views
@@ -106,6 +107,36 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 	}
 
 	return r
+}
+
+type lateRoute struct {
+	method  HTTPMethod
+	path    string
+	handler HandlerFunc
+	name    string
+	mw      []MiddlewareFunc
+}
+
+func (br *BaseRouter) addLateRoute(method HTTPMethod, pathStr string, handler HandlerFunc, routeName string, m ...MiddlewareFunc) {
+	// method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc
+
+	d := &lateRoute{
+		method:  method,
+		path:    pathStr,
+		handler: handler,
+		name:    routeName,
+		mw:      m,
+	}
+
+	br.lateRoutes = append(br.lateRoutes, d)
+}
+
+func (br *BaseRouter) registerLateRoutes() {
+	// for _, route := range br.lateRoutes {
+	// 	br.Handle(route.method, route.path, route.handler, route.name, route.allMw)
+	// }
+
+	// br.lateRoutes = make([]*lateRoute, 0)
 }
 
 func (br *BaseRouter) Routes() []RouteDefinition {

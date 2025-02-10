@@ -1,20 +1,31 @@
 package router
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"mime"
+	"os"
+	"path"
+	"strings"
 )
 
 type routerRoot struct {
-	routes []*RouteDefinition
+	routes      []*RouteDefinition
+	namedRoutes map[string]*RouteDefinition
 }
 
 // Common fields for both FiberRouter and HTTPRouter
 type BaseRouter struct {
-	prefix      string
-	middlewares []namedMiddleware
-	routes      []*RouteDefinition
-	logger      Logger
-	root        *routerRoot
+	prefix            string
+	middlewares       []namedMiddleware
+	routes            []*RouteDefinition
+	lateRoutes        []*lateRoute
+	logger            Logger
+	root              *routerRoot
+	views             Views
+	passLocalsToViews bool
 }
 
 type namedMiddleware struct {
@@ -86,7 +97,46 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 		}
 
 	br.root.routes = append(br.root.routes, r)
+
+	// If the route has a name, also store it in the map
+	if routeName != "" {
+		if br.root.namedRoutes == nil {
+			br.root.namedRoutes = make(map[string]*RouteDefinition)
+		}
+		br.root.namedRoutes[routeName] = r
+	}
+
 	return r
+}
+
+type lateRoute struct {
+	method  HTTPMethod
+	path    string
+	handler HandlerFunc
+	name    string
+	mw      []MiddlewareFunc
+}
+
+func (br *BaseRouter) addLateRoute(method HTTPMethod, pathStr string, handler HandlerFunc, routeName string, m ...MiddlewareFunc) {
+	// method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc
+
+	d := &lateRoute{
+		method:  method,
+		path:    pathStr,
+		handler: handler,
+		name:    routeName,
+		mw:      m,
+	}
+
+	br.lateRoutes = append(br.lateRoutes, d)
+}
+
+func (br *BaseRouter) registerLateRoutes() {
+	// for _, route := range br.lateRoutes {
+	// 	br.Handle(route.method, route.path, route.handler, route.name, route.allMw)
+	// }
+
+	// br.lateRoutes = make([]*lateRoute, 0)
 }
 
 func (br *BaseRouter) Routes() []RouteDefinition {
@@ -95,4 +145,135 @@ func (br *BaseRouter) Routes() []RouteDefinition {
 		defs[i] = *rt
 	}
 	return defs
+}
+
+func (br *BaseRouter) GetRoute(name string) *RouteDefinition {
+	if br.root.namedRoutes == nil {
+		return nil
+	}
+	return br.root.namedRoutes[name]
+}
+
+func (br *BaseRouter) joinPath(prefix, path string) string {
+	// Trim excess slashes
+	prefix = strings.TrimRight(prefix, "/")
+	path = strings.TrimLeft(path, "/")
+
+	// Handle special cases where both are empty
+	if prefix == "" && path == "" {
+		return "/"
+	}
+
+	// Ensure proper concatenation
+	if prefix == "" {
+		return "/" + path
+	}
+	if path == "" {
+		return prefix
+	}
+
+	return prefix + "/" + path
+}
+
+// Static file handler implementation
+func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (string, HandlerFunc) {
+	cfg := Static{
+		Root:  root,
+		Index: "index.html",
+	}
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+	if cfg.Root == "" {
+		cfg.Root = "."
+	}
+
+	// Normalize prefix and root
+	prefix = path.Clean("/" + prefix)
+
+	// Create filesystem
+	var fileSystem fs.FS
+	if cfg.FS != nil {
+		fileSystem = cfg.FS
+	} else {
+		fileSystem = os.DirFS(cfg.Root)
+	}
+
+	handler := func(c Context) error {
+		// Get path relative to prefix
+		reqPath := c.Path()
+		if !strings.HasPrefix(reqPath, prefix) {
+			return c.Next()
+		}
+
+		// Strip prefix and clean path
+		filePath := strings.TrimPrefix(reqPath, prefix)
+		filePath = strings.TrimPrefix(filePath, "/") // Remove leading slash for fs.FS
+
+		if filePath == "" {
+			filePath = cfg.Index
+		}
+
+		// Check if file exists and get info
+		f, err := fileSystem.Open(filePath)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return c.Status(404).SendString("Not Found")
+			}
+			return c.Status(500).SendString(err.Error())
+		}
+		defer f.Close()
+
+		stat, err := f.Stat()
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		// Handle directory
+		if stat.IsDir() {
+			if !cfg.Browse {
+				// Try to serve index file
+				indexPath := path.Join(filePath, cfg.Index)
+				if f, err := fileSystem.Open(indexPath); err == nil {
+					stat, _ = f.Stat()
+					filePath = indexPath
+					f.Close()
+				} else {
+					return c.Status(404).SendString("Not Found")
+				}
+			}
+		}
+
+		// Set headers
+		if cfg.MaxAge > 0 {
+			c.SetHeader("Cache-Control", fmt.Sprintf("public, max-age=%d", cfg.MaxAge))
+		}
+
+		// Set content type based on extension
+		ext := path.Ext(filePath)
+		mimeType := mime.TypeByExtension(ext)
+		if mimeType != "" {
+			c.SetHeader("Content-Type", mimeType)
+		}
+
+		if cfg.Download {
+			c.SetHeader("Content-Disposition", "attachment; filename="+path.Base(filePath))
+		}
+
+		// Read and send file
+		content, err := io.ReadAll(f)
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		if cfg.ModifyResponse != nil {
+			if err := cfg.ModifyResponse(c); err != nil {
+				return err
+			}
+		}
+
+		return c.Send(content)
+	}
+
+	return prefix, handler
 }

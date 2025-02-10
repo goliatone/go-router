@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/http"
 )
 
@@ -20,6 +22,8 @@ func (h HandlerFunc) AsMiddlware() MiddlewareFunc {
 	return ToMiddleware(h)
 }
 
+type ErrorHandler = func(Context, error) error
+
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 const (
@@ -28,6 +32,7 @@ const (
 	PUT    HTTPMethod = "PUT"
 	DELETE HTTPMethod = "DELETE"
 	PATCH  HTTPMethod = "PATCH"
+	HEAD   HTTPMethod = "HEAD"
 )
 
 type Logger interface {
@@ -36,11 +41,24 @@ type Logger interface {
 	Error(format string, args ...any)
 }
 
+// ViewContext provide template values
+type ViewContext map[string]any
+
+// Views is the interface that wraps the Render function.
+type Views interface {
+	Load() error
+	Render(io.Writer, string, any, ...string) error
+}
+
+type Serializer interface {
+	Serialize() ([]byte, error)
+}
+
 type RequestContext interface {
 	Method() string
 	Path() string
 
-	Param(name string, defaultValue string) string
+	Param(name string, defaultValue ...string) string
 	ParamsInt(key string, defaultValue int) int
 
 	Query(name string, defaultValue string) string
@@ -51,18 +69,30 @@ type RequestContext interface {
 
 	// BodyRaw() []byte
 
+	Locals(key any, value ...any) any
+	Render(name string, bind any, layouts ...string) error
+
+	Cookie(cookie *Cookie)
+	Cookies(key string, defaultValue ...string) string
+	CookieParser(out any) error
+	Redirect(location string, status ...int) error
+	RedirectToRoute(routeName string, params ViewContext, status ...int) error
+	RedirectBack(fallback string, status ...int) error
+
+	Header(string) string
+	Referer() string
+	OriginalURL() string
 	// GetRouteURL(routeName string, params Map) (string, error)
 	// RedirectToRoute(routeName string, params Map, status ...int) error
-	// Render(name string, bind interface{}, layouts ...string) error
 	// Redirect(location string, status ...int) error
 	// BindVars(vars Map) error
 	// Path(override ...string) string
 	// AllParams() map[string]string
-	// ParamsParser(out interface{}) error
+	// ParamsParser(out any) error
 
 	// QueryBool(key string, defaultValue ...bool) bool
 	// QueryFloat(key string, defaultValue ...float64) float64
-	// QueryParser(out interface{}) error
+	// QueryParser(out any) error
 	// SendFile(file string, compress ...bool) error
 	// IsSecure() bool
 	// IsFromLocal() bool
@@ -71,13 +101,15 @@ type RequestContext interface {
 }
 
 type ResponseWriter interface {
-	Status(code int) ResponseWriter
+	Status(code int) Context
 	Send(body []byte) error
+	SendString(body string) error
 	JSON(code int, v any) error
 	// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 	NoContent(code int) error
-	Header(string) string
-	SetHeader(string, string) ResponseWriter
+	SetHeader(string, string) Context
+	// Download(file string, filename ...string) error
+	// SendFile(file string, compress ...bool) error
 }
 
 // ContextStore is a request scoped, in-memoroy
@@ -100,7 +132,7 @@ type Context interface {
 	ResponseWriter
 	ContextStore
 	// Body parsing
-	Bind(any) error // TODO: Myabe rename to ParseBody
+	Bind(v any) error // TODO: Myabe rename to ParseBody
 
 	// Context methods
 	Context() context.Context
@@ -125,20 +157,37 @@ type RouteInfo interface {
 	// FromRouteDefinition(r2 *RouteDefinition) RouteInfo
 }
 
+// Static configuration options
+type Static struct {
+	//TODO: make an array of fs.FS
+	FS             fs.FS               // Optional filesystem implementation
+	Root           string              // Root directory
+	Browse         bool                // Enable directory browsing
+	Index          string              // Index file (default: index.html)
+	MaxAge         int                 // Max-Age for cache control header
+	Download       bool                // Force download
+	Compress       bool                // Enable compression
+	ModifyResponse func(Context) error // Hook to modify response
+}
+
 // Router represents a generic router interface
 type Router[T any] interface {
 	Handle(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) RouteInfo
 	Group(prefix string) Router[T]
+	WithGroup(path string, cb func(r Router[T])) Router[T]
 	Use(m ...MiddlewareFunc) Router[T]
 	Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
 	Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+	Head(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo
+
+	Static(prefix, root string, config ...Static) Router[T]
 
 	// TODO: Move to a different interface e.g. MetaRouter
+	Routes() []RouteDefinition
 	// For debugging: Print a table of routes and their middleware chain
-	Routes() []RouteDefinition // New method to retrieve registered routes
 	PrintRoutes()
 }
 
@@ -149,6 +198,7 @@ type PrefixedRouter interface {
 
 // Server represents a generic server interface
 type Server[T any] interface {
+	Init()
 	Router() Router[T]
 	WrapHandler(HandlerFunc) any
 	WrappedRouter() T

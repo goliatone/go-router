@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/template/django/v3"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/hashid/pkg/hashid"
 	"github.com/julienschmidt/httprouter"
@@ -69,11 +70,14 @@ func NewUserStore() *UserStore {
 }
 
 func newFiberAdapter() router.Server[*fiber.App] {
+	engine := django.New("./views", ".html")
 	app := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return fiber.New(
 			fiber.Config{
 				AppName:           "Go Router - Fiber",
 				EnablePrintRoutes: true,
+				PassLocalsToViews: true,
+				Views:             engine,
 			},
 		)
 	})
@@ -188,7 +192,7 @@ This endpoint will create a new User, just for you
 	private := api.Group("/secret")
 	{
 		private.Use(auth.AsMiddlware())
-		private.Get("/:name", getSecret()).Name("secrets.get")
+		private.Get("/:name", getSecret()).SetName("secrets.get")
 	}
 
 	builder.NewRoute().
@@ -240,7 +244,7 @@ This playground exposes, and documents all the endpoints used by the demo applic
 ### Version
 The API version: v0.0.0..
 		`,
-		Contact: router.OpenAPIFieldContact{
+		Contact: &router.OpenAPIFieldContact{
 			Email: "test@example.com",
 			Name:  "Test Name",
 			URL:   "https://example.com",

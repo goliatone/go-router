@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -37,6 +38,8 @@ type RouteDefinition struct {
 	Parameters  []Parameter  `json:"parameters,omitempty"`
 	RequestBody *RequestBody `json:"request_body,omitempty"`
 	Responses   []Response   `json:"responses,omitempty"`
+	Security    []string     `json:"security,omitempty"`
+	onSetName   func(n string)
 }
 
 // Parameter unifies the parameter definitions
@@ -193,9 +196,11 @@ func convertRouteToPathItem(route RouteDefinition) map[string]any {
 	operation := map[string]any{
 		"summary":     route.Summary,
 		"description": route.Description,
+		"operationId": strings.ToLower(fmt.Sprintf("%s-%s", route.Method, route.Name)),
 		"tags":        route.Tags,
 		"parameters":  convertParameters(route.Parameters),
 		"responses":   convertResponses(route.Responses),
+		// "security":    route.Security(),
 	}
 
 	if route.RequestBody != nil {
@@ -238,6 +243,7 @@ func convertRequestBody(rb *RequestBody) map[string]any {
 	if rb == nil {
 		return nil
 	}
+
 	return map[string]any{
 		"description": rb.Description,
 		"required":    rb.Required,
@@ -251,9 +257,11 @@ func convertResponses(responses []Response) map[string]any {
 		response := map[string]any{
 			"description": r.Description,
 		}
+
 		if len(r.Headers) > 0 {
 			response["headers"] = r.Headers
 		}
+
 		if len(r.Content) > 0 {
 			response["content"] = r.Content
 		}
@@ -272,18 +280,23 @@ func convertProperties(props map[string]PropertyInfo) map[string]any {
 		if prop.Format != "" {
 			property["format"] = prop.Format
 		}
+
 		if prop.Description != "" {
 			property["description"] = prop.Description
 		}
+
 		if prop.ReadOnly {
 			property["readOnly"] = true
 		}
+
 		if prop.WriteOnly {
 			property["writeOnly"] = true
 		}
+
 		if prop.Example != nil {
 			property["example"] = prop.Example
 		}
+
 		if prop.Nullable {
 			property["nullable"] = true
 		}
@@ -297,9 +310,11 @@ func convertProperties(props map[string]PropertyInfo) map[string]any {
 			if prop.Items.Type != "" {
 				items["type"] = prop.Items.Type
 			}
+
 			if prop.Items.Format != "" {
 				items["format"] = prop.Items.Format
 			}
+
 			property["items"] = items
 		}
 

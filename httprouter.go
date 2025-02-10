@@ -87,7 +87,13 @@ func (a *HTTPServer) Init() {
 	if a.initialized {
 		return
 	}
-	a.router.registerLateRoutes()
+
+	for _, route := range a.router.lateRoutes {
+		a.router.Handle(route.method, route.path, route.handler, route.mw...)
+	}
+
+	a.router.lateRoutes = make([]*lateRoute, 0)
+
 	a.initialized = true
 }
 

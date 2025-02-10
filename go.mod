@@ -8,11 +8,12 @@ require (
 	dario.cat/mergo v1.0.1
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/go-jose/go-jose/v3 v3.0.3
+	github.com/gobwas/glob v0.2.3
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/golang-jwt/jwt/v4 v4.5.1
-	github.com/goliatone/go-print v0.0.1
 	github.com/goliatone/hashid v0.0.6
+	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1
@@ -90,7 +91,6 @@ require (
 	github.com/golang/glog v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/goliatone/go-masker v0.0.1 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/wire v0.5.0 // indirect
@@ -135,7 +135,6 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.2.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/showa-93/go-mask v0.6.2 // indirect
 	github.com/slack-go/slack v0.12.5 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
 	github.com/ugorji/go v1.1.4 // indirect

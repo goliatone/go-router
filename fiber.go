@@ -10,9 +10,11 @@ import (
 )
 
 type FiberAdapter struct {
-	app    *fiber.App
-	router *FiberRouter
-	opts   []func(*fiber.App) *fiber.App
+	// BaseAdapter
+	app         *fiber.App
+	initialized bool
+	router      *FiberRouter
+	opts        []func(*fiber.App) *fiber.App
 }
 
 func newFiberInstance() *fiber.App {
@@ -37,7 +39,10 @@ func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 		app = opt(app)
 	}
 
-	return &FiberAdapter{app: app, opts: opts}
+	return &FiberAdapter{
+		app:  app,
+		opts: opts,
+	}
 }
 
 func DefaultFiberOptions(app *fiber.App) *fiber.App {
@@ -70,8 +75,10 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 
 func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
 	path, handler := r.makeStaticHandler(prefix, root, config...)
-	r.Get(path+"/*", handler)
-	r.Head(path+"/*", handler)
+	// r.Get(path+"/*", handler)
+	// r.Head(path+"/*", handler)
+	r.addLateRoute(GET, path+"/*", handler, "static.get")
+	r.addLateRoute(HEAD, path+"/*", handler, "static.head")
 	return r
 }
 
@@ -79,7 +86,22 @@ func (r *FiberRouter) GetPrefix() string {
 	return r.prefix
 }
 
+func (a *FiberAdapter) Init() {
+	if a.initialized {
+		return
+	}
+
+	for _, route := range a.router.lateRoutes {
+		a.router.Handle(route.method, route.path, route.handler, route.mw...)
+	}
+
+	a.router.lateRoutes = make([]*lateRoute, 0)
+
+	a.initialized = true
+}
+
 func (a *FiberAdapter) Serve(address string) error {
+	a.Init()
 	return a.app.Listen(address)
 }
 

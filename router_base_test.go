@@ -149,6 +149,8 @@ func TestRouter_Static(t *testing.T) {
 			r := adapter.Router()
 
 			tt.setupStatic(r)
+			adapter.Init()
+
 			app := adapter.WrappedRouter()
 
 			req := httptest.NewRequest(tt.method, tt.requestPath, nil)

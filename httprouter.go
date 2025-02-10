@@ -24,6 +24,7 @@ type HTTPServer struct {
 	router            *HTTPRouter
 	views             Views
 	passLocalsToViews bool
+	initialized       bool
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -82,7 +83,17 @@ func (a *HTTPServer) WrappedRouter() *httprouter.Router {
 	return a.httpRouter
 }
 
+func (a *HTTPServer) Init() {
+	if a.initialized {
+		return
+	}
+	a.router.registerLateRoutes()
+	a.initialized = true
+}
+
 func (a *HTTPServer) Serve(address string) error {
+
+	a.Init()
 
 	if a.views != nil {
 		if err := a.views.Load(); err != nil {
@@ -94,6 +105,7 @@ func (a *HTTPServer) Serve(address string) error {
 		Addr:    address,
 		Handler: a.httpRouter,
 	}
+
 	a.server = srv
 	return srv.ListenAndServe()
 }
@@ -113,8 +125,8 @@ type HTTPRouter struct {
 
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
 	path, handler := r.makeStaticHandler(prefix, root, config...)
-	r.Get(path+"/*", handler)
-	r.Head(path+"/*", handler)
+	r.addLateRoute(GET, path+"/*", handler, "static.get")
+	r.addLateRoute(HEAD, path+"/*", handler, "static.head")
 	return r
 }
 

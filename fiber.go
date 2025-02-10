@@ -75,8 +75,6 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 
 func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
 	path, handler := r.makeStaticHandler(prefix, root, config...)
-	// r.Get(path+"/*", handler)
-	// r.Head(path+"/*", handler)
 	r.addLateRoute(GET, path+"/*", handler, "static.get")
 	r.addLateRoute(HEAD, path+"/*", handler, "static.head")
 	return r

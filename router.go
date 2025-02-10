@@ -108,6 +108,8 @@ type ResponseWriter interface {
 	// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 	NoContent(code int) error
 	SetHeader(string, string) Context
+	// Download(file string, filename ...string) error
+	// SendFile(file string, compress ...bool) error
 }
 
 // ContextStore is a request scoped, in-memoroy
@@ -196,6 +198,7 @@ type PrefixedRouter interface {
 
 // Server represents a generic server interface
 type Server[T any] interface {
+	Init()
 	Router() Router[T]
 	WrapHandler(HandlerFunc) any
 	WrappedRouter() T

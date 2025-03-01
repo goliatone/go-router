@@ -57,59 +57,59 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 
 	var viewEngine fiber.Views
 
-	if cfg.GetEmbed() {
-		sources := make([]fs.FS, 0)
+	sources := make([]fs.FS, 0)
 
-		// add dev directory w highest priority
-		devDir := cfg.GetDevDir()
-		if devDir != "" {
-			absDevDir, err := filepath.Abs(devDir)
-			if err == nil && DirExists(absDevDir) {
-				if cfg.GetDebug() {
-					log.Printf("Using dev directory: %s", absDevDir)
-				}
-				sources = append(sources, os.DirFS(absDevDir))
-			} else if cfg.GetDebug() {
-				log.Printf("Dev directory not found or accessible: %s", devDir)
+	// add dev directory w highest priority
+	devDir := cfg.GetDevDir()
+	if devDir != "" {
+		absDevDir, err := filepath.Abs(devDir)
+		if err == nil && DirExists(absDevDir) {
+			if cfg.GetDebug() {
+				log.Printf("Using dev directory: %s", absDevDir)
 			}
+			sources = append(sources, os.DirFS(absDevDir))
+		} else if cfg.GetDebug() {
+			log.Printf("Dev directory not found or accessible: %s", devDir)
 		}
+	}
 
+	if cfg.GetEmbed() {
 		// add all embedded fs with priority order
 		embeddedSources := cfg.GetTemplatesFS()
 		if len(embeddedSources) > 0 {
 			sources = append(sources, embeddedSources...)
 		}
-
-		if len(sources) == 0 {
-			return nil, fmt.Errorf("no valid template sources found")
-		}
-
-		compositeFS := cfs.NewCompositeFS(sources...)
-
-		if cfg.GetDebug() {
-			log.Println("Available templates:")
-			entries, _ := fs.ReadDir(compositeFS, NormalizePath(cfg.GetDirFS()))
-			for _, entry := range entries {
-				log.Printf("  - %s\n", NormalizePath(cfg.GetDirFS())+"/"+entry.Name())
-			}
-
-			DebugAssetPaths(compositeFS)
-		}
-
-		engine := django.NewPathForwardingFileSystem(
-			http.FS(compositeFS),
-			NormalizePath(cfg.GetDirFS()),
-			cfg.GetExt(),
-		)
-
-		viewEngine = engine
 	} else {
 		dirOS := cfg.GetDirOS()
 		if !DirExists(dirOS) {
 			return nil, fmt.Errorf("template directory does not exist: %s", dirOS)
 		}
-		viewEngine = django.New(dirOS, cfg.GetExt())
+		sources = append(sources, os.DirFS(dirOS))
 	}
+
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("no valid template sources found")
+	}
+
+	compositeFS := cfs.NewCompositeFS(sources...)
+
+	if cfg.GetDebug() {
+		log.Println("Available templates:")
+		entries, _ := fs.ReadDir(compositeFS, NormalizePath(cfg.GetDirFS()))
+		for _, entry := range entries {
+			log.Printf("  - %s\n", NormalizePath(cfg.GetDirFS())+"/"+entry.Name())
+		}
+
+		DebugAssetPaths(compositeFS)
+	}
+
+	engine := django.NewPathForwardingFileSystem(
+		http.FS(compositeFS),
+		NormalizePath(cfg.GetDirFS()),
+		cfg.GetExt(),
+	)
+
+	viewEngine = engine
 
 	if engine, ok := viewEngine.(*django.Engine); ok {
 		engine.Reload(cfg.GetReload())

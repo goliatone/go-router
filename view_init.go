@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log"
 	"net/http"
+	"os"
+	ppath "path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -15,50 +18,114 @@ import (
 	"github.com/gobwas/glob"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/template/django/v3"
+	cfs "github.com/goliatone/go-composite-fs"
 	"github.com/goodsign/monday"
 )
 
+type nameable interface {
+	Name() string
+}
+
 type ViewConfigProvider interface {
-	ViewFactoryConfigProvider
+	GetReload() bool
+	GetDebug() bool
+	GetEmbed() bool
 
 	GetCSSPath() string
 	GetJSPath() string
-	GetRemovePathPrefix() string
-	GetReload() bool
-	GetDebug() bool
-	GetAssetsFS() fs.FS
-	GetTemplateFunctions() map[string]any
-}
-
-type ViewFactoryConfigProvider interface {
-	GetEmbed() bool
+	GetDevDir() string
 	GetDirFS() string
 	GetDirOS() string
+
+	GetRemovePathPrefix() string
+	GetTemplateFunctions() map[string]any
+
 	GetExt() string
-	GetTemplatesFS() fs.FS
+
+	GetAssetsFS() fs.FS
+	GetTemplatesFS() []fs.FS
 }
 
-type ViewFactory func(ViewFactoryConfigProvider) Views
+type ViewFactory func(ViewConfigProvider) (Views, error)
 
-func DefaultViewEngine(opts ViewFactoryConfigProvider) Views {
-	var viewEngine fiber.Views
-	if opts.GetEmbed() {
-		viewEngine = django.NewPathForwardingFileSystem(
-			http.FS(opts.GetTemplatesFS()),
-			opts.GetDirFS(),
-			opts.GetExt(),
-		)
-	} else {
-		viewEngine = django.New(opts.GetDirOS(), opts.GetExt())
+func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
+	if err := ValidateConfig(cfg); err != nil {
+		return nil, fmt.Errorf("view engine config validation failed: %w", err)
 	}
-	return viewEngine
+
+	var viewEngine fiber.Views
+
+	if cfg.GetEmbed() {
+		// Build file sources in priority order (highest first)
+		sources := make([]fs.FS, 0)
+
+		// Add dev directory if specified (highest priority)
+		devDir := cfg.GetDevDir()
+		if devDir != "" {
+			absDevDir, err := filepath.Abs(devDir)
+			if err == nil && DirExists(absDevDir) {
+				if cfg.GetDebug() {
+					log.Printf("Using dev directory: %s", absDevDir)
+				}
+				sources = append(sources, os.DirFS(absDevDir))
+			} else if cfg.GetDebug() {
+				log.Printf("Dev directory not found or accessible: %s", devDir)
+			}
+		}
+
+		// Add all embedded filesystems (priority order)
+		embeddedSources := cfg.GetTemplatesFS()
+		if len(embeddedSources) > 0 {
+			sources = append(sources, embeddedSources...)
+		}
+
+		if len(sources) == 0 {
+			return nil, fmt.Errorf("no valid template sources found")
+		}
+
+		// Create composite filesystem from all sources
+		compositeFS := cfs.NewCompositeFS(sources...)
+
+		// Print available templates in debug mode
+		if cfg.GetDebug() {
+			log.Println("Available templates:")
+			cfs.ReadDir(compositeFS, cfg.GetDirFS())
+			entries, _ := cfs.ReadDir(compositeFS, NormalizePath(cfg.GetDirFS()))
+			for _, entry := range entries {
+				log.Printf("  - %s", entry.Name())
+			}
+		}
+
+		// Create the view engine with the composite filesystem
+		engine := django.NewPathForwardingFileSystem(
+			http.FS(compositeFS),
+			NormalizePath(cfg.GetDirFS()),
+			cfg.GetExt(),
+		)
+
+		viewEngine = engine
+	} else {
+		// Use standard OS-based template loading
+		dirOS := cfg.GetDirOS()
+		if !DirExists(dirOS) {
+			return nil, fmt.Errorf("template directory does not exist: %s", dirOS)
+		}
+
+		viewEngine = django.New(dirOS, cfg.GetExt())
+	}
+
+	return viewEngine, nil
 }
 
 // InitializeViewEngine will initialize a view engine with default values
-func InitializeViewEngine(opts ViewConfigProvider) Views {
+func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
+	var err error
 	var viewEngine fiber.Views
 
-	viewEngine = DefaultViewEngine(opts)
+	viewEngine, err = DefaultViewEngine(opts)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing views: %w", err)
+	}
 
 	d, _ := viewEngine.(*django.Engine)
 
@@ -67,36 +134,72 @@ func InitializeViewEngine(opts ViewConfigProvider) Views {
 
 	d.AddFuncMap(opts.GetTemplateFunctions())
 
+	fmt.Println("=========== VIEW INIT =============")
+	fmt.Println("HERE WE ARE RUNING...")
+	fmt.Println("===================================")
+
+	assetsFs := opts.GetAssetsFS()
+	if !opts.GetEmbed() {
+		assetsFs = os.DirFS(opts.GetDirOS())
+	}
+
+	jsPath := NormalizePath(opts.GetJSPath())
+	cssPath := NormalizePath(opts.GetCSSPath())
+	assetPrefix := NormalizePath(opts.GetRemovePathPrefix())
+
+	if !DirExists(jsPath, assetsFs) {
+		return nil, errors.New("init view: JS directory does not exist: " + jsPath)
+	}
+
+	if !DirExists(cssPath, assetsFs) {
+		return nil, errors.New("init view: CSS directory does not exist: " + cssPath)
+	}
+
 	d.AddFunc("css", func(name string) template.HTML {
 		var res template.HTML
 		g := glob.MustCompile(name)
 
-		matcher := func(path, name string, err error) error {
+		matcher := func(path string, info nameable, err error) error {
 			if err != nil {
-				return err
+				if opts.GetDebug() {
+					log.Printf("Error accessing path %s: %v", path, err)
+				}
+				return nil
 			}
+
+			filename := info.Name()
 			path = filepath.ToSlash(path)
-			path = strings.Replace(path, opts.GetRemovePathPrefix(), "", 1)
-			if g.Match(name) {
-				res = template.HTML("<link rel=\"stylesheet\" href=\"/" + path + "\">")
+
+			urlPath := path
+			if assetPrefix != "" && strings.HasPrefix(urlPath, assetPrefix) {
+				urlPath = strings.Replace(urlPath, assetPrefix, "", 1)
+			}
+
+			urlPath = "/" + strings.TrimPrefix(urlPath, "/")
+
+			if opts.GetDebug() {
+				log.Printf("CSS: filename=%s, path=%s, urlPath=%s, match=%t",
+					filename, path, urlPath, g.Match(filename))
+			}
+
+			if g.Match(filename) {
+				res = template.HTML("<link rel=\"stylesheet\" href=\"" + urlPath + "\">")
+				return filepath.SkipDir
 			}
 			return nil
 		}
-		// TODO: os.DirFS(opts.GetCSSPath())
-		if opts.GetEmbed() {
-			fs.WalkDir(opts.GetAssetsFS(), opts.GetCSSPath(), func(path string, info fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				return matcher(path, info.Name(), err)
-			})
-		} else {
-			filepath.Walk(opts.GetCSSPath(), func(path string, info fs.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-				return matcher(path, info.Name(), err)
-			})
+
+		if opts.GetDebug() {
+			log.Printf("Looking for CSS in embedded path: %s", cssPath)
+		}
+
+		fs.WalkDir(assetsFs, cssPath, func(path string, info fs.DirEntry, err error) error {
+			return matcher(path, info, err)
+		})
+
+		if res == "" && opts.GetDebug() {
+			res = template.HTML("<!-- CSS NOT FOUND: " + name + " (looked in " + cssPath + ") -->")
+			log.Printf("WARNING: Could not resolve CSS: %s", name)
 		}
 
 		return res
@@ -107,54 +210,68 @@ func InitializeViewEngine(opts ViewConfigProvider) Views {
 		var res template.HTML
 		g := glob.MustCompile(name)
 
-		matcher := func(path, name string, err error) error {
+		matcher := func(path string, info nameable, err error) error {
 			if err != nil {
-				return err
+				if opts.GetDebug() {
+					log.Printf("Error accessing path %s: %v", path, err)
+				}
+				return nil
 			}
 
+			filename := info.Name()
 			path = filepath.ToSlash(path)
-			path = strings.Replace(path, opts.GetRemovePathPrefix(), "", 1)
 
-			if g.Match(name) {
+			urlPath := path
+			if assetPrefix != "" && strings.HasPrefix(urlPath, assetPrefix) {
+				urlPath = strings.Replace(urlPath, assetPrefix, "", 1)
+			}
+
+			urlPath = "/" + strings.TrimPrefix(urlPath, "/")
+
+			if opts.GetDebug() {
+				log.Printf("JS: filename=%s, path=%s, urlPath=%s, match=%t",
+					filename, path, urlPath, g.Match(filename))
+			}
+
+			if g.Match(filename) {
 				res = template.HTML("<script async src=\"/" + path + "\"></script>")
+				return filepath.SkipDir
 			}
 			return nil
 		}
-		// TODO: os.DirFS(opts.GetCSSPath())
-		if opts.GetEmbed() {
-			fs.WalkDir(opts.GetAssetsFS(), opts.GetJSPath(), func(path string, info fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				return matcher(path, info.Name(), err)
-			})
-		} else {
-			filepath.Walk(opts.GetJSPath(), func(path string, info fs.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-				return matcher(path, info.Name(), err)
-			})
+
+		if opts.GetDebug() {
+			log.Printf("Looking for JS in embedded path: %s", jsPath)
+		}
+
+		fs.WalkDir(assetsFs, jsPath, func(path string, info fs.DirEntry, err error) error {
+			return matcher(path, info, err)
+		})
+
+		if res == "" && opts.GetDebug() {
+			res = template.HTML("<!-- JS NOT FOUND: " + name + " (looked in " + jsPath + ") -->")
+			log.Printf("WARNING: Could not resolve JS: %s", name)
 		}
 
 		return res
 	})
 
-	d.AddFunc("to_json", func(data any) string {
-		b, err := json.MarshalIndent(data, "", "    ")
-		if err != nil {
-			return ""
-		}
-		return string(b)
-	})
+	d.AddFunc("to_json", toJSON)
 
-	d.AddFunc("match_str", func(a, b string, ok, ko string) string {
-		if a == b {
-			return ok
-		}
-		return ko
-	})
+	d.AddFunc("match_str", matchStr)
 
+	d.AddFunc("str_time", makeTimeParser())
+
+	d.AddFunc("conditional_str", conditionalStr)
+
+	d.AddFunc("match_str", matchStr)
+
+	d.AddFunc("either", eitherCmp)
+
+	return viewEngine, nil
+}
+
+func makeTimeParser() func(val any, format string, lang string) string {
 	var TimeFormats = []string{
 		"2006", "2006-1", "2006-1-2", "2006-1-2 15", "2006-1-2 15:4", "2006-1-2 15:4:5", "1-2",
 		"15:4:5", "15:4", "15",
@@ -180,7 +297,7 @@ func InitializeViewEngine(opts ViewConfigProvider) Views {
 		return t, err
 	}
 
-	d.AddFunc("str_time", func(val any, format string, lang string) string {
+	return func(val any, format string, lang string) string {
 		if val == nil {
 			return ""
 		}
@@ -202,86 +319,190 @@ func InitializeViewEngine(opts ViewConfigProvider) Views {
 		}
 
 		return monday.Format(d, format, mloc)
-	})
+	}
+}
 
-	d.AddFunc("conditional_str", func(arg any, ok, ko string) string {
-		if arg == nil {
-			return ko
-		}
+func eitherCmp(val any, def any) any {
+	if val == nil {
+		return def
+	}
 
-		switch t := arg.(type) {
-		case string:
-			if t == "" {
-				return ko
-			}
-		case bool:
-			if t == false {
-				return ko
-			}
-		case int, int8, int16, int32, int64:
-			if t == 0 {
-				return ko
-			}
-		case uint, uint8, uint16, uint32, uint64:
-			if t == 0 {
-				return ko
-			}
-		case float32, float64:
-			if t == 0 {
-				return ko
-			}
-		default:
-			v := reflect.ValueOf(t)
-			if !v.IsValid() || reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface()) {
-				return ko
-			}
-		}
-
-		return ok
-	})
-
-	d.AddFunc("match_str", func(a, b any, ok, ko string) string {
-		if a == b {
-			return ok
-		}
-		return ko
-	})
-
-	d.AddFunc("either", func(val any, def any) any {
-		if val == nil {
+	switch t := val.(type) {
+	case string:
+		if t == "" {
 			return def
 		}
+	case bool:
+		if t == false {
+			return def
+		}
+	case int, int8, int16, int32, int64:
+		if t == 0 {
+			return def
+		}
+	case uint, uint8, uint16, uint32, uint64:
+		if t == 0 {
+			return def
+		}
+	case float32, float64:
+		if t == 0 {
+			return def
+		}
+	default:
+		v := reflect.ValueOf(t)
+		if !v.IsValid() || reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface()) {
+			return def
+		}
+	}
 
-		switch t := val.(type) {
-		case string:
-			if t == "" {
-				return def
-			}
-		case bool:
-			if t == false {
-				return def
-			}
-		case int, int8, int16, int32, int64:
-			if t == 0 {
-				return def
-			}
-		case uint, uint8, uint16, uint32, uint64:
-			if t == 0 {
-				return def
-			}
-		case float32, float64:
-			if t == 0 {
-				return def
-			}
-		default:
-			v := reflect.ValueOf(t)
-			if !v.IsValid() || reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface()) {
-				return def
-			}
+	return val
+}
+
+func toJSON(data any) string {
+	b, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func matchStr(a, b string, ok, ko string) string {
+	if a == b {
+		return ok
+	}
+	return ko
+}
+
+func conditionalStr(arg any, ok, ko string) string {
+	if arg == nil {
+		return ko
+	}
+
+	switch t := arg.(type) {
+	case string:
+		if t == "" {
+			return ko
+		}
+	case bool:
+		if t == false {
+			return ko
+		}
+	case int, int8, int16, int32, int64:
+		if t == 0 {
+			return ko
+		}
+	case uint, uint8, uint16, uint32, uint64:
+		if t == 0 {
+			return ko
+		}
+	case float32, float64:
+		if t == 0 {
+			return ko
+		}
+	default:
+		v := reflect.ValueOf(t)
+		if !v.IsValid() || reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface()) {
+			return ko
+		}
+	}
+
+	return ok
+}
+
+// ValidateConfig checks for common configuration errors
+func ValidateConfig(cfg ViewConfigProvider) error {
+	errors := []string{}
+
+	if cfg.GetEmbed() {
+		if strings.HasPrefix(cfg.GetCSSPath(), "/") {
+			errors = append(errors, "CSS path should not start with '/' when embed is true")
 		}
 
-		return val
+		if strings.HasPrefix(cfg.GetJSPath(), "/") {
+			errors = append(errors, "JS path should not start with '/' when embed is true")
+		}
+
+		if cfg.GetTemplatesFS() == nil {
+			errors = append(errors, "No template filesystems provided with embed is true")
+		}
+	} else {
+		if _, err := os.Stat(cfg.GetDirOS()); os.IsNotExist(err) {
+			errors = append(errors, fmt.Sprintf("Template directory '%s' does not exist", cfg.GetDirOS()))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("Configuration errors:\n- %s", strings.Join(errors, "\n- "))
+	}
+
+	return nil
+}
+
+// DebugAssetPaths prints all available assets for debugging
+func DebugAssetPaths(dir fs.FS) {
+	fmt.Println("=== Available Asset Paths ===")
+
+	fs.WalkDir(dir, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() {
+			fmt.Println("  - ", path)
+		}
+		return nil
 	})
 
-	return viewEngine
+	fmt.Println("============================")
+}
+
+// NormalizePath ensures consistent path formatting
+func NormalizePath(path string) string {
+	path = ppath.Clean(path)
+	path = filepath.ToSlash(path)
+	path = strings.TrimPrefix(path, "/")
+
+	// remove trailing slash if present unless it's the root path
+	if path != "" {
+		path = strings.TrimSuffix(path, "/")
+	}
+
+	if path == "." {
+		path = ""
+	}
+
+	return path
+}
+
+// ResolvePath combines base paths with subdirectories properly
+func ResolvePath(base, subPath string) string {
+	base = NormalizePath(base)
+	subPath = NormalizePath(subPath)
+
+	if base == "" {
+		return subPath
+	}
+
+	if subPath == "" {
+		return base
+	}
+
+	return base + "/" + subPath
+}
+
+// DirExists checks if a directory exists and is accessible
+func DirExists(path string, afs ...fs.FS) bool {
+	var err error
+	var info os.FileInfo
+
+	if len(afs) > 0 {
+		info, err = fs.Stat(afs[0], path)
+	} else {
+		info, err = os.Stat(path)
+	}
+
+	if err != nil {
+		return false // prob doesnt exist or perms errors?
+	}
+
+	return info.IsDir()
 }

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	ppath "path"
 	"path/filepath"
 	"reflect"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/gobwas/glob"
 	"github.com/gofiber/fiber/v2"
+	ftpl "github.com/gofiber/template"
 	"github.com/gofiber/template/django/v3"
 	cfs "github.com/goliatone/go-composite-fs"
 	"github.com/goodsign/monday"
@@ -56,10 +58,9 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 	var viewEngine fiber.Views
 
 	if cfg.GetEmbed() {
-		// Build file sources in priority order (highest first)
 		sources := make([]fs.FS, 0)
 
-		// Add dev directory if specified (highest priority)
+		// add dev directory w highest priority
 		devDir := cfg.GetDevDir()
 		if devDir != "" {
 			absDevDir, err := filepath.Abs(devDir)
@@ -73,7 +74,7 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 			}
 		}
 
-		// Add all embedded filesystems (priority order)
+		// add all embedded fs with priority order
 		embeddedSources := cfg.GetTemplatesFS()
 		if len(embeddedSources) > 0 {
 			sources = append(sources, embeddedSources...)
@@ -83,20 +84,18 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 			return nil, fmt.Errorf("no valid template sources found")
 		}
 
-		// Create composite filesystem from all sources
 		compositeFS := cfs.NewCompositeFS(sources...)
 
-		// Print available templates in debug mode
 		if cfg.GetDebug() {
 			log.Println("Available templates:")
-			cfs.ReadDir(compositeFS, cfg.GetDirFS())
-			entries, _ := cfs.ReadDir(compositeFS, NormalizePath(cfg.GetDirFS()))
+			entries, _ := fs.ReadDir(compositeFS, NormalizePath(cfg.GetDirFS()))
 			for _, entry := range entries {
-				log.Printf("  - %s", entry.Name())
+				log.Printf("  - %s\n", NormalizePath(cfg.GetDirFS())+"/"+entry.Name())
 			}
+
+			DebugAssetPaths(compositeFS)
 		}
 
-		// Create the view engine with the composite filesystem
 		engine := django.NewPathForwardingFileSystem(
 			http.FS(compositeFS),
 			NormalizePath(cfg.GetDirFS()),
@@ -105,13 +104,17 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 
 		viewEngine = engine
 	} else {
-		// Use standard OS-based template loading
 		dirOS := cfg.GetDirOS()
 		if !DirExists(dirOS) {
 			return nil, fmt.Errorf("template directory does not exist: %s", dirOS)
 		}
-
 		viewEngine = django.New(dirOS, cfg.GetExt())
+	}
+
+	if engine, ok := viewEngine.(*django.Engine); ok {
+		engine.Reload(cfg.GetReload())
+		engine.Debug(cfg.GetDebug())
+		engine.AddFuncMap(cfg.GetTemplateFunctions())
 	}
 
 	return viewEngine, nil
@@ -127,12 +130,12 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 		return nil, fmt.Errorf("error initializing views: %w", err)
 	}
 
-	d, _ := viewEngine.(*django.Engine)
-
-	d.Reload(opts.GetReload())
-	d.Debug(opts.GetDebug())
-
-	d.AddFuncMap(opts.GetTemplateFunctions())
+	d, ok := viewEngine.(interface {
+		AddFunc(name string, fn interface{}) ftpl.IEngineCore
+	})
+	if !ok {
+		return nil, fmt.Errorf("unexpected view engine type: %T", viewEngine)
+	}
 
 	fmt.Println("=========== VIEW INIT =============")
 	fmt.Println("HERE WE ARE RUNING...")
@@ -143,9 +146,18 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 		assetsFs = os.DirFS(opts.GetDirOS())
 	}
 
+	if opts.GetDebug() {
+		DebugAssetPaths(assetsFs)
+	}
+
+	assetPrefix := NormalizePath(opts.GetRemovePathPrefix())
 	jsPath := NormalizePath(opts.GetJSPath())
 	cssPath := NormalizePath(opts.GetCSSPath())
-	assetPrefix := NormalizePath(opts.GetRemovePathPrefix())
+
+	if opts.GetEmbed() {
+		jsPath = path.Join(assetPrefix, NormalizePath(opts.GetJSPath()))
+		cssPath = path.Join(assetPrefix, NormalizePath(opts.GetCSSPath()))
+	}
 
 	if !DirExists(jsPath, assetsFs) {
 		return nil, errors.New("init view: JS directory does not exist: " + jsPath)
@@ -234,7 +246,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 			}
 
 			if g.Match(filename) {
-				res = template.HTML("<script async src=\"/" + path + "\"></script>")
+				res = template.HTML("<script async src=\"" + urlPath + "\"></script>")
 				return filepath.SkipDir
 			}
 			return nil

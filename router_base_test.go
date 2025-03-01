@@ -1,4 +1,4 @@
-package router
+package router_test
 
 import (
 	"io"
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/goliatone/go-router"
 )
 
 func TestRouter_Static(t *testing.T) {
@@ -37,7 +38,7 @@ func TestRouter_Static(t *testing.T) {
 	tests := []struct {
 		name        string
 		prefix      string
-		setupStatic func(Router[*fiber.App])
+		setupStatic func(router.Router[*fiber.App])
 		requestPath string
 		method      string
 		wantStatus  int
@@ -47,7 +48,7 @@ func TestRouter_Static(t *testing.T) {
 		{
 			name:   "Serve index.html",
 			prefix: "/public",
-			setupStatic: func(r Router[*fiber.App]) {
+			setupStatic: func(r router.Router[*fiber.App]) {
 				r.Static("/public", tempDir)
 			},
 			requestPath: "/public",
@@ -58,7 +59,7 @@ func TestRouter_Static(t *testing.T) {
 		{
 			name:   "Serve CSS file",
 			prefix: "/public",
-			setupStatic: func(r Router[*fiber.App]) {
+			setupStatic: func(r router.Router[*fiber.App]) {
 				r.Static("/public", tempDir)
 			},
 			requestPath: "/public/style.css",
@@ -72,7 +73,7 @@ func TestRouter_Static(t *testing.T) {
 		{
 			name:   "Serve nested file",
 			prefix: "/public",
-			setupStatic: func(r Router[*fiber.App]) {
+			setupStatic: func(r router.Router[*fiber.App]) {
 				r.Static("/public", tempDir)
 			},
 			requestPath: "/public/nested/file.txt",
@@ -83,7 +84,7 @@ func TestRouter_Static(t *testing.T) {
 		{
 			name:   "HEAD request",
 			prefix: "/public",
-			setupStatic: func(r Router[*fiber.App]) {
+			setupStatic: func(r router.Router[*fiber.App]) {
 				r.Static("/public", tempDir)
 			},
 			requestPath: "/public/style.css",
@@ -96,7 +97,7 @@ func TestRouter_Static(t *testing.T) {
 		{
 			name:   "File not found",
 			prefix: "/public",
-			setupStatic: func(r Router[*fiber.App]) {
+			setupStatic: func(r router.Router[*fiber.App]) {
 				r.Static("/public", tempDir)
 			},
 			requestPath: "/public/notfound.txt",
@@ -106,8 +107,8 @@ func TestRouter_Static(t *testing.T) {
 		{
 			name:   "Custom options - MaxAge",
 			prefix: "/assets",
-			setupStatic: func(r Router[*fiber.App]) {
-				r.Static("/assets", tempDir, Static{
+			setupStatic: func(r router.Router[*fiber.App]) {
+				r.Static("/assets", tempDir, router.Static{
 					MaxAge: 3600,
 					Root:   tempDir, // Explicitly set root
 				})
@@ -123,8 +124,8 @@ func TestRouter_Static(t *testing.T) {
 		{
 			name:   "Custom options - Download",
 			prefix: "/downloads",
-			setupStatic: func(r Router[*fiber.App]) {
-				r.Static("/downloads", tempDir, Static{
+			setupStatic: func(r router.Router[*fiber.App]) {
+				r.Static("/downloads", tempDir, router.Static{
 					Download: true,
 					Root:     tempDir, // Explicitly set root
 				})
@@ -145,7 +146,7 @@ func TestRouter_Static(t *testing.T) {
 			t.Logf("Request path: %s", tt.requestPath)
 			t.Logf("Temp dir: %s", tempDir)
 
-			adapter := NewFiberAdapter()
+			adapter := router.NewFiberAdapter()
 			r := adapter.Router()
 
 			tt.setupStatic(r)

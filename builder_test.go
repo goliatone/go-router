@@ -1,4 +1,4 @@
-package router
+package router_test
 
 import (
 	"context"
@@ -6,31 +6,32 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/goliatone/go-router"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-var _ Context = newMockContext()
+var _ router.Context = newMockContext()
 
 func TestRouteBuilder_BasicRoute(t *testing.T) {
 
 	mockRouter := NewMockRouter()
 
-	builder := NewRouteBuilder(mockRouter)
+	builder := router.NewRouteBuilder(mockRouter)
 
-	handler := func(c Context) error {
+	handler := func(c router.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"msg": "hello"})
 	}
 
 	builder.
 		NewRoute().
-		Method(GET).
+		Method(router.GET).
 		Path("/hello").
 		Handler(handler).
 		Name("hello_route").
 		Description("Returns a friendly greeting").
 		Tags("greetings", "public").
-		Responses([]Response{
+		Responses([]router.Response{
 			{
 				Code:        http.StatusOK,
 				Description: "successful response",
@@ -46,7 +47,7 @@ func TestRouteBuilder_BasicRoute(t *testing.T) {
 
 	require.Len(t, mockRouter.GetRoutes(), 1)
 	r := mockRouter.GetRoutes()[0]
-	assert.Equal(t, GET, r.Method)
+	assert.Equal(t, router.GET, r.Method)
 	assert.Equal(t, "/hello", r.Path)
 	assert.Equal(t, "hello_route", r.NameVal)
 	assert.Equal(t, "Returns a friendly greeting", r.DescriptionVal)
@@ -59,10 +60,10 @@ func TestRouteBuilder_BasicRoute(t *testing.T) {
 func TestRouteBuilder_ValidationErrors(t *testing.T) {
 	mockRouter := NewMockRouter()
 
-	builder := NewRouteBuilder(mockRouter)
+	builder := router.NewRouteBuilder(mockRouter)
 
 	// Missing method and path, should cause validation error
-	builder.NewRoute().Handler(func(c Context) error {
+	builder.NewRoute().Handler(func(c router.Context) error {
 		return nil
 	})
 
@@ -75,25 +76,25 @@ func TestRouteBuilder_ValidationErrors(t *testing.T) {
 func TestRouteBuilder_MiddlewareChain(t *testing.T) {
 	mockRouter := NewMockRouter()
 
-	builder := NewRouteBuilder(mockRouter)
+	builder := router.NewRouteBuilder(mockRouter)
 
 	var order []string
 
-	mw1 := func(next HandlerFunc) HandlerFunc {
-		return func(c Context) error {
+	mw1 := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
 			order = append(order, "mw1")
 			return next(c)
 		}
 	}
 
-	mw2 := func(next HandlerFunc) HandlerFunc {
-		return func(c Context) error {
+	mw2 := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
 			order = append(order, "mw2")
 			return next(c)
 		}
 	}
 
-	handler := func(c Context) error {
+	handler := func(c router.Context) error {
 		order = append(order, "handler")
 		return nil
 	}
@@ -123,10 +124,10 @@ func TestRouteBuilder_MiddlewareChain(t *testing.T) {
 func TestRouteBuilder_GroupRoutes(t *testing.T) {
 	mockRouter := NewMockRouter()
 
-	builder := NewRouteBuilder(mockRouter)
+	builder := router.NewRouteBuilder(mockRouter)
 
 	// Create groups and routes at different levels
-	handler := func(c Context) error {
+	handler := func(c router.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"msg": "ok"})
 	}
 
@@ -176,58 +177,58 @@ func TestRouteBuilder_GroupRoutes(t *testing.T) {
 	// Check root route
 	root := routeMap["root"]
 	require.NotNil(t, root)
-	assert.Equal(t, GET, root.Method)
+	assert.Equal(t, router.GET, root.Method)
 	assert.Equal(t, "/", root.Path)
 
 	// Check API route
 	apiRoute := routeMap["api.items.create"]
 	require.NotNil(t, apiRoute)
-	assert.Equal(t, POST, apiRoute.Method)
+	assert.Equal(t, router.POST, apiRoute.Method)
 	assert.Equal(t, "/api/items", apiRoute.Path)
 
 	// Check nested V1 route
 	v1Route := routeMap["api.v1.users.list"]
 	require.NotNil(t, v1Route)
-	assert.Equal(t, GET, v1Route.Method)
+	assert.Equal(t, router.GET, v1Route.Method)
 	assert.Equal(t, "/api/v1/users", v1Route.Path)
 
 	// Check admin route
 	adminRoute := routeMap["admin.users.delete"]
 	require.NotNil(t, adminRoute)
-	assert.Equal(t, DELETE, adminRoute.Method)
+	assert.Equal(t, router.DELETE, adminRoute.Method)
 	assert.Equal(t, "/admin/users", adminRoute.Path)
 }
 
 func TestRouteBuilder_GroupMiddleware(t *testing.T) {
 	mockRouter := NewMockRouter()
 
-	builder := NewRouteBuilder(mockRouter)
+	builder := router.NewRouteBuilder(mockRouter)
 
 	var order []string
 
 	// Middleware for different levels
-	rootMw := func(next HandlerFunc) HandlerFunc {
-		return func(c Context) error {
+	rootMw := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
 			order = append(order, "root")
 			return next(c)
 		}
 	}
 
-	apiMw := func(next HandlerFunc) HandlerFunc {
-		return func(c Context) error {
+	apiMw := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
 			order = append(order, "api")
 			return next(c)
 		}
 	}
 
-	v1Mw := func(next HandlerFunc) HandlerFunc {
-		return func(c Context) error {
+	v1Mw := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
 			order = append(order, "v1")
 			return next(c)
 		}
 	}
 
-	handler := func(c Context) error {
+	handler := func(c router.Context) error {
 		order = append(order, "handler")
 		return nil
 	}
@@ -289,9 +290,9 @@ func TestRouteBuilder_GroupMiddleware(t *testing.T) {
 func TestRouteBuilder_BuildFromDifferentLevels(t *testing.T) {
 	mockRouter := NewMockRouter()
 
-	builder := NewRouteBuilder(mockRouter)
+	builder := router.NewRouteBuilder(mockRouter)
 
-	handler := func(c Context) error {
+	handler := func(c router.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"msg": "ok"})
 	}
 
@@ -339,19 +340,19 @@ type MockRouter struct {
 	rootRouter *MockRouter // Reference to root router
 	routes     []*MockRouteInfo
 	Prefix     string
-	Mw         []MiddlewareFunc
+	Mw         []router.MiddlewareFunc
 }
 
 func NewMockRouter() *MockRouter {
 	m := &MockRouter{
 		routes: make([]*MockRouteInfo, 0),
-		Mw:     make([]MiddlewareFunc, 0),
+		Mw:     make([]router.MiddlewareFunc, 0),
 	}
 	m.rootRouter = m // Root router points to itself
 	return m
 }
 
-func (m *MockRouter) Handle(method HTTPMethod, path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
+func (m *MockRouter) Handle(method router.HTTPMethod, path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
 	allMw := append(m.Mw, mw...)
 	r := &MockRouteInfo{
 		Method:     method,
@@ -364,22 +365,22 @@ func (m *MockRouter) Handle(method HTTPMethod, path string, handler HandlerFunc,
 	return r
 }
 
-func (m *MockRouter) Group(prefix string) Router[*MockRouter] {
+func (m *MockRouter) Group(prefix string) router.Router[*MockRouter] {
 	return &MockRouter{
 		rootRouter: m.rootRouter, // Pass reference to root router
 		Prefix:     m.Prefix + prefix,
-		Mw:         append([]MiddlewareFunc{}, m.Mw...),
+		Mw:         append([]router.MiddlewareFunc{}, m.Mw...),
 		routes:     m.rootRouter.routes, // Share root's routes slice
 	}
 }
 
-func (m *MockRouter) WithGroup(path string, cb func(r Router[*MockRouter])) Router[*MockRouter] {
+func (m *MockRouter) WithGroup(path string, cb func(r router.Router[*MockRouter])) router.Router[*MockRouter] {
 	g := m.Group(path)
 	cb(g)
 	return m
 }
 
-func (m *MockRouter) Static(prefix, root string, config ...Static) Router[*MockRouter] {
+func (m *MockRouter) Static(prefix, root string, config ...router.Static) router.Router[*MockRouter] {
 	return m
 }
 
@@ -391,37 +392,37 @@ func (m *MockRouter) GetRoutes() []*MockRouteInfo {
 	return m.rootRouter.routes
 }
 
-func (m *MockRouter) Routes() []RouteDefinition {
-	return []RouteDefinition{}
+func (m *MockRouter) Routes() []router.RouteDefinition {
+	return []router.RouteDefinition{}
 }
 
-func (m *MockRouter) Use(mw ...MiddlewareFunc) Router[*MockRouter] {
+func (m *MockRouter) Use(mw ...router.MiddlewareFunc) router.Router[*MockRouter] {
 	m.Mw = append(m.Mw, mw...)
 	return m
 }
 
-func (m *MockRouter) Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
-	return m.Handle(GET, path, handler, mw...)
+func (m *MockRouter) Get(path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
+	return m.Handle(router.GET, path, handler, mw...)
 }
 
-func (m *MockRouter) Post(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
-	return m.Handle(POST, path, handler, mw...)
+func (m *MockRouter) Post(path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
+	return m.Handle(router.POST, path, handler, mw...)
 }
 
-func (m *MockRouter) Put(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
-	return m.Handle(PUT, path, handler, mw...)
+func (m *MockRouter) Put(path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
+	return m.Handle(router.PUT, path, handler, mw...)
 }
 
-func (m *MockRouter) Delete(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
-	return m.Handle(DELETE, path, handler, mw...)
+func (m *MockRouter) Delete(path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
+	return m.Handle(router.DELETE, path, handler, mw...)
 }
 
-func (m *MockRouter) Patch(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
-	return m.Handle(PATCH, path, handler, mw...)
+func (m *MockRouter) Patch(path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
+	return m.Handle(router.PATCH, path, handler, mw...)
 }
 
-func (m *MockRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
-	return m.Handle(HEAD, path, handler, mw...)
+func (m *MockRouter) Head(path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
+	return m.Handle(router.HEAD, path, handler, mw...)
 }
 
 func (m *MockRouter) PrintRoutes() {
@@ -430,10 +431,10 @@ func (m *MockRouter) PrintRoutes() {
 
 // MockRouteInfo implements RouteInfo and stores metadata for verification.
 type MockRouteInfo struct {
-	Method     HTTPMethod
+	Method     router.HTTPMethod
 	Path       string
-	Handler    HandlerFunc
-	Middleware []MiddlewareFunc
+	Handler    router.HandlerFunc
+	Middleware []router.MiddlewareFunc
 
 	NameVal        string
 	DescriptionVal string
@@ -442,35 +443,35 @@ type MockRouteInfo struct {
 	ResponsesVal   map[int]string
 }
 
-func (r *MockRouteInfo) SetName(n string) RouteInfo {
+func (r *MockRouteInfo) SetName(n string) router.RouteInfo {
 	r.NameVal = n
 	return r
 }
 
-func (r *MockRouteInfo) SetDescription(d string) RouteInfo {
+func (r *MockRouteInfo) SetDescription(d string) router.RouteInfo {
 	r.DescriptionVal = d
 	return r
 }
 
-func (r *MockRouteInfo) SetSummary(d string) RouteInfo {
+func (r *MockRouteInfo) SetSummary(d string) router.RouteInfo {
 	r.SummaryVal = d
 	return r
 }
 
-func (r *MockRouteInfo) AddTags(t ...string) RouteInfo {
+func (r *MockRouteInfo) AddTags(t ...string) router.RouteInfo {
 	r.TagsVal = append(r.TagsVal, t...)
 	return r
 }
 
-func (r *MockRouteInfo) AddParameter(name, in string, required bool, schema map[string]any) RouteInfo {
+func (r *MockRouteInfo) AddParameter(name, in string, required bool, schema map[string]any) router.RouteInfo {
 	return r
 }
 
-func (r *MockRouteInfo) SetRequestBody(desc string, required bool, content map[string]any) RouteInfo {
+func (r *MockRouteInfo) SetRequestBody(desc string, required bool, content map[string]any) router.RouteInfo {
 	return r
 }
 
-func (r *MockRouteInfo) AddResponse(code int, desc string, content map[string]any) RouteInfo {
+func (r *MockRouteInfo) AddResponse(code int, desc string, content map[string]any) router.RouteInfo {
 	if r.ResponsesVal == nil {
 		r.ResponsesVal = make(map[int]string)
 	}
@@ -488,7 +489,7 @@ func newMockContext() *mockContext {
 }
 
 func (m *mockContext) Redirect(location string, status ...int) error { return nil }
-func (m *mockContext) RedirectToRoute(routeName string, params ViewContext, status ...int) error {
+func (m *mockContext) RedirectToRoute(routeName string, params router.ViewContext, status ...int) error {
 	return nil
 }
 func (m *mockContext) RedirectBack(fallback string, status ...int) error { return nil }
@@ -496,7 +497,7 @@ func (m *mockContext) RedirectBack(fallback string, status ...int) error { retur
 func (m *mockContext) SendString(body string) error                          { return nil }
 func (m *mockContext) Referer() string                                       { return "" }
 func (m *mockContext) OriginalURL() string                                   { return "" }
-func (m *mockContext) Cookie(cookie *Cookie)                                 {}
+func (m *mockContext) Cookie(cookie *router.Cookie)                          {}
 func (m *mockContext) Cookies(key string, defaultValue ...string) string     { return "" }
 func (m *mockContext) CookieParser(out any) error                            { return nil }
 func (m *mockContext) Locals(key any, val ...any) any                        { return val }
@@ -508,7 +509,7 @@ func (m *mockContext) ParamsInt(name string, def int) int                    { r
 func (m *mockContext) Query(name, def string) string                         { return "" }
 func (m *mockContext) QueryInt(name string, def int) int                     { return 0 }
 func (m *mockContext) Queries() map[string]string                            { return map[string]string{} }
-func (m *mockContext) Status(code int) Context                               { return m }
+func (m *mockContext) Status(code int) router.Context                        { return m }
 func (m *mockContext) Send(body []byte) error                                { return nil }
 func (m *mockContext) JSON(code int, v any) error                            { return nil }
 func (m *mockContext) NoContent(code int) error                              { return nil }
@@ -521,10 +522,10 @@ func (m *mockContext) Context() context.Context {
 func (m *mockContext) SetContext(ctx context.Context) {
 	// Optionally store the context if needed, or just ignore for tests.
 }
-func (m *mockContext) Header(key string) string                   { return "" }
-func (m *mockContext) SetHeader(key string, value string) Context { return m }
-func (m *mockContext) Next() error                                { return errors.New("not implemented") }
-func (m *mockContext) Set(k string, v any)                        { m.store[k] = v }
+func (m *mockContext) Header(key string) string                          { return "" }
+func (m *mockContext) SetHeader(key string, value string) router.Context { return m }
+func (m *mockContext) Next() error                                       { return errors.New("not implemented") }
+func (m *mockContext) Set(k string, v any)                               { m.store[k] = v }
 func (m *mockContext) Get(k string, def any) any {
 	val, ok := m.store[k]
 	if !ok {

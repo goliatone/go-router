@@ -1,4 +1,4 @@
-package router
+package router_test
 
 import (
 	"context"
@@ -8,10 +8,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/goliatone/go-router"
 )
 
 func TestHTTPServer_Router(t *testing.T) {
-	adapter := NewHTTPServer()
+	adapter := router.NewHTTPServer()
 	if adapter == nil {
 		t.Fatal("Expected adapter to be non-nil")
 	}
@@ -23,14 +25,14 @@ func TestHTTPServer_Router(t *testing.T) {
 }
 
 func TestHTTPRouter_Handle(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		return ctx.Send([]byte("Hello, HTTPRouter!"))
 	}
 
-	router.Handle(GET, "/hello", handler)
+	r.Handle(router.GET, "/hello", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
@@ -59,18 +61,18 @@ func TestHTTPRouter_Handle(t *testing.T) {
 }
 
 func TestHTTPRouter_Methods(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		return ctx.Send([]byte("Method OK"))
 	}
 
-	router.Get("/test", handler)
-	router.Post("/test", handler)
-	router.Put("/test", handler)
-	router.Delete("/test", handler)
-	router.Patch("/test", handler)
+	r.Get("/test", handler)
+	r.Post("/test", handler)
+	r.Put("/test", handler)
+	r.Delete("/test", handler)
+	r.Patch("/test", handler)
 
 	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
 	client := &http.Client{}
@@ -107,12 +109,12 @@ func TestHTTPRouter_Methods(t *testing.T) {
 }
 
 func TestHTTPRouter_Group(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	apiGroup := router.Group("/api")
+	apiGroup := r.Group("/api")
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		return ctx.Send([]byte("Hello from API Group"))
 	}
 
@@ -145,10 +147,10 @@ func TestHTTPRouter_Group(t *testing.T) {
 }
 
 func TestHTTPRouter_ContextMethods(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		if ctx.Method() != "GET" {
 			t.Errorf("Expected method GET, got %s", ctx.Method())
 		}
@@ -169,10 +171,10 @@ func TestHTTPRouter_ContextMethods(t *testing.T) {
 		}
 		ctx.SetHeader("X-Response-Header", "responsevalue")
 		ctx.Status(202)
-		return ctx.Send([]byte("Context Test OK"))
+		return ctx.Send([]byte("router.Context Test OK"))
 	}
 
-	router.Get("/context/test/:id", handler)
+	r.Get("/context/test/:id", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
@@ -199,7 +201,7 @@ func TestHTTPRouter_ContextMethods(t *testing.T) {
 	resp.Body.Close()
 
 	bodyString := string(bodyBytes)
-	expectedBody := "Context Test OK"
+	expectedBody := "router.Context Test OK"
 
 	if bodyString != expectedBody {
 		t.Errorf("Expected body '%s', got '%s'", expectedBody, bodyString)
@@ -212,10 +214,10 @@ func TestHTTPRouter_ContextMethods(t *testing.T) {
 }
 
 func TestHTTPRouter_Bind(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		var data struct {
 			Name string `json:"name"`
 		}
@@ -225,7 +227,7 @@ func TestHTTPRouter_Bind(t *testing.T) {
 		return ctx.JSON(200, data)
 	}
 
-	router.Post("/bind", handler)
+	r.Post("/bind", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
@@ -255,8 +257,8 @@ func TestHTTPRouter_Bind(t *testing.T) {
 }
 
 func TestHTTPRouter_Middleware(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
 	var middlewareCalled bool
 
@@ -267,12 +269,12 @@ func TestHTTPRouter_Middleware(t *testing.T) {
 		})
 	}
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		return ctx.Send([]byte("Hello with Middleware!"))
 	}
 
-	router.Use(MiddlewareFromHTTP(middleware))
-	router.Get("/middleware", handler)
+	r.Use(router.MiddlewareFromHTTP(middleware))
+	r.Get("/middleware", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
@@ -305,10 +307,10 @@ func TestHTTPRouter_Middleware(t *testing.T) {
 }
 
 func TestHTTPRouter_SetGetHeader(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		ctx.SetHeader("X-Response-Header", "responsevalue")
 		reqHeader := ctx.Header("X-Test-Header")
 		if reqHeader != "testvalue" {
@@ -317,7 +319,7 @@ func TestHTTPRouter_SetGetHeader(t *testing.T) {
 		return ctx.Send([]byte("Header Test OK"))
 	}
 
-	router.Get("/header", handler)
+	r.Get("/header", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
@@ -352,8 +354,8 @@ func TestHTTPRouter_SetGetHeader(t *testing.T) {
 	}
 }
 
-func CreateContextMiddleware(key, value string) HandlerFunc {
-	return func(c Context) error {
+func CreateContextMiddleware(key, value string) router.HandlerFunc {
+	return func(c router.Context) error {
 		newCtx := context.WithValue(c.Context(), key, value)
 		c.SetContext(newCtx)
 		return c.Next()
@@ -361,14 +363,14 @@ func CreateContextMiddleware(key, value string) HandlerFunc {
 }
 
 func TestHTTPRouter_ContextPropagation2(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
 	// Create middleware using the helper function
 	middleware := CreateContextMiddleware("mykey", "myvalue")
-	router.Use(ToMiddleware(middleware))
+	r.Use(router.ToMiddleware(middleware))
 
-	router.Get("/test", func(c Context) error {
+	r.Get("/test", func(c router.Context) error {
 		val := c.Context().Value("mykey")
 		if val != "myvalue" {
 			return fmt.Errorf("expected context value 'myvalue', got '%v'", val)
@@ -387,18 +389,18 @@ func TestHTTPRouter_ContextPropagation2(t *testing.T) {
 }
 
 func TestHTTPRouter_ContextPropagation(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	contextMiddleware := func(ctx Context) error {
+	contextMiddleware := func(ctx router.Context) error {
 		newCtx := context.WithValue(ctx.Context(), "mykey", "myvalue")
 		ctx.SetContext(newCtx)
 		return ctx.Next()
 	}
 
-	router.Use(ToMiddleware(contextMiddleware))
+	r.Use(router.ToMiddleware(contextMiddleware))
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		value := ctx.Context().Value("mykey")
 		if value != "myvalue" {
 			t.Errorf("Expected context value 'myvalue', got '%v'", value)
@@ -409,10 +411,10 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 		if value != "newvalue" {
 			t.Errorf("Expected new context value 'newvalue', got '%v'", value)
 		}
-		return ctx.Send([]byte("Context Methods OK"))
+		return ctx.Send([]byte("router.Context Methods OK"))
 	}
 
-	router.Get("/context", handler)
+	r.Get("/context", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
@@ -429,7 +431,7 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 	}
 
 	bodyString := string(bodyBytes)
-	expectedBody := "Context Methods OK"
+	expectedBody := "router.Context Methods OK"
 
 	if bodyString != expectedBody {
 		t.Errorf("Expected body '%s', got '%s'", expectedBody, bodyString)
@@ -437,8 +439,8 @@ func TestHTTPRouter_ContextPropagation(t *testing.T) {
 }
 
 func TestHTTPRouter_MiddlewareChain(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
 	var order []string
 
@@ -456,14 +458,14 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 		})
 	}
 
-	handler := func(ctx Context) error {
+	handler := func(ctx router.Context) error {
 		order = append(order, "handler")
 		return ctx.Send([]byte("Middleware Chain OK"))
 	}
 
-	router.Use(MiddlewareFromHTTP(middleware1))
-	router.Use(MiddlewareFromHTTP(middleware2))
-	router.Get("/chain", handler)
+	r.Use(router.MiddlewareFromHTTP(middleware1))
+	r.Use(router.MiddlewareFromHTTP(middleware2))
+	r.Get("/chain", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()
@@ -503,17 +505,17 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 }
 
 func TestContext_GetSet(t *testing.T) {
-	adapter := NewHTTPServer()
-	router := adapter.Router()
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
 
-	middleware := func(next HandlerFunc) HandlerFunc {
-		return func(c Context) error {
+	middleware := func(next router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
 			c.Set("key1", "value1")
 			return next(c)
 		}
 	}
 
-	handler := func(c Context) error {
+	handler := func(c router.Context) error {
 		c.Set("key2", "value2")
 
 		val1 := c.Get("key1", "")
@@ -534,8 +536,8 @@ func TestContext_GetSet(t *testing.T) {
 		return c.Send([]byte("OK"))
 	}
 
-	router.Use(middleware)
-	router.Get("/store", handler)
+	r.Use(middleware)
+	r.Get("/store", handler)
 
 	server := httptest.NewServer(adapter.WrappedRouter())
 	defer server.Close()

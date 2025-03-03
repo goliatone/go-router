@@ -40,6 +40,7 @@ type MockViewConfig struct {
 	Ext          string
 	TemplateFS   []fs.FS
 	AssetFS      fs.FS
+	AssetsDir    string
 	Functions    map[string]any
 }
 
@@ -54,6 +55,7 @@ func (m *MockViewConfig) GetDirOS() string                     { return m.DirOS 
 func (m *MockViewConfig) GetRemovePathPrefix() string          { return m.RemovePrefix }
 func (m *MockViewConfig) GetExt() string                       { return m.Ext }
 func (m *MockViewConfig) GetAssetsFS() fs.FS                   { return m.AssetFS }
+func (m *MockViewConfig) GetAssetsDir() string                 { return m.AssetsDir }
 func (m *MockViewConfig) GetTemplatesFS() []fs.FS              { return m.TemplateFS }
 func (m *MockViewConfig) GetTemplateFunctions() map[string]any { return m.Functions }
 
@@ -335,8 +337,8 @@ func TestNonEmbeddedMode(t *testing.T) {
     {{ js("app-*.js") | safe }}
 </body>
 </html>`,
-		"/css/main-123abc.css": "/* CSS content */",
-		"/js/app-456def.js":    "// JS content",
+		"/public/css/main-tmp.css": "/* CSS content */",
+		"/public/js/app-tmp.js":    "// JS content",
 	}
 
 	tempDir := setupTempDir(t, files)
@@ -348,11 +350,11 @@ func TestNonEmbeddedMode(t *testing.T) {
 		Reload:       true,
 		DirOS:        tempDir,
 		DirFS:        "testdata/templates",
+		AssetsDir:    tempDir,
 		Ext:          ".html",
 		CSSPath:      "css",
 		JSPath:       "js",
-		AssetFS:      assetsFS,
-		RemovePrefix: "testdata/assets",
+		RemovePrefix: "public",
 		TemplateFS:   nil,
 		Functions:    map[string]any{},
 	}
@@ -376,8 +378,8 @@ func TestNonEmbeddedMode(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "Failed to read response body")
 
-	assert.Contains(t, string(body), `/css/main-123abc.css`)
-	assert.Contains(t, string(body), `/js/app-456def.js`)
+	assert.Contains(t, string(body), `/css/main-tmp.css`)
+	assert.Contains(t, string(body), `/js/app-tmp.js`)
 }
 
 func TestAssetPathEdgeCases(t *testing.T) {

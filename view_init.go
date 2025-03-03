@@ -103,7 +103,7 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 			log.Printf("  - %s\n", NormalizePath(cfg.GetDirFS())+"/"+entry.Name())
 		}
 
-		DebugAssetPaths(compositeFS)
+		DebugAssetPaths(compositeFS, "Composite FS")
 	}
 
 	engine := django.NewPathForwardingFileSystem(
@@ -150,20 +150,26 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 	}
 
 	if opts.GetDebug() {
-		DebugAssetPaths(assetsFs)
+		DebugAssetPaths(assetsFs, "Assets FS")
 	}
 
 	assetPrefix := NormalizePath(opts.GetRemovePathPrefix())
 
-	jsPath := path.Join(assetPrefix, NormalizePath(opts.GetJSPath()))
-	cssPath := path.Join(assetPrefix, NormalizePath(opts.GetCSSPath()))
+	jsPath := NormalizePath(opts.GetJSPath())
+	cssPath := NormalizePath(opts.GetCSSPath())
 
 	if !DirExists(jsPath, assetsFs) {
-		return nil, errors.New("init view: JS directory does not exist: " + jsPath)
+		jsPath = path.Join(assetPrefix, NormalizePath(opts.GetJSPath()))
+		if !DirExists(jsPath, assetsFs) {
+			return nil, errors.New("init view: JS directory does not exist: " + jsPath)
+		}
 	}
 
 	if !DirExists(cssPath, assetsFs) {
-		return nil, errors.New("init view: CSS directory does not exist: " + cssPath)
+		cssPath = path.Join(assetPrefix, NormalizePath(opts.GetCSSPath()))
+		if !DirExists(cssPath, assetsFs) {
+			return nil, errors.New("init view: CSS directory does not exist: " + cssPath)
+		}
 	}
 
 	d.AddFunc("css", func(name string) template.HTML {
@@ -450,8 +456,12 @@ func ValidateConfig(cfg ViewConfigProvider) error {
 }
 
 // DebugAssetPaths prints all available assets for debugging
-func DebugAssetPaths(dir fs.FS) {
-	fmt.Println("=== Available Asset Paths ===")
+func DebugAssetPaths(dir fs.FS, labels ...string) {
+	label := "Asset"
+	if len(labels) > 0 {
+		label = labels[0]
+	}
+	fmt.Printf("=== Available %s Paths ===\n", label)
 
 	fs.WalkDir(dir, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

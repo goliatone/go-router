@@ -131,8 +131,18 @@ type HTTPRouter struct {
 
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
 	path, handler := r.makeStaticHandler(prefix, root, config...)
-	r.addLateRoute(GET, path+"/*", handler, "static.get")
-	r.addLateRoute(HEAD, path+"/*", handler, "static.head")
+	r.addLateRoute(GET, path+"/*", handler, "static.get", func(hf HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			r.logger.Info("static.get Next")
+			return ctx.Next()
+		}
+	})
+	r.addLateRoute(HEAD, path+"/*", handler, "static.head", func(hf HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			r.logger.Info("static.head Next")
+			return ctx.Next()
+		}
+	})
 	return r
 }
 

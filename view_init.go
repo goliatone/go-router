@@ -35,7 +35,7 @@ type ViewConfigProvider interface {
 
 	GetCSSPath() string
 	GetJSPath() string
-	GetDevDir() string
+	// GetDevDir() string
 	GetDirFS() string
 	GetDirOS() string
 
@@ -45,6 +45,7 @@ type ViewConfigProvider interface {
 	GetExt() string
 
 	GetAssetsFS() fs.FS
+	GetAssetsDir() string
 	GetTemplatesFS() []fs.FS
 }
 
@@ -60,16 +61,18 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 	sources := make([]fs.FS, 0)
 
 	// add dev directory w highest priority
-	devDir := cfg.GetDevDir()
-	if devDir != "" {
-		absDevDir, err := filepath.Abs(devDir)
-		if err == nil && DirExists(absDevDir) {
-			if cfg.GetDebug() {
-				log.Printf("Using dev directory: %s", absDevDir)
+	if dcfg, ok := cfg.(interface{ GetDevDir() string }); ok {
+		devDir := dcfg.GetDevDir()
+		if devDir != "" {
+			absDevDir, err := filepath.Abs(devDir)
+			if err == nil && DirExists(absDevDir) {
+				if cfg.GetDebug() {
+					log.Printf("Using dev directory: %s", absDevDir)
+				}
+				sources = append(sources, os.DirFS(absDevDir))
+			} else if cfg.GetDebug() {
+				log.Printf("Dev directory not found or accessible: %s", devDir)
 			}
-			sources = append(sources, os.DirFS(absDevDir))
-		} else if cfg.GetDebug() {
-			log.Printf("Dev directory not found or accessible: %s", devDir)
 		}
 	}
 
@@ -143,7 +146,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 
 	assetsFs := opts.GetAssetsFS()
 	if !opts.GetEmbed() {
-		assetsFs = os.DirFS(opts.GetDirOS())
+		assetsFs = os.DirFS(opts.GetAssetsDir())
 	}
 
 	if opts.GetDebug() {
@@ -151,13 +154,9 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 	}
 
 	assetPrefix := NormalizePath(opts.GetRemovePathPrefix())
-	jsPath := NormalizePath(opts.GetJSPath())
-	cssPath := NormalizePath(opts.GetCSSPath())
 
-	if opts.GetEmbed() {
-		jsPath = path.Join(assetPrefix, NormalizePath(opts.GetJSPath()))
-		cssPath = path.Join(assetPrefix, NormalizePath(opts.GetCSSPath()))
-	}
+	jsPath := path.Join(assetPrefix, NormalizePath(opts.GetJSPath()))
+	cssPath := path.Join(assetPrefix, NormalizePath(opts.GetCSSPath()))
 
 	if !DirExists(jsPath, assetsFs) {
 		return nil, errors.New("init view: JS directory does not exist: " + jsPath)

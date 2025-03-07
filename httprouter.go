@@ -89,7 +89,12 @@ func (a *HTTPServer) Init() {
 	}
 
 	for _, route := range a.router.lateRoutes {
-		a.router.Handle(route.method, route.path, route.handler, route.mw...)
+		a.router.Handle(
+			route.method,
+			route.path,
+			route.handler,
+			route.mw...,
+		).SetName(route.name)
 	}
 
 	a.router.lateRoutes = make([]*lateRoute, 0)
@@ -380,8 +385,15 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return 0, nil
 }
 
-func (c *httpRouterContext) Method() string { return c.r.Method }
-func (c *httpRouterContext) Path() string   { return c.r.URL.Path }
+func (c *httpRouterContext) Method() string {
+	m := c.r.Method
+	if m == "" {
+		m = "GET"
+	}
+	return strings.ToUpper(m)
+}
+
+func (c *httpRouterContext) Path() string { return c.r.URL.Path }
 
 func (c *httpRouterContext) Param(name string, defaultValue ...string) string {
 	if out := c.params.ByName(name); out != "" {

@@ -67,7 +67,7 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 	// Wrap a HandlerFunc into a fiber handler
 	return func(c *fiber.Ctx) error {
-		ctx := NewFiberContext(c)
+		ctx := NewFiberContext(c, a.router.logger)
 		// c.Next() will work if c.handlers is set up at request time.
 		return h(ctx)
 	}
@@ -100,7 +100,12 @@ func (a *FiberAdapter) Init() {
 	}
 
 	for _, route := range a.router.lateRoutes {
-		a.router.Handle(route.method, route.path, route.handler, route.mw...)
+		a.router.Handle(
+			route.method,
+			route.path,
+			route.handler,
+			route.mw...,
+		).SetName(route.name)
 	}
 
 	a.router.lateRoutes = make([]*lateRoute, 0)
@@ -168,7 +173,7 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 
 	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
-		ctx := NewFiberContext(c)
+		ctx := NewFiberContext(c, r.logger)
 		if fc, ok := ctx.(*fiberContext); ok {
 			fc.setHandlers(route.Handlers)
 		}
@@ -217,10 +222,11 @@ type fiberContext struct {
 	handlers []NamedHandler
 	index    int
 	store    ContextStore
+	logger   Logger
 }
 
-func NewFiberContext(c *fiber.Ctx) Context {
-	return &fiberContext{ctx: c, index: -1, store: NewContextStore()}
+func NewFiberContext(c *fiber.Ctx, logger Logger) Context {
+	return &fiberContext{ctx: c, index: -1, store: NewContextStore(), logger: logger}
 }
 
 func (c *fiberContext) setHandlers(h []NamedHandler) {
@@ -283,6 +289,7 @@ func (c *fiberContext) CookieParser(out any) error {
 }
 
 func (c *fiberContext) Redirect(location string, status ...int) error {
+	c.logger.Info("redirect location='%s' status='%d'", location, status[0])
 	return c.ctx.Redirect(location, status...)
 }
 

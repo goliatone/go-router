@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -159,7 +158,23 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
 		router: r.router,
 		BaseRouter: BaseRouter{
-			prefix:            path.Join(r.prefix, prefix),
+			prefix:            r.joinPath(r.prefix, prefix),
+			middlewares:       append([]namedMiddleware{}, r.middlewares...),
+			logger:            r.logger,
+			routes:            r.routes,
+			root:              r.root,
+			views:             r.views,
+			passLocalsToViews: r.passLocalsToViews,
+		},
+	}
+}
+
+func (r *HTTPRouter) Mount(prefix string) Router[*httprouter.Router] {
+
+	return &HTTPRouter{
+		router: r.router,
+		BaseRouter: BaseRouter{
+			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
 			logger:            r.logger,
 			routes:            r.routes,
@@ -308,27 +323,6 @@ func (c *httpRouterContext) Body() []byte {
 	c.r.Body = io.NopCloser(bytes.NewBuffer(b))
 
 	return b
-}
-
-func (c *httpRouterContext) buildContext(bind any) (map[string]any, error) {
-	if bind == nil {
-		bind = make(ViewContext)
-	}
-
-	m, err := SerializeAsContext(bind)
-	if err != nil {
-		return nil, err
-	}
-
-	if c.passLocalsToViews {
-		for k, v := range c.locals {
-			if _, ok := m[k]; !ok {
-				m[k] = v
-			}
-		}
-	}
-
-	return m, nil
 }
 
 func (c *httpRouterContext) Render(name string, bind any, layouts ...string) error {
@@ -545,11 +539,15 @@ func (c *httpRouterContext) ParamsInt(name string, defaultValue int) int {
 	return int(v)
 }
 
-func (c *httpRouterContext) Query(name, defaultValue string) string {
+func (c *httpRouterContext) Query(name string, defaultValue ...string) string {
 	if out := c.r.URL.Query().Get(name); out != "" {
 		return out
 	}
-	return defaultValue
+	def := ""
+	if len(defaultValue) > 0 {
+		def = defaultValue[0]
+	}
+	return def
 }
 
 func (c *httpRouterContext) QueryInt(name string, defaultValue int) int {
@@ -671,8 +669,8 @@ func (c *httpRouterContext) GetBool(key string, def bool) bool {
 
 func (c *httpRouterContext) Next() error {
 	c.index++
-	if c.index < len(c.handlers) {
-		return c.handlers[c.index].Handler(c)
+	if c.index >= len(c.handlers) {
+		return nil
 	}
-	return nil
+	return c.handlers[c.index].Handler(c)
 }

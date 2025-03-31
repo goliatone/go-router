@@ -3,7 +3,9 @@ package router
 import (
 	"context"
 	"fmt"
-	"path"
+	"net/http"
+	"slices"
+	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -11,6 +13,7 @@ import (
 
 type FiberAdapter struct {
 	// BaseAdapter
+	mu          sync.Mutex
 	app         *fiber.App
 	initialized bool
 	router      *FiberRouter
@@ -75,6 +78,8 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 
 func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
 	path, handler := r.makeStaticHandler(prefix, root, config...)
+	// r.addRoute(GET, path+"/*", handler, "static.get", nil)
+	// r.addRoute(HEAD, path+"/*", handler, "static.head", nil)
 	r.addLateRoute(GET, path+"/*", handler, "static.get", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.get Next")
@@ -95,6 +100,14 @@ func (r *FiberRouter) GetPrefix() string {
 }
 
 func (a *FiberAdapter) Init() {
+
+	if a.initialized {
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.initialized {
 		return
 	}
@@ -109,7 +122,6 @@ func (a *FiberAdapter) Init() {
 	}
 
 	a.router.lateRoutes = make([]*lateRoute, 0)
-
 	a.initialized = true
 }
 
@@ -132,10 +144,27 @@ type FiberRouter struct {
 }
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
+	fullPrefix := r.joinPath(r.prefix, prefix)
+	fmt.Printf("[ROUTER] Creating route group with prefix: %s\n", fullPrefix)
 	return &FiberRouter{
 		app: r.app,
 		BaseRouter: BaseRouter{
-			prefix:      path.Join(r.prefix, prefix),
+			prefix:      r.joinPath(r.prefix, prefix),
+			middlewares: append([]namedMiddleware{}, r.middlewares...),
+			logger:      r.logger,
+			routes:      r.routes,
+			root:        r.root,
+		},
+	}
+}
+
+// TODO: make the same as group but singletong r.routers[prefix] = Group(prefix)
+// return r.routers[prefix]
+func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
+	return &FiberRouter{
+		app: r.app,
+		BaseRouter: BaseRouter{
+			prefix:      r.joinPath(r.prefix, prefix),
 			middlewares: append([]namedMiddleware{}, r.middlewares...),
 			logger:      r.logger,
 			routes:      r.routes,
@@ -162,28 +191,41 @@ func (r *FiberRouter) Use(m ...MiddlewareFunc) Router[*fiber.App] {
 
 func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
 	fullPath := r.joinPath(r.prefix, pathStr)
-	allMw := append([]namedMiddleware{}, r.middlewares...)
+
+	// Check for duplicates
+	for _, existingRoute := range r.root.routes {
+		if existingRoute.Method == method && existingRoute.Path == fullPath {
+			fmt.Printf("[ROUTER] WARNING: Duplicate route detected: %s %s\n", method, fullPath)
+		}
+	}
+
+	allMw := slices.Clone(r.middlewares)
 	for _, mw := range m {
 		allMw = append(allMw, namedMiddleware{
-			Name: funcName(mw),
+			Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
 			Mw:   mw,
 		})
 	}
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 
+	fmt.Printf("[ROUTER] Registering route: %s %s (name: %s)\n", method, pathStr, route.Name)
+
 	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c, r.logger)
 		if fc, ok := ctx.(*fiberContext); ok {
 			fc.setHandlers(route.Handlers)
+			fc.index = -1    // reset index to ensure proper chain execution
+			return fc.Next() // execute the our chain completely before returning
 		}
-		return ctx.Next()
+		return fmt.Errorf("context cast failed")
 	})
 
 	// If we later call route.SetName then we run this callback
 	// to propagate
 	route.onSetName = func(name string) {
 		r.app.Name(name)
+		r.addNamedRoute(name, route)
 	}
 
 	return route
@@ -289,8 +331,12 @@ func (c *fiberContext) CookieParser(out any) error {
 }
 
 func (c *fiberContext) Redirect(location string, status ...int) error {
-	c.logger.Info("redirect location='%s' status='%d'", location, status[0])
-	return c.ctx.Redirect(location, status...)
+	code := http.StatusFound // default 302
+	if len(status) > 0 {
+		code = status[0]
+	}
+	c.logger.Info("redirect location='%s' status='%d'", location, code)
+	return c.ctx.Redirect(location, code)
 }
 
 func (c *fiberContext) RedirectToRoute(routeName string, params ViewContext, status ...int) error {
@@ -308,8 +354,12 @@ func (c *fiberContext) ParamsInt(name string, defaultValue int) int {
 	return defaultValue
 }
 
-func (c *fiberContext) Query(name, defaultValue string) string {
-	return c.ctx.Query(name, defaultValue)
+func (c *fiberContext) Query(name string, defaultValue ...string) string {
+	def := ""
+	if len(defaultValue) > 0 {
+		def = defaultValue[0]
+	}
+	return c.ctx.Query(name, def)
 }
 
 func (c *fiberContext) QueryInt(name string, defaultValue int) int {
@@ -328,6 +378,10 @@ func (c *fiberContext) Queries() map[string]string {
 func (c *fiberContext) Status(code int) Context {
 	c.ctx.Status(code)
 	return c
+}
+
+func (c *fiberContext) SendStatus(code int) error {
+	return c.ctx.SendStatus(code)
 }
 
 func (c *fiberContext) SendString(body string) error {
@@ -400,8 +454,13 @@ func (c *fiberContext) GetBool(key string, def bool) bool {
 
 func (c *fiberContext) Next() error {
 	c.index++
-	if c.index < len(c.handlers) {
-		return c.handlers[c.index].Handler(c)
+	if c.index >= len(c.handlers) {
+		return nil
 	}
-	return nil
+
+	fmt.Printf("Executing handler %d of %d: %s\n",
+		c.index, len(c.handlers),
+		c.handlers[c.index].Name)
+
+	return c.handlers[c.index].Handler(c)
 }

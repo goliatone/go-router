@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 )
 
 type routerRoot struct {
@@ -18,6 +19,7 @@ type routerRoot struct {
 
 // Common fields for both FiberRouter and HTTPRouter
 type BaseRouter struct {
+	mx                sync.Mutex
 	prefix            string
 	middlewares       []namedMiddleware
 	routes            []*RouteDefinition
@@ -99,14 +101,27 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 	br.root.routes = append(br.root.routes, r)
 
 	// If the route has a name, also store it in the map
-	if routeName != "" {
-		if br.root.namedRoutes == nil {
-			br.root.namedRoutes = make(map[string]*RouteDefinition)
-		}
-		br.root.namedRoutes[routeName] = r
-	}
+	br.addNamedRoute(routeName, r)
 
 	return r
+}
+
+func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) {
+	if routeName == "" {
+		return
+	}
+	br.mx.Lock()
+	defer br.mx.Unlock()
+
+	if br.root.namedRoutes == nil {
+		br.root.namedRoutes = make(map[string]*RouteDefinition)
+	}
+
+	if route.Name != routeName {
+		route.Name = routeName
+	}
+
+	br.root.namedRoutes[route.Name] = route
 }
 
 type lateRoute struct {

@@ -68,9 +68,10 @@ type Response struct {
 }
 
 type SchemaMetadata struct {
-	Properties  map[string]PropertyInfo `json:"properties"`
-	Required    []string                `json:"required"`
-	Description string                  `json:"description"`
+	Required      []string                    `json:"required"`
+	Description   string                      `json:"description"`
+	Properties    map[string]PropertyInfo     `json:"properties"`
+	Relationships map[string]RelationshipInfo `json:"relationships,omitempty"`
 }
 
 type PropertyInfo struct {
@@ -84,6 +85,17 @@ type PropertyInfo struct {
 	Example     any                     `json:"example,omitempty"`
 	Properties  map[string]PropertyInfo `json:"properties,omitempty"` // For nested objects
 	Items       *PropertyInfo           `json:"items,omitempty"`      // For arrays
+}
+
+type RelationshipInfo struct {
+	RelationType    string `json:"relation_type"` // e.g. has-one, has-many, belongs-to, many-to-many
+	RelatedTypeName string `json:"related_type_name"`
+	IsSlice         bool   `json:"is_slice"`
+	JoinClause      string `json:"join_clause,omitempty"`
+	PrimaryKey      string `json:"primary_key,omitempty"`
+	ForeignKey      string `json:"foreign_key,omitempty"`
+	PivotTable      string `json:"pivot_table,omitempty"` // e.g. "order_to_items"
+	PivotJoin       string `json:"pivot_join,omitempty"`  // e.g. "Order=Item"
 }
 
 // MetadataProvider interface for components that can provide API metadata

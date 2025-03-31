@@ -69,6 +69,7 @@ type Response struct {
 
 type SchemaMetadata struct {
 	Required      []string                    `json:"required"`
+	Name          string                      `json:"entity_name"`
 	Description   string                      `json:"description"`
 	Properties    map[string]PropertyInfo     `json:"properties"`
 	Relationships map[string]RelationshipInfo `json:"relationships,omitempty"`

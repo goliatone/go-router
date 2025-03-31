@@ -374,6 +374,15 @@ func (m *MockRouter) Group(prefix string) router.Router[*MockRouter] {
 	}
 }
 
+func (m *MockRouter) Mount(prefix string) router.Router[*MockRouter] {
+	return &MockRouter{
+		rootRouter: m.rootRouter, // Pass reference to root router
+		Prefix:     m.Prefix + prefix,
+		Mw:         append([]router.MiddlewareFunc{}, m.Mw...),
+		routes:     m.rootRouter.routes, // Share root's routes slice
+	}
+}
+
 func (m *MockRouter) WithGroup(path string, cb func(r router.Router[*MockRouter])) router.Router[*MockRouter] {
 	g := m.Group(path)
 	cb(g)
@@ -506,7 +515,7 @@ func (m *mockContext) Method() string                                        { r
 func (m *mockContext) Path() string                                          { return "/test" }
 func (m *mockContext) Param(name string, def ...string) string               { return "" }
 func (m *mockContext) ParamsInt(name string, def int) int                    { return 0 }
-func (m *mockContext) Query(name, def string) string                         { return "" }
+func (m *mockContext) Query(name string, def ...string) string               { return "" }
 func (m *mockContext) QueryInt(name string, def int) int                     { return 0 }
 func (m *mockContext) Queries() map[string]string                            { return map[string]string{} }
 func (m *mockContext) Status(code int) router.Context                        { return m }

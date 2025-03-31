@@ -35,6 +35,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		// embedded fields
 		if field.Anonymous {
 			// e.g. bun.BaseModel
+			// TODO: extract the table name
 			continue
 		}
 
@@ -125,8 +126,9 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 	}
 
 	return SchemaMetadata{
-		Required:      required,
+		Name:          t.Name(),
 		Description:   "Schema for " + t.Name(),
+		Required:      required,
 		Properties:    properties,
 		Relationships: relationships,
 	}

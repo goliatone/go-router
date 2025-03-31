@@ -61,7 +61,7 @@ type RequestContext interface {
 	Param(name string, defaultValue ...string) string
 	ParamsInt(key string, defaultValue int) int
 
-	Query(name string, defaultValue string) string
+	Query(name string, defaultValue ...string) string
 	QueryInt(name string, defaultValue int) int
 	Queries() map[string]string
 
@@ -104,6 +104,7 @@ type ResponseWriter interface {
 	Status(code int) Context
 	Send(body []byte) error
 	SendString(body string) error
+	SendStatus(code int) error
 	JSON(code int, v any) error
 	// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 	NoContent(code int) error
@@ -174,6 +175,7 @@ type Static struct {
 type Router[T any] interface {
 	Handle(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) RouteInfo
 	Group(prefix string) Router[T]
+	Mount(prefix string) Router[T]
 	WithGroup(path string, cb func(r Router[T])) Router[T]
 	Use(m ...MiddlewareFunc) Router[T]
 	Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo

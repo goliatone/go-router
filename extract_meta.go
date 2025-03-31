@@ -78,11 +78,11 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 			relInfo := RelationshipInfo{}
 			switch {
 			case strings.Contains(bunTag, "has-one"):
-				relInfo.RelatedTypeName = "has-one"
+				relInfo.RelationType = "has-one"
 			case strings.Contains(bunTag, "has-many"):
-				relInfo.RelatedTypeName = "has-many"
+				relInfo.RelationType = "has-many"
 			case strings.Contains(bunTag, "belongs-to"):
-				relInfo.RelatedTypeName = "belongs-to"
+				relInfo.RelationType = "belongs-to"
 			}
 
 			if field.Type.Kind() == reflect.Slice {
@@ -103,8 +103,8 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 
 			relationships[jsonName] = relInfo
 
-			//TODO: decide if this is what we want
 			// relationship wont appear in properties
+			//TODO: decide if this is what we want
 			continue
 		}
 

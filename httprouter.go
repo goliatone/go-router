@@ -14,6 +14,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/gofiber/utils"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -279,6 +280,7 @@ type httpRouterContext struct {
 	passLocalsToViews bool
 	locals            ViewContext
 	router            *HTTPRouter
+	written           bool
 }
 
 func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) Context {
@@ -585,10 +587,24 @@ func (c *httpRouterContext) SendString(body string) error {
 	return c.Send([]byte(body))
 }
 
+// SendStatus sets the HTTP status code and if the response body is empty,
+// it sets the correct status message in the body.
+func (c *httpRouterContext) SendStatus(status int) error {
+	c.Status(status)
+
+	// Only set status body when there is no response body
+	if !c.written {
+		return c.SendString(utils.StatusMessage(status))
+	}
+
+	return nil
+}
+
 func (c *httpRouterContext) Send(body []byte) error {
 	if body == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
+	c.written = true
 	_, err := c.w.Write(body)
 	return err
 }

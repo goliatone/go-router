@@ -1,4 +1,4 @@
-package router
+package router_test
 
 import (
 	"encoding/json"
@@ -10,13 +10,14 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/goliatone/go-router"
 )
 
 // mockValidationErrors is a helper type for testing validation error mapping
 type mockValidationErrors struct{}
 
-func (m mockValidationErrors) ValidationErrors() []ValidationError {
-	return []ValidationError{
+func (m mockValidationErrors) ValidationErrors() []router.ValidationError {
+	return []router.ValidationError{
 		{Field: "name", Message: "Name is required"},
 	}
 }
@@ -27,30 +28,30 @@ func (m mockValidationErrors) Error() string {
 
 func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 	// Create a new Fiber adapter server
-	app := NewFiberAdapter(func(a *fiber.App) *fiber.App {
+	app := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return fiber.New(fiber.Config{
 			// App configuration here if needed
 		})
 	})
 
 	// Use the error handler middleware at the top level
-	app.Router().Use(WithErrorHandlerMiddleware(
-		WithEnvironment("development"), // so we get stack traces
-		WithStackTrace(true),
-		WithLogger(&testLogger{}), // custom logger for testing if needed
+	app.Router().Use(router.WithErrorHandlerMiddleware(
+		router.WithEnvironment("development"), // so we get stack traces
+		router.WithStackTrace(true),
+		router.WithLogger(&testLogger{}), // custom logger for testing if needed
 	))
 
 	// Define some test handlers that will trigger different error conditions
-	app.Router().Get("/no-error", func(c Context) error {
+	app.Router().Get("/no-error", func(c router.Context) error {
 		return c.Send([]byte(`OK`))
 	})
 
-	app.Router().Get("/router-error", func(c Context) error {
-		return NewNotFoundError("User not found")
+	app.Router().Get("/router-error", func(c router.Context) error {
+		return router.NewNotFoundError("User not found")
 	})
 
-	app.Router().Get("/validation-error-custom", func(c Context) error {
-		return NewValidationError("Custom validation error", []ValidationError{
+	app.Router().Get("/validation-error-custom", func(c router.Context) error {
+		return router.NewValidationError("Custom validation error", []router.ValidationError{
 			{
 				Field:   "id",
 				Message: "must be unique",
@@ -58,19 +59,19 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 		})
 	})
 
-	app.Router().Get("/validation-error", func(c Context) error {
+	app.Router().Get("/validation-error", func(c router.Context) error {
 		// return NewValidationError("validation error", map[string]any{
 		// 	"error": "validation",
 		// })
 		return &mockValidationErrors{}
 	})
 
-	app.Router().Get("/internal-error", func(c Context) error {
+	app.Router().Get("/internal-error", func(c router.Context) error {
 		return errors.New("some unexpected error")
 	})
 
-	app.Router().Get("/unauthorized", func(c Context) error {
-		return NewUnauthorizedError("unauthorized access")
+	app.Router().Get("/unauthorized", func(c router.Context) error {
+		return router.NewUnauthorizedError("unauthorized access")
 	})
 
 	tests := []struct {
@@ -90,28 +91,28 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			name:               "RouterError",
 			path:               "/router-error",
 			expectedStatusCode: http.StatusNotFound,
-			expectedErrorType:  string(ErrorTypeNotFound),
+			expectedErrorType:  string(router.ErrorTypeNotFound),
 			expectedMessage:    "User not found",
 		},
 		{
 			name:               "ValidationError",
 			path:               "/validation-error",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorType:  string(ErrorTypeValidation),
+			expectedErrorType:  string(router.ErrorTypeValidation),
 			expectedMessage:    "Validation failed",
 		},
 		{
 			name:               "NewValidationError",
 			path:               "/validation-error-custom",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorType:  string(ErrorTypeValidation),
+			expectedErrorType:  string(router.ErrorTypeValidation),
 			expectedMessage:    "Custom validation error",
 		},
 		{
 			name:               "InternalError",
 			path:               "/internal-error",
 			expectedStatusCode: http.StatusInternalServerError,
-			expectedErrorType:  string(ErrorTypeInternal),
+			expectedErrorType:  string(router.ErrorTypeInternal),
 			expectedMessage:    "An unexpected error occurred",
 			checkStack:         true,
 		},
@@ -119,7 +120,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			name:               "UnauthorizedError",
 			path:               "/unauthorized",
 			expectedStatusCode: http.StatusUnauthorized,
-			expectedErrorType:  string(ErrorTypeUnauthorized),
+			expectedErrorType:  string(router.ErrorTypeUnauthorized),
 			expectedMessage:    "unauthorized access",
 		},
 	}
@@ -148,7 +149,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			}
 
 			// Parse ErrorResponse
-			var er ErrorResponse
+			var er router.ErrorResponse
 			body, _ := io.ReadAll(resp.Body)
 
 			if err := json.Unmarshal(body, &er); err != nil {

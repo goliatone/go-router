@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ Title }}</title>
+    {{ css("main-*.css") | safe }}
+</head>
+<body>
+    <h1>{{ Title }}</h1>
+    {{ js("app-*.js") | safe }}
+</body>
+</html>

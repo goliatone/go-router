@@ -9,12 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"text/template"
 
+	"github.com/gofiber/utils"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -89,7 +89,12 @@ func (a *HTTPServer) Init() {
 	}
 
 	for _, route := range a.router.lateRoutes {
-		a.router.Handle(route.method, route.path, route.handler, route.mw...)
+		a.router.Handle(
+			route.method,
+			route.path,
+			route.handler,
+			route.mw...,
+		).SetName(route.name)
 	}
 
 	a.router.lateRoutes = make([]*lateRoute, 0)
@@ -131,8 +136,18 @@ type HTTPRouter struct {
 
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
 	path, handler := r.makeStaticHandler(prefix, root, config...)
-	r.addLateRoute(GET, path+"/*", handler, "static.get")
-	r.addLateRoute(HEAD, path+"/*", handler, "static.head")
+	r.addLateRoute(GET, path+"/*", handler, "static.get", func(hf HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			r.logger.Info("static.get Next")
+			return ctx.Next()
+		}
+	})
+	r.addLateRoute(HEAD, path+"/*", handler, "static.head", func(hf HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			r.logger.Info("static.head Next")
+			return ctx.Next()
+		}
+	})
 	return r
 }
 
@@ -144,7 +159,23 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
 		router: r.router,
 		BaseRouter: BaseRouter{
-			prefix:            path.Join(r.prefix, prefix),
+			prefix:            r.joinPath(r.prefix, prefix),
+			middlewares:       append([]namedMiddleware{}, r.middlewares...),
+			logger:            r.logger,
+			routes:            r.routes,
+			root:              r.root,
+			views:             r.views,
+			passLocalsToViews: r.passLocalsToViews,
+		},
+	}
+}
+
+func (r *HTTPRouter) Mount(prefix string) Router[*httprouter.Router] {
+
+	return &HTTPRouter{
+		router: r.router,
+		BaseRouter: BaseRouter{
+			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
 			logger:            r.logger,
 			routes:            r.routes,
@@ -249,6 +280,7 @@ type httpRouterContext struct {
 	passLocalsToViews bool
 	locals            ViewContext
 	router            *HTTPRouter
+	written           bool
 }
 
 func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) Context {
@@ -293,27 +325,6 @@ func (c *httpRouterContext) Body() []byte {
 	c.r.Body = io.NopCloser(bytes.NewBuffer(b))
 
 	return b
-}
-
-func (c *httpRouterContext) buildContext(bind any) (map[string]any, error) {
-	if bind == nil {
-		bind = make(ViewContext)
-	}
-
-	m, err := SerializeAsContext(bind)
-	if err != nil {
-		return nil, err
-	}
-
-	if c.passLocalsToViews {
-		for k, v := range c.locals {
-			if _, ok := m[k]; !ok {
-				m[k] = v
-			}
-		}
-	}
-
-	return m, nil
 }
 
 func (c *httpRouterContext) Render(name string, bind any, layouts ...string) error {
@@ -370,8 +381,15 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return 0, nil
 }
 
-func (c *httpRouterContext) Method() string { return c.r.Method }
-func (c *httpRouterContext) Path() string   { return c.r.URL.Path }
+func (c *httpRouterContext) Method() string {
+	m := c.r.Method
+	if m == "" {
+		m = "GET"
+	}
+	return strings.ToUpper(m)
+}
+
+func (c *httpRouterContext) Path() string { return c.r.URL.Path }
 
 func (c *httpRouterContext) Param(name string, defaultValue ...string) string {
 	if out := c.params.ByName(name); out != "" {
@@ -523,11 +541,15 @@ func (c *httpRouterContext) ParamsInt(name string, defaultValue int) int {
 	return int(v)
 }
 
-func (c *httpRouterContext) Query(name, defaultValue string) string {
+func (c *httpRouterContext) Query(name string, defaultValue ...string) string {
 	if out := c.r.URL.Query().Get(name); out != "" {
 		return out
 	}
-	return defaultValue
+	def := ""
+	if len(defaultValue) > 0 {
+		def = defaultValue[0]
+	}
+	return def
 }
 
 func (c *httpRouterContext) QueryInt(name string, defaultValue int) int {
@@ -565,10 +587,24 @@ func (c *httpRouterContext) SendString(body string) error {
 	return c.Send([]byte(body))
 }
 
+// SendStatus sets the HTTP status code and if the response body is empty,
+// it sets the correct status message in the body.
+func (c *httpRouterContext) SendStatus(status int) error {
+	c.Status(status)
+
+	// Only set status body when there is no response body
+	if !c.written {
+		return c.SendString(utils.StatusMessage(status))
+	}
+
+	return nil
+}
+
 func (c *httpRouterContext) Send(body []byte) error {
 	if body == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
+	c.written = true
 	_, err := c.w.Write(body)
 	return err
 }
@@ -649,8 +685,8 @@ func (c *httpRouterContext) GetBool(key string, def bool) bool {
 
 func (c *httpRouterContext) Next() error {
 	c.index++
-	if c.index < len(c.handlers) {
-		return c.handlers[c.index].Handler(c)
+	if c.index >= len(c.handlers) {
+		return nil
 	}
-	return nil
+	return c.handlers[c.index].Handler(c)
 }

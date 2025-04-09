@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 )
 
 type routerRoot struct {
@@ -18,6 +19,7 @@ type routerRoot struct {
 
 // Common fields for both FiberRouter and HTTPRouter
 type BaseRouter struct {
+	mx                sync.Mutex
 	prefix            string
 	middlewares       []namedMiddleware
 	routes            []*RouteDefinition
@@ -99,14 +101,27 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 	br.root.routes = append(br.root.routes, r)
 
 	// If the route has a name, also store it in the map
-	if routeName != "" {
-		if br.root.namedRoutes == nil {
-			br.root.namedRoutes = make(map[string]*RouteDefinition)
-		}
-		br.root.namedRoutes[routeName] = r
-	}
+	br.addNamedRoute(routeName, r)
 
 	return r
+}
+
+func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) {
+	if routeName == "" {
+		return
+	}
+	br.mx.Lock()
+	defer br.mx.Unlock()
+
+	if br.root.namedRoutes == nil {
+		br.root.namedRoutes = make(map[string]*RouteDefinition)
+	}
+
+	if route.Name != routeName {
+		route.Name = routeName
+	}
+
+	br.root.namedRoutes[route.Name] = route
 }
 
 type lateRoute struct {
@@ -200,6 +215,7 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 	}
 
 	handler := func(c Context) error {
+		r.logger.Info("Public static handler")
 		// Get path relative to prefix
 		reqPath := c.Path()
 		if !strings.HasPrefix(reqPath, prefix) {
@@ -218,8 +234,10 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 		f, err := fileSystem.Open(filePath)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
+				r.logger.Info("[WARN] public did not find path")
 				return c.Status(404).SendString("Not Found")
 			}
+			r.logger.Error("public failed to open filepath: %s", err)
 			return c.Status(500).SendString(err.Error())
 		}
 		defer f.Close()
@@ -239,6 +257,7 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 					filePath = indexPath
 					f.Close()
 				} else {
+					r.logger.Info("[WARN] public did not find dir in fs")
 					return c.Status(404).SendString("Not Found")
 				}
 			}
@@ -263,6 +282,7 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 		// Read and send file
 		content, err := io.ReadAll(f)
 		if err != nil {
+			r.logger.Error("public failed to read file: %s", err)
 			return c.Status(500).SendString(err.Error())
 		}
 

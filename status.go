@@ -201,3 +201,7 @@ func StatusText(code int) string {
 		return ""
 	}
 }
+
+const (
+	XRequestID = "X-Request-ID"
+)

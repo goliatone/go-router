@@ -9,15 +9,18 @@ import (
 )
 
 // ExtractSchemaFromType generates SchemaMetadata from a Go type using reflection
+// TODO: Need to support relationships
+// TODO: take options, ie. include original $meta: original name, orignal type
 func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 
-	properties := make(map[string]PropertyInfo)
 	required := make([]string, 0)
+	properties := make(map[string]PropertyInfo)
+	relationships := make(map[string]RelationshipInfo)
 
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		field := t.Field(i)
 
 		// skip unexported fields
@@ -26,18 +29,19 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		}
 
 		// check crud tag first, if it's "-" skip the field
-		if crudTag := field.Tag.Get("crud"); crudTag == "-" {
+		if crudTag := field.Tag.Get(TAG_CRUD); crudTag == "-" {
 			continue
 		}
 
 		// embedded fields
 		if field.Anonymous {
 			// e.g. bun.BaseModel
+			// TODO: extract the table name
 			continue
 		}
 
 		// get JSON field name
-		jsonTag := field.Tag.Get("json")
+		jsonTag := field.Tag.Get(TAG_JSON)
 		if jsonTag == "-" {
 			continue
 		}
@@ -47,10 +51,63 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		}
 
 		// get bun tags with additional metadata
-		bunTag := field.Tag.Get("bun")
+		bunTag := field.Tag.Get(TAG_BUN)
 		isRequired := strings.Contains(bunTag, "notnull")
 		if isRequired {
 			required = append(required, jsonName)
+		}
+
+		if idx := strings.Index(bunTag, "m2m:"); idx != -1 {
+			pivotStr := bunTag[idx+len("m2m:"):]
+			pname, remain := splitByComa(pivotStr)
+			relInfo := RelationshipInfo{
+				RelationType:    "many-to-many",
+				RelatedTypeName: getBaseTypeName(field.Type),
+				IsSlice:         (field.Type.Kind() == reflect.Slice),
+				PivotTable:      pname,
+			}
+
+			if strings.HasPrefix(remain, "join:") {
+				joinClause := remain[len("join:"):]
+				relInfo.JoinClause = joinClause
+				relInfo.PivotJoin = joinClause
+			}
+			relationships[jsonName] = relInfo
+			continue
+		}
+
+		if strings.Contains(bunTag, "rel:") {
+			relInfo := RelationshipInfo{}
+			switch {
+			case strings.Contains(bunTag, "has-one"):
+				relInfo.RelationType = "has-one"
+			case strings.Contains(bunTag, "has-many"):
+				relInfo.RelationType = "has-many"
+			case strings.Contains(bunTag, "belongs-to"):
+				relInfo.RelationType = "belongs-to"
+			}
+
+			if field.Type.Kind() == reflect.Slice {
+				relInfo.IsSlice = true
+			}
+
+			if idx := strings.Index(bunTag, "join:"); idx != -1 {
+				joinPart := extractSubAfter(bunTag, "join:")
+				relInfo.JoinClause = joinPart
+
+				parts := strings.Split(joinPart, "=")
+				if len(parts) == 2 {
+					relInfo.JoinKey = parts[0]
+					relInfo.PrimaryKey = parts[1]
+				}
+			}
+			relInfo.RelatedTypeName = getBaseTypeName(field.Type)
+
+			relationships[jsonName] = relInfo
+
+			// relationship wont appear in properties
+			//TODO: decide if this is what we want
+			continue
 		}
 
 		prop := extractPropertyInfo(field.Type)
@@ -61,6 +118,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		prop.Nullable = field.Type.Kind() == reflect.Ptr
 		prop.ReadOnly = isReadOnly(field)
 		prop.WriteOnly = isWriteOnly(field)
+		prop.OriginalName = field.Name
 
 		if strings.Contains(jsonTag, "omitempty") {
 			prop.Required = false
@@ -70,10 +128,35 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 	}
 
 	return SchemaMetadata{
-		Properties:  properties,
-		Required:    required,
-		Description: "Schema for " + t.Name(),
+		Name:          t.Name(),
+		Description:   "Schema for " + t.Name(),
+		Required:      required,
+		Properties:    properties,
+		Relationships: relationships,
 	}
+}
+
+func splitByComa(s string) (before, after string) {
+	idx := strings.Index(s, ",")
+	if idx == -1 {
+		return "", ""
+	}
+	return s[:idx], s[idx+1:]
+}
+
+func extractSubAfter(s, prefix string) string {
+	idx := strings.Index(s, prefix)
+	if idx == -1 {
+		return ""
+	}
+	return s[idx+len(prefix):]
+}
+
+func getBaseTypeName(t reflect.Type) string {
+	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		t = t.Elem()
+	}
+	return t.Name()
 }
 
 // extractPropertyInfo extracts OpenAPI property information from a type
@@ -162,9 +245,9 @@ func handleSpecialType(t reflect.Type) (PropertyInfo, bool) {
 }
 
 func isReadOnly(field reflect.StructField) bool {
-	return strings.Contains(field.Tag.Get("crud"), "readonly")
+	return strings.Contains(field.Tag.Get(TAG_CRUD), "readonly")
 }
 
 func isWriteOnly(field reflect.StructField) bool {
-	return strings.Contains(field.Tag.Get("crud"), "writeonly")
+	return strings.Contains(field.Tag.Get(TAG_CRUD), "writeonly")
 }

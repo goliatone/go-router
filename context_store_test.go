@@ -1,12 +1,14 @@
-package router
+package router_test
 
 import (
 	"sync"
 	"testing"
+
+	"github.com/goliatone/go-router"
 )
 
 func TestContextStore_Basic(t *testing.T) {
-	store := NewContextStore()
+	store := router.NewContextStore()
 
 	tests := []struct {
 		key      string
@@ -31,7 +33,7 @@ func TestContextStore_Basic(t *testing.T) {
 }
 
 func TestContextStore_GetString(t *testing.T) {
-	store := NewContextStore()
+	store := router.NewContextStore()
 
 	tests := []struct {
 		key      string
@@ -59,7 +61,7 @@ func TestContextStore_GetString(t *testing.T) {
 }
 
 func TestContextStore_GetInt(t *testing.T) {
-	store := NewContextStore()
+	store := router.NewContextStore()
 
 	tests := []struct {
 		key      string
@@ -87,7 +89,7 @@ func TestContextStore_GetInt(t *testing.T) {
 }
 
 func TestContextStore_GetBool(t *testing.T) {
-	store := NewContextStore()
+	store := router.NewContextStore()
 
 	tests := []struct {
 		key      string
@@ -115,7 +117,7 @@ func TestContextStore_GetBool(t *testing.T) {
 }
 
 func TestContextStore_ThreadSafety(t *testing.T) {
-	store := NewContextStore()
+	store := router.NewContextStore()
 	const goroutines = 100
 	const iterations = 1000
 
@@ -146,7 +148,7 @@ func TestContextStore_ThreadSafety(t *testing.T) {
 }
 
 func TestContextStore_MultipleKeys(t *testing.T) {
-	store := NewContextStore()
+	store := router.NewContextStore()
 	const goroutines = 10
 	const iterations = 100
 
@@ -168,7 +170,7 @@ func TestContextStore_MultipleKeys(t *testing.T) {
 }
 
 func TestContextStore_NilStore(t *testing.T) {
-	store := &safeStore{}
+	store := router.NewContextStore()
 
 	if val := store.Get("test", nil); val != nil {
 		t.Errorf("Expected nil for uninitialized store, got %v", val)

@@ -10,6 +10,7 @@ import (
 
 // ExtractSchemaFromType generates SchemaMetadata from a Go type using reflection
 // TODO: Need to support relationships
+// TODO: take options, ie. include original $meta: original name, orignal type
 func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -28,7 +29,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		}
 
 		// check crud tag first, if it's "-" skip the field
-		if crudTag := field.Tag.Get("crud"); crudTag == "-" {
+		if crudTag := field.Tag.Get(TAG_CRUD); crudTag == "-" {
 			continue
 		}
 
@@ -40,7 +41,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		}
 
 		// get JSON field name
-		jsonTag := field.Tag.Get("json")
+		jsonTag := field.Tag.Get(TAG_JSON)
 		if jsonTag == "-" {
 			continue
 		}
@@ -50,7 +51,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		}
 
 		// get bun tags with additional metadata
-		bunTag := field.Tag.Get("bun")
+		bunTag := field.Tag.Get(TAG_BUN)
 		isRequired := strings.Contains(bunTag, "notnull")
 		if isRequired {
 			required = append(required, jsonName)
@@ -96,7 +97,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 
 				parts := strings.Split(joinPart, "=")
 				if len(parts) == 2 {
-					relInfo.PrimaryKey = parts[0]
+					relInfo.JoinKey = parts[0]
 					relInfo.PrimaryKey = parts[1]
 				}
 			}
@@ -117,6 +118,7 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		prop.Nullable = field.Type.Kind() == reflect.Ptr
 		prop.ReadOnly = isReadOnly(field)
 		prop.WriteOnly = isWriteOnly(field)
+		prop.OriginalName = field.Name
 
 		if strings.Contains(jsonTag, "omitempty") {
 			prop.Required = false
@@ -243,9 +245,9 @@ func handleSpecialType(t reflect.Type) (PropertyInfo, bool) {
 }
 
 func isReadOnly(field reflect.StructField) bool {
-	return strings.Contains(field.Tag.Get("crud"), "readonly")
+	return strings.Contains(field.Tag.Get(TAG_CRUD), "readonly")
 }
 
 func isWriteOnly(field reflect.StructField) bool {
-	return strings.Contains(field.Tag.Get("crud"), "writeonly")
+	return strings.Contains(field.Tag.Get(TAG_CRUD), "writeonly")
 }

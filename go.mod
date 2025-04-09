@@ -5,11 +5,16 @@ go 1.23.4
 require (
 	dario.cat/mergo v1.0.1
 	github.com/MicahParks/keyfunc v1.9.0
+	github.com/ettle/strcase v0.2.0
+	github.com/gertd/go-pluralize v0.2.1
 	github.com/go-jose/go-jose/v3 v3.0.3
 	github.com/gobwas/glob v0.2.3
 	github.com/gofiber/fiber/v2 v2.52.6
+	github.com/gofiber/template v1.8.3
 	github.com/gofiber/template/django/v3 v3.1.13
+	github.com/gofiber/utils v1.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.1
+	github.com/goliatone/go-composite-fs v0.0.1
 	github.com/goliatone/hashid v0.0.6
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
@@ -84,12 +89,9 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/goccy/go-json v0.10.4 // indirect
-	github.com/gofiber/template v1.8.3 // indirect
-	github.com/gofiber/utils v1.1.0 // indirect
 	github.com/golang/glog v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/goliatone/go-composite-fs v0.0.1 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/wire v0.5.0 // indirect
@@ -160,7 +162,7 @@ require (
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/oauth2 v0.24.0 // indirect
+	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect

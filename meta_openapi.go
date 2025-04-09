@@ -76,16 +76,17 @@ type SchemaMetadata struct {
 }
 
 type PropertyInfo struct {
-	Type        string                  `json:"type"`
-	Format      string                  `json:"format,omitempty"`
-	Description string                  `json:"description,omitempty"`
-	Required    bool                    `json:"required"`
-	Nullable    bool                    `json:"nullable"`
-	ReadOnly    bool                    `json:"read_only"`
-	WriteOnly   bool                    `json:"write_only"`
-	Example     any                     `json:"example,omitempty"`
-	Properties  map[string]PropertyInfo `json:"properties,omitempty"` // For nested objects
-	Items       *PropertyInfo           `json:"items,omitempty"`      // For arrays
+	Type         string                  `json:"type"`
+	Format       string                  `json:"format,omitempty"`
+	Description  string                  `json:"description,omitempty"`
+	Required     bool                    `json:"required"`
+	Nullable     bool                    `json:"nullable"`
+	ReadOnly     bool                    `json:"read_only"`
+	WriteOnly    bool                    `json:"write_only"`
+	OriginalName string                  `json:"original_name"`
+	Example      any                     `json:"example,omitempty"`
+	Properties   map[string]PropertyInfo `json:"properties,omitempty"` // For nested objects
+	Items        *PropertyInfo           `json:"items,omitempty"`      // For arrays
 }
 
 type RelationshipInfo struct {
@@ -93,6 +94,7 @@ type RelationshipInfo struct {
 	RelatedTypeName string `json:"related_type_name"`
 	IsSlice         bool   `json:"is_slice"`
 	JoinClause      string `json:"join_clause,omitempty"`
+	JoinKey         string `json:"join_key,omitempty"`
 	PrimaryKey      string `json:"primary_key,omitempty"`
 	ForeignKey      string `json:"foreign_key,omitempty"`
 	PivotTable      string `json:"pivot_table,omitempty"` // e.g. "order_to_items"

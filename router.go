@@ -35,12 +35,6 @@ const (
 	HEAD   HTTPMethod = "HEAD"
 )
 
-type Logger interface {
-	Debug(format string, args ...any)
-	Info(format string, args ...any)
-	Error(format string, args ...any)
-}
-
 // ViewContext provide template values
 type ViewContext map[string]any
 
@@ -191,6 +185,7 @@ type Router[T any] interface {
 	Routes() []RouteDefinition
 	// For debugging: Print a table of routes and their middleware chain
 	PrintRoutes()
+	WithLogger(logger Logger) Router[T]
 }
 
 // TODO: Maybe incorporate into Router[T]

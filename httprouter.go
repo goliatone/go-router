@@ -192,6 +192,11 @@ func (r *HTTPRouter) WithGroup(path string, cb func(r Router[*httprouter.Router]
 	return r
 }
 
+func (r *HTTPRouter) WithLogger(logger Logger) Router[*httprouter.Router] {
+	r.logger = logger
+	return r
+}
+
 func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 	for _, mw := range m {
 		r.middlewares = append(r.middlewares, namedMiddleware{

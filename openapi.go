@@ -370,7 +370,6 @@ func (o *OpenAPIRenderer) addRouteToPath(rt RouteDefinition) {
 	pathItemMap[methodLower] = op
 
 	// Update paths
-	fmt.Printf("==== update paths %s\n", fullPath)
 	o.Paths[fullPath] = pathItemMap
 }
 

@@ -47,17 +47,16 @@ type ViewConfigProvider interface {
 	GetAssetsFS() fs.FS
 	GetAssetsDir() string
 	GetTemplatesFS() []fs.FS
-	GetLogger() Logger
 }
 
 type ViewFactory func(ViewConfigProvider) (Views, error)
 
-func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
+func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (Views, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("view engine config validation failed: %w", err)
 	}
 
-	lgr := getLogger(cfg)
+	lgr := getLogger(lgrs...)
 
 	var viewEngine fiber.Views
 
@@ -127,13 +126,13 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 }
 
 // InitializeViewEngine will initialize a view engine with default values
-func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
+func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (Views, error) {
 	var err error
 	var viewEngine fiber.Views
 
-	lgr := opts.GetLogger()
+	lgr := getLogger(lgrs...)
 
-	viewEngine, err = DefaultViewEngine(opts)
+	viewEngine, err = DefaultViewEngine(opts, lgr)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing views: %w", err)
 	}
@@ -541,9 +540,10 @@ func DirExists(path string, afs ...fs.FS) bool {
 	return info.IsDir()
 }
 
-func getLogger(opts ViewConfigProvider) Logger {
-	if opts.GetLogger() != nil {
-		return opts.GetLogger()
+func getLogger(lgrs ...Logger) Logger {
+	if len(lgrs) > 0 {
+		return lgrs[0]
 	}
+
 	return &defaultLogger{}
 }

@@ -141,7 +141,6 @@ func (r *Route[T]) Middleware(middleware ...MiddlewareFunc) *Route[T] {
 }
 
 func (r *Route[T]) Name(name string) *Route[T] {
-	fmt.Println("== adding route: " + name)
 	r.definition.Name = name
 	return r
 }

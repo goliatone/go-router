@@ -154,6 +154,11 @@ func (br *BaseRouter) registerLateRoutes() {
 	// br.lateRoutes = make([]*lateRoute, 0)
 }
 
+func (br *BaseRouter) WithLogger(logger Logger) *BaseRouter {
+	br.logger = logger
+	return br
+}
+
 func (br *BaseRouter) Routes() []RouteDefinition {
 	defs := make([]RouteDefinition, len(br.root.routes))
 	for i, rt := range br.root.routes {

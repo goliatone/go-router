@@ -47,6 +47,7 @@ type ViewConfigProvider interface {
 	GetAssetsFS() fs.FS
 	GetAssetsDir() string
 	GetTemplatesFS() []fs.FS
+	GetLogger() Logger
 }
 
 type ViewFactory func(ViewConfigProvider) (Views, error)
@@ -55,6 +56,8 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("view engine config validation failed: %w", err)
 	}
+
+	lgr := getLogger(cfg)
 
 	var viewEngine fiber.Views
 
@@ -67,11 +70,11 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 			absDevDir, err := filepath.Abs(devDir)
 			if err == nil && DirExists(absDevDir) {
 				if cfg.GetDebug() {
-					log.Printf("Using dev directory: %s", absDevDir)
+					lgr.Debug("Using dev directory", "dir", absDevDir)
 				}
 				sources = append(sources, os.DirFS(absDevDir))
 			} else if cfg.GetDebug() {
-				log.Printf("Dev directory not found or accessible: %s", devDir)
+				lgr.Debug("Dev directory not found or accessible", "dir", devDir)
 			}
 		}
 	}
@@ -97,13 +100,13 @@ func DefaultViewEngine(cfg ViewConfigProvider) (Views, error) {
 	compositeFS := cfs.NewCompositeFS(sources...)
 
 	if cfg.GetDebug() {
-		log.Println("Available templates:")
+		lgr.Debug("Available templates")
 		entries, _ := fs.ReadDir(compositeFS, NormalizePath(cfg.GetDirFS()))
 		for _, entry := range entries {
-			log.Printf("  - %s\n", NormalizePath(cfg.GetDirFS())+"/"+entry.Name())
+			lgr.Debug("  - " + NormalizePath(cfg.GetDirFS()) + "/" + entry.Name())
 		}
 
-		DebugAssetPaths(compositeFS, "Composite FS")
+		DebugAssetPaths(lgr, compositeFS, "Composite FS")
 	}
 
 	engine := django.NewPathForwardingFileSystem(
@@ -128,21 +131,23 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 	var err error
 	var viewEngine fiber.Views
 
+	lgr := opts.GetLogger()
+
 	viewEngine, err = DefaultViewEngine(opts)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing views: %w", err)
 	}
 
 	d, ok := viewEngine.(interface {
-		AddFunc(name string, fn interface{}) ftpl.IEngineCore
+		AddFunc(name string, fn any) ftpl.IEngineCore
 	})
 	if !ok {
 		return nil, fmt.Errorf("unexpected view engine type: %T", viewEngine)
 	}
 
-	fmt.Println("=========== VIEW INIT =============")
-	fmt.Println("HERE WE ARE RUNING...")
-	fmt.Println("===================================")
+	lgr.Debug("=========== VIEW INIT =============")
+	lgr.Debug("HERE WE ARE RUNING...")
+	lgr.Debug("===================================")
 
 	assetsFs := opts.GetAssetsFS()
 	if !opts.GetEmbed() {
@@ -150,7 +155,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 	}
 
 	if opts.GetDebug() {
-		DebugAssetPaths(assetsFs, "Assets FS")
+		DebugAssetPaths(lgr, assetsFs, "Assets FS")
 	}
 
 	assetPrefix := NormalizePath(opts.GetRemovePathPrefix())
@@ -179,7 +184,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 		matcher := func(path string, info nameable, err error) error {
 			if err != nil {
 				if opts.GetDebug() {
-					log.Printf("Error accessing path %s: %v", path, err)
+					lgr.Error("Error accessing path", "path", path, err)
 				}
 				return nil
 			}
@@ -195,8 +200,12 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 			urlPath = "/" + strings.TrimPrefix(urlPath, "/")
 
 			if opts.GetDebug() {
-				log.Printf("CSS: filename=%s, path=%s, urlPath=%s, match=%t",
-					filename, path, urlPath, g.Match(filename))
+				lgr.Debug("CSS files",
+					"filename", filename,
+					"path", path,
+					"url_path", urlPath,
+					"match", g.Match(filename),
+				)
 			}
 
 			if g.Match(filename) {
@@ -207,7 +216,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 		}
 
 		if opts.GetDebug() {
-			log.Printf("Looking for CSS in embedded path: %s", cssPath)
+			lgr.Debug("Looking for CSS in embedded path", "path", cssPath)
 		}
 
 		fs.WalkDir(assetsFs, cssPath, func(path string, info fs.DirEntry, err error) error {
@@ -216,7 +225,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 
 		if res == "" && opts.GetDebug() {
 			res = template.HTML("<!-- CSS NOT FOUND: " + name + " (looked in " + cssPath + ") -->")
-			log.Printf("WARNING: Could not resolve CSS: %s", name)
+			lgr.Warn("Could not resolve CSS: %s", "name", name)
 		}
 
 		return res
@@ -246,8 +255,12 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 			urlPath = "/" + strings.TrimPrefix(urlPath, "/")
 
 			if opts.GetDebug() {
-				log.Printf("JS: filename=%s, path=%s, urlPath=%s, match=%t",
-					filename, path, urlPath, g.Match(filename))
+				lgr.Debug("JS",
+					"filename", filename,
+					"path", path,
+					"url_path", urlPath,
+					"match", g.Match(filename),
+				)
 			}
 
 			if g.Match(filename) {
@@ -258,7 +271,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 		}
 
 		if opts.GetDebug() {
-			log.Printf("Looking for JS in embedded path: %s", jsPath)
+			lgr.Debug("Looking for JS in embedded path", "js_path", jsPath)
 		}
 
 		fs.WalkDir(assetsFs, jsPath, func(path string, info fs.DirEntry, err error) error {
@@ -267,7 +280,7 @@ func InitializeViewEngine(opts ViewConfigProvider) (Views, error) {
 
 		if res == "" && opts.GetDebug() {
 			res = template.HTML("<!-- JS NOT FOUND: " + name + " (looked in " + jsPath + ") -->")
-			log.Printf("WARNING: Could not resolve JS: %s", name)
+			lgr.Warn("Could not resolve JS", "name", name)
 		}
 
 		return res
@@ -456,24 +469,24 @@ func ValidateConfig(cfg ViewConfigProvider) error {
 }
 
 // DebugAssetPaths prints all available assets for debugging
-func DebugAssetPaths(dir fs.FS, labels ...string) {
+func DebugAssetPaths(lgr Logger, dir fs.FS, labels ...string) {
 	label := "Asset"
 	if len(labels) > 0 {
 		label = labels[0]
 	}
-	fmt.Printf("=== Available %s Paths ===\n", label)
+	lgr.Debug("=== Available Paths ===", "label", label)
 
 	fs.WalkDir(dir, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if !d.IsDir() {
-			fmt.Println("  - ", path)
+			lgr.Debug("  - " + path)
 		}
 		return nil
 	})
 
-	fmt.Println("============================")
+	lgr.Debug("============================")
 }
 
 // NormalizePath ensures consistent path formatting
@@ -526,4 +539,11 @@ func DirExists(path string, afs ...fs.FS) bool {
 	}
 
 	return info.IsDir()
+}
+
+func getLogger(opts ViewConfigProvider) Logger {
+	if opts.GetLogger() != nil {
+		return opts.GetLogger()
+	}
+	return &defaultLogger{}
 }

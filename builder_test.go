@@ -341,6 +341,7 @@ type MockRouter struct {
 	routes     []*MockRouteInfo
 	Prefix     string
 	Mw         []router.MiddlewareFunc
+	logger     router.Logger
 }
 
 func NewMockRouter() *MockRouter {
@@ -381,6 +382,11 @@ func (m *MockRouter) Mount(prefix string) router.Router[*MockRouter] {
 		Mw:         append([]router.MiddlewareFunc{}, m.Mw...),
 		routes:     m.rootRouter.routes, // Share root's routes slice
 	}
+}
+
+func (m *MockRouter) WithLogger(logger router.Logger) router.Router[*MockRouter] {
+	m.logger = logger
+	return m
 }
 
 func (m *MockRouter) WithGroup(path string, cb func(r router.Router[*MockRouter])) router.Router[*MockRouter] {

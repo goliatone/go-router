@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.2.2](https://github.com/goliatone/go-router/compare/v0.2.1...v0.2.2) - (2025-04-13)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.2.2 ([59c2c6c](https://github.com/goliatone/go-router/commit/59c2c6c2722f2df6dbc07560c9185d06888c84f8))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Optional logger parameter ([4246994](https://github.com/goliatone/go-router/commit/42469943f6a3ffa69fbbf0383d090ca740210c2c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.2.1 ([afb5bbc](https://github.com/goliatone/go-router/commit/afb5bbc3b82377a1b21110a74687f09cfb1904a7))  - (goliatone)
+
 # [0.2.1](https://github.com/goliatone/go-router/compare/v0.2.0...v0.2.1) - (2025-04-13)
 
 ## <!-- 13 -->📦 Bumps

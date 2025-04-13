@@ -145,12 +145,14 @@ type FiberRouter struct {
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	fullPrefix := r.joinPath(r.prefix, prefix)
-	fmt.Printf("[ROUTER] Creating route group with prefix: %s\n", fullPrefix)
+	r.logger.Debug("creating route group", "prefix", fullPrefix)
+
 	return &FiberRouter{
 		app: r.app,
 		BaseRouter: BaseRouter{
-			prefix:      r.joinPath(r.prefix, prefix),
-			middlewares: append([]namedMiddleware{}, r.middlewares...),
+			prefix: r.joinPath(r.prefix, prefix),
+			// middlewares: append([]namedMiddleware{}, r.middlewares...),
+			middlewares: slices.Clone(r.middlewares),
 			logger:      r.logger,
 			routes:      r.routes,
 			root:        r.root,
@@ -164,8 +166,9 @@ func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
 		app: r.app,
 		BaseRouter: BaseRouter{
-			prefix:      r.joinPath(r.prefix, prefix),
-			middlewares: append([]namedMiddleware{}, r.middlewares...),
+			prefix: r.joinPath(r.prefix, prefix),
+			// middlewares: append([]namedMiddleware{}, r.middlewares...),
+			middlewares: slices.Clone(r.middlewares),
 			logger:      r.logger,
 			routes:      r.routes,
 			root:        r.root,
@@ -195,7 +198,7 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 	// Check for duplicates
 	for _, existingRoute := range r.root.routes {
 		if existingRoute.Method == method && existingRoute.Path == fullPath {
-			fmt.Printf("[ROUTER] WARNING: Duplicate route detected: %s %s\n", method, fullPath)
+			r.logger.Warn("Duplicate route detected", "method", method, "path", fullPath)
 		}
 	}
 
@@ -209,7 +212,7 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 
-	fmt.Printf("[ROUTER] Registering route: %s %s (name: %s)\n", method, pathStr, route.Name)
+	r.logger.Info("registering route", "method", method, "path", pathStr, "name", route.Name)
 
 	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c, r.logger)
@@ -257,6 +260,11 @@ func (r *FiberRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFun
 
 func (r *FiberRouter) PrintRoutes() {
 	r.BaseRouter.PrintRoutes()
+}
+
+func (r *FiberRouter) WithLogger(logger Logger) Router[*fiber.App] {
+	r.BaseRouter.WithLogger(logger)
+	return r
 }
 
 type fiberContext struct {
@@ -335,7 +343,7 @@ func (c *fiberContext) Redirect(location string, status ...int) error {
 	if len(status) > 0 {
 		code = status[0]
 	}
-	c.logger.Info("redirect location='%s' status='%d'", location, code)
+	c.logger.Info("redirect request", "location", location, "code", code)
 	return c.ctx.Redirect(location, code)
 }
 
@@ -457,10 +465,6 @@ func (c *fiberContext) Next() error {
 	if c.index >= len(c.handlers) {
 		return nil
 	}
-
-	fmt.Printf("Executing handler %d of %d: %s\n",
-		c.index, len(c.handlers),
-		c.handlers[c.index].Name)
 
 	return c.handlers[c.index].Handler(c)
 }

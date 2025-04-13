@@ -1,5 +1,30 @@
 # Changelog
 
+# [0.2.1](https://github.com/goliatone/go-router/compare/v0.2.0...v0.2.1) - (2025-04-13)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.2.1 ([ef0a8ca](https://github.com/goliatone/go-router/commit/ef0a8ca3661363acc2c9af8ec95bc7a7da084c13))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Implement WithLogger ([e02cc53](https://github.com/goliatone/go-router/commit/e02cc533d08581b1befd7a18301619c6f086cd03))  - (goliatone)
+- Implement WithLogger ([d7608b3](https://github.com/goliatone/go-router/commit/d7608b3b2ad38021fcf3d02aa73aa2e604c6bc20))  - (goliatone)
+- Logger instead of fmt/log ([a2f6409](https://github.com/goliatone/go-router/commit/a2f6409682cfc2d5cefb666d1be73b4fc041656e))  - (goliatone)
+- Implement WithLogger ([4ee557c](https://github.com/goliatone/go-router/commit/4ee557cae387228c6f3fa3051c348393c6a6f4bd))  - (goliatone)
+- Logger instead of fmt/log ([c44556c](https://github.com/goliatone/go-router/commit/c44556c2774fa8af70755b547eb7dc81fb5331e4))  - (goliatone)
+- Logger definition ([8a57aca](https://github.com/goliatone/go-router/commit/8a57aca9024f9946a38cef8a5a5789cc2039e1e0))  - (goliatone)
+- Logger definition ([203aead](https://github.com/goliatone/go-router/commit/203aead56dd2e170bcd8d61bc23198a25ab1289d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.2.0 ([8c62ed5](https://github.com/goliatone/go-router/commit/8c62ed52e1b812b6e039672616aa9832a6d0f744))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Clean up code ([f0560ff](https://github.com/goliatone/go-router/commit/f0560ff229619525db055be4d173cf4e9f12361f))  - (goliatone)
+- Clean up code ([bd46a52](https://github.com/goliatone/go-router/commit/bd46a5250a270135486ef572739cf5f06251597f))  - (goliatone)
+
 # [0.2.0](https://github.com/goliatone/go-router/compare/v0.1.0...v0.2.0) - (2025-04-09)
 
 ## <!-- 1 -->🐛 Bug Fixes

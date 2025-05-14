@@ -3,6 +3,7 @@ package router_test
 import (
 	"context"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"testing"
 
@@ -535,6 +536,9 @@ func (m *mockContext) Context() context.Context {
 	// Return a non-nil context. You can return context.Background() or context.TODO() for tests.
 	return context.Background()
 }
+func (m *mockContext) FormFile(key string) (*multipart.FileHeader, error)  { return nil, nil }
+func (m *mockContext) FormValue(key string, defaultValue ...string) string { return "" }
+
 func (m *mockContext) SetContext(ctx context.Context) {
 	// Optionally store the context if needed, or just ignore for tests.
 }

@@ -2,46 +2,30 @@ package router_test
 
 import (
 	"encoding/json"
-	"errors"
+	stdErrors "errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-router"
 )
 
-// mockValidationErrors is a helper type for testing validation error mapping
-type mockValidationErrors struct{}
-
-func (m mockValidationErrors) ValidationErrors() []router.ValidationError {
-	return []router.ValidationError{
-		{Field: "name", Message: "Name is required"},
-	}
-}
-
-func (m mockValidationErrors) Error() string {
-	return "error"
-}
-
 func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
-	// Create a new Fiber adapter server
 	app := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
-		return fiber.New(fiber.Config{
-			// App configuration here if needed
-		})
+		return fiber.New(fiber.Config{})
 	})
 
-	// Use the error handler middleware at the top level
 	app.Router().Use(router.WithErrorHandlerMiddleware(
-		router.WithEnvironment("development"), // so we get stack traces
+		router.WithEnvironment("development"), // to get stack traces
 		router.WithStackTrace(true),
-		router.WithLogger(&testLogger{}), // custom logger for testing if needed
+		router.WithLogger(&testLogger{}),
 	))
 
-	// Define some test handlers that will trigger different error conditions
 	app.Router().Get("/no-error", func(c router.Context) error {
 		return c.Send([]byte(`OK`))
 	})
@@ -51,7 +35,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 	})
 
 	app.Router().Get("/validation-error-custom", func(c router.Context) error {
-		return router.NewValidationError("Custom validation error", []router.ValidationError{
+		return router.NewValidationError("Custom validation error", []errors.FieldError{
 			{
 				Field:   "id",
 				Message: "must be unique",
@@ -60,27 +44,43 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 	})
 
 	app.Router().Get("/validation-error", func(c router.Context) error {
-		// return NewValidationError("validation error", map[string]any{
-		// 	"error": "validation",
-		// })
-		return &mockValidationErrors{}
+		return router.NewValidationError("Validation failed", []errors.FieldError{
+			{Field: "name", Message: "Name is required", Value: nil},
+		})
 	})
 
 	app.Router().Get("/internal-error", func(c router.Context) error {
-		return errors.New("some unexpected error")
+		return stdErrors.New("some unexpected error")
 	})
 
 	app.Router().Get("/unauthorized", func(c router.Context) error {
 		return router.NewUnauthorizedError("unauthorized access")
 	})
 
+	app.Router().Get("/error-with-metadata", func(c router.Context) error {
+		return router.NewNotFoundError("Resource not found",
+			map[string]any{
+				"resource_id":   "123",
+				"resource_type": "user",
+			})
+	})
+
+	app.Router().Get("/conflict-error", func(c router.Context) error {
+		return router.NewConflictError("Resource already exists",
+			map[string]any{"existing_id": "456"})
+	})
+
 	tests := []struct {
 		name               string
 		path               string
 		expectedStatusCode int
-		expectedErrorType  string
+		expectedCategory   errors.Category
+		expectedTextCode   string
 		expectedMessage    string
 		checkStack         bool
+		checkValidation    bool
+		checkMetadata      bool
+		expectedMetadata   map[string]any
 	}{
 		{
 			name:               "NoError",
@@ -91,28 +91,34 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			name:               "RouterError",
 			path:               "/router-error",
 			expectedStatusCode: http.StatusNotFound,
-			expectedErrorType:  string(router.ErrorTypeNotFound),
+			expectedCategory:   errors.CategoryNotFound,
+			expectedTextCode:   "NOT_FOUND",
 			expectedMessage:    "User not found",
 		},
 		{
 			name:               "ValidationError",
 			path:               "/validation-error",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorType:  string(router.ErrorTypeValidation),
+			expectedCategory:   errors.CategoryValidation,
+			expectedTextCode:   "VALIDATION_ERROR",
 			expectedMessage:    "Validation failed",
+			checkValidation:    true,
 		},
 		{
 			name:               "NewValidationError",
 			path:               "/validation-error-custom",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorType:  string(router.ErrorTypeValidation),
+			expectedCategory:   errors.CategoryValidation,
+			expectedTextCode:   "VALIDATION_ERROR",
 			expectedMessage:    "Custom validation error",
+			checkValidation:    true,
 		},
 		{
 			name:               "InternalError",
 			path:               "/internal-error",
 			expectedStatusCode: http.StatusInternalServerError,
-			expectedErrorType:  string(router.ErrorTypeInternal),
+			expectedCategory:   errors.CategoryInternal,
+			expectedTextCode:   "",
 			expectedMessage:    "An unexpected error occurred",
 			checkStack:         true,
 		},
@@ -120,8 +126,34 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			name:               "UnauthorizedError",
 			path:               "/unauthorized",
 			expectedStatusCode: http.StatusUnauthorized,
-			expectedErrorType:  string(router.ErrorTypeUnauthorized),
+			expectedCategory:   errors.CategoryAuth,
+			expectedTextCode:   "UNAUTHORIZED",
 			expectedMessage:    "unauthorized access",
+		},
+		{
+			name:               "ErrorWithMetadata",
+			path:               "/error-with-metadata",
+			expectedStatusCode: http.StatusNotFound,
+			expectedCategory:   errors.CategoryNotFound,
+			expectedTextCode:   "NOT_FOUND",
+			expectedMessage:    "Resource not found",
+			checkMetadata:      true,
+			expectedMetadata: map[string]any{
+				"resource_id":   "123",
+				"resource_type": "user",
+			},
+		},
+		{
+			name:               "ConflictError",
+			path:               "/conflict-error",
+			expectedStatusCode: http.StatusConflict,
+			expectedCategory:   errors.CategoryConflict,
+			expectedTextCode:   "CONFLICT",
+			expectedMessage:    "Resource already exists",
+			checkMetadata:      true,
+			expectedMetadata: map[string]any{
+				"existing_id": "456",
+			},
 		},
 	}
 
@@ -129,6 +161,8 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", tt.path, nil)
+			req.Header.Set("X-Request-ID", "test-request-123")
+
 			resp, err := app.WrappedRouter().Test(req, -1)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -148,16 +182,21 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 				return
 			}
 
-			// Parse ErrorResponse
-			var er router.ErrorResponse
+			// Parse ErrorResponse using our unified error structure
 			body, _ := io.ReadAll(resp.Body)
-
+			var er errors.ErrorResponse
 			if err := json.Unmarshal(body, &er); err != nil {
-				t.Fatalf("failed to unmarshal error response: %v", err)
+				t.Fatalf("failed to unmarshal error response: %v, body: %s", err, string(body))
 			}
 
-			if er.Error.Type != tt.expectedErrorType {
-				t.Errorf("expected error type %s, got %s", tt.expectedErrorType, er.Error.Type)
+			// Check error category
+			if er.Error.Category != tt.expectedCategory {
+				t.Errorf("expected error category %s, got %s", tt.expectedCategory, er.Error.Category)
+			}
+
+			// Check text code (if expected)
+			if tt.expectedTextCode != "" && er.Error.TextCode != tt.expectedTextCode {
+				t.Errorf("expected error text code %s, got %s", tt.expectedTextCode, er.Error.TextCode)
 			}
 
 			// Check error message
@@ -165,25 +204,69 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 				t.Errorf("expected message to contain '%s', got '%s'", tt.expectedMessage, er.Error.Message)
 			}
 
+			// Check that code matches status code
+			if er.Error.Code != tt.expectedStatusCode {
+				t.Errorf("expected error code %d, got %d", tt.expectedStatusCode, er.Error.Code)
+			}
+
+			// Check request ID is included
+			if er.Error.RequestID != "test-request-123" {
+				t.Errorf("expected request ID 'test-request-123', got '%s'", er.Error.RequestID)
+			}
+
+			// Check timestamp is present and in RFC3339 format
+			if er.Error.Timestamp.IsZero() {
+				t.Error("expected timestamp to be present")
+			}
+
 			// Check stack if required
-			if tt.checkStack && len(er.Error.Stack) == 0 {
+			if tt.checkStack && len(er.Error.StackTrace) == 0 {
 				t.Error("expected stack trace in development mode, got none")
 			}
 
 			// For validation errors, check if we have validation details
-			if tt.path == "/validation-error" {
-				if len(er.Error.Validation) == 0 {
+			if tt.checkValidation {
+				if len(er.Error.ValidationErrors) == 0 {
 					t.Error("expected validation errors, got none")
 				} else {
-					found := false
-					for _, v := range er.Error.Validation {
-						if v.Field == "name" && v.Message == "Name is required" {
-							found = true
-							break
+					// Check specific validation error based on the test case
+					if tt.path == "/validation-error" {
+						found := false
+						for _, v := range er.Error.ValidationErrors {
+							if v.Field == "name" && v.Message == "Name is required" {
+								found = true
+								break
+							}
+						}
+						if !found {
+							t.Error("expected validation error for field 'name'")
+						}
+					} else if tt.path == "/validation-error-custom" {
+						found := false
+						for _, v := range er.Error.ValidationErrors {
+							if v.Field == "id" && v.Message == "must be unique" {
+								found = true
+								break
+							}
+						}
+						if !found {
+							t.Error("expected validation error for field 'id'")
 						}
 					}
-					if !found {
-						t.Error("expected validation error for field 'name'")
+				}
+			}
+
+			// Check metadata if required
+			if tt.checkMetadata {
+				if er.Error.Metadata == nil {
+					t.Error("expected metadata to be present")
+				} else {
+					for key, expectedValue := range tt.expectedMetadata {
+						if actualValue, exists := er.Error.Metadata[key]; !exists {
+							t.Errorf("expected metadata key '%s' to exist", key)
+						} else if actualValue != expectedValue {
+							t.Errorf("expected metadata[%s] = %v, got %v", key, expectedValue, actualValue)
+						}
 					}
 				}
 			}
@@ -191,11 +274,138 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 	}
 }
 
-// testLogger is a simple logger that can be used to capture logs during tests if needed.
-// For now, it just implements the Logger interface and does nothing.
-type testLogger struct{}
+func TestErrorResponseJSONFormat(t *testing.T) {
+	err := errors.NewValidation("validation failed",
+		errors.FieldError{Field: "email", Message: "required"},
+		errors.FieldError{Field: "age", Message: "must be positive", Value: -5},
+	).WithCode(400).
+		WithTextCode("VALIDATION_ERROR").
+		WithRequestID("req-123").
+		WithMetadata(map[string]any{
+			"user_id": 456,
+			"attempt": 3,
+		})
 
-func (l *testLogger) Debug(format string, args ...any) {}
-func (l *testLogger) Info(format string, args ...any)  {}
-func (l *testLogger) Error(format string, args ...any) {}
-func (l *testLogger) Warn(format string, args ...any)  {}
+	response := err.ToErrorResponse(false, nil)
+
+	data, marshalErr := json.Marshal(response)
+	if marshalErr != nil {
+		t.Fatalf("failed to marshal error response: %v", marshalErr)
+	}
+
+	var unmarshaled map[string]interface{}
+	if unmarshalErr := json.Unmarshal(data, &unmarshaled); unmarshalErr != nil {
+		t.Fatalf("failed to unmarshal error response: %v", unmarshalErr)
+	}
+
+	// Verify the structure
+	errorObj, ok := unmarshaled["error"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'error' field to be an object")
+	}
+
+	expectedFields := []string{"category", "code", "text_code", "message", "validation_errors", "metadata", "request_id", "timestamp"}
+	for _, field := range expectedFields {
+		if _, exists := errorObj[field]; !exists {
+			t.Errorf("expected field '%s' to exist in error response", field)
+		}
+	}
+
+	// Verify validation errors structure
+	validationErrors, ok := errorObj["validation_errors"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'validation_errors' to be an array")
+	}
+
+	if len(validationErrors) != 2 {
+		t.Errorf("expected 2 validation errors, got %d", len(validationErrors))
+	}
+
+	// Check first validation error
+	firstError, ok := validationErrors[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected validation error to be an object")
+	}
+
+	if firstError["field"].(string) != "email" {
+		t.Errorf("expected first validation error field to be 'email', got '%s'", firstError["field"])
+	}
+}
+
+type testLogger struct {
+	logs []logEntry
+}
+
+type logEntry struct {
+	level   string
+	message string
+	fields  map[string]any
+}
+
+func (l *testLogger) Info(msg string, args ...any)  {}
+func (l *testLogger) Debug(msg string, args ...any) {}
+func (l *testLogger) Warn(msg string, args ...any)  {}
+func (l *testLogger) Error(msg string, fields ...any) {
+
+	l.logs = append(l.logs, logEntry{
+		level:   "error",
+		message: msg,
+		fields:  fields[0].(map[string]any),
+	})
+}
+
+func (l *testLogger) HasLogWithField(field string, value any) bool {
+	for _, log := range l.logs {
+		if log.fields != nil {
+			if actualValue, exists := log.fields[field]; exists {
+				if reflect.DeepEqual(actualValue, value) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func TestErrorLogging(t *testing.T) {
+	logger := &testLogger{}
+
+	err := router.NewNotFoundError("user not found", map[string]any{
+		"user_id": 123,
+	}).WithRequestID("req-456")
+
+	ctx := &mockContext{}
+
+	// Test logging
+	router.LogError(logger, err, ctx)
+
+	// Verify log entry was created
+	if len(logger.logs) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(logger.logs))
+	}
+
+	log := logger.logs[0]
+
+	// Check log fields
+	expectedFields := map[string]any{
+		"category":   errors.CategoryNotFound.String(),
+		"text_code":  "NOT_FOUND",
+		"code":       404,
+		"path":       "/test",
+		"method":     "GET",
+		"request_id": "req-456",
+	}
+
+	for key, expectedValue := range expectedFields {
+		if actualValue, exists := log.fields[key]; !exists {
+			t.Errorf("expected log field '%s' to exist", key)
+		} else if actualValue != expectedValue {
+			t.Errorf("expected log field '%s' = %v, got %v", key, expectedValue, actualValue)
+		}
+	}
+
+	// Check that metadata is logged
+	if !logger.HasLogWithField("metadata", err.Metadata) {
+		t.Error("expected metadata to be logged")
+	}
+}

@@ -92,6 +92,7 @@ require (
 	github.com/golang/glog v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/goliatone/go-errors v0.1.0 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/wire v0.5.0 // indirect

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime/multipart"
 	"net/http"
 )
 
@@ -76,6 +77,10 @@ type RequestContext interface {
 	Header(string) string
 	Referer() string
 	OriginalURL() string
+
+	FormFile(key string) (*multipart.FileHeader, error)
+	FormValue(key string, defaultValue ...string) string
+
 	// GetRouteURL(routeName string, params Map) (string, error)
 	// RedirectToRoute(routeName string, params Map, status ...int) error
 	// Redirect(location string, status ...int) error
@@ -154,7 +159,6 @@ type RouteInfo interface {
 
 // Static configuration options
 type Static struct {
-	//TODO: make an array of fs.FS
 	FS             fs.FS               // Optional filesystem implementation
 	Root           string              // Root directory
 	Browse         bool                // Enable directory browsing

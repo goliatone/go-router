@@ -1,5 +1,7 @@
 package router
 
+import "github.com/goliatone/go-errors"
+
 const ErrorHandlerConfigKey = "error_handler_config"
 
 // WithErrorHandlerMiddleware creates a middleware that handles errors for all routes in a group
@@ -10,16 +12,14 @@ func WithErrorHandlerMiddleware(opts ...ErrorHandlerOption) MiddlewareFunc {
 	}
 
 	return func(hf HandlerFunc) HandlerFunc {
+		var err error
 		return func(c Context) error {
 			// c.Set(ErrorHandlerConfigKey, config)
-
-			err := c.Next()
-			if err == nil {
+			if err = c.Next(); err == nil {
 				return nil
 			}
-
 			// Convert error to RouterError
-			routerErr := MapToRouterError(err, config.ErrorMappers)
+			routerErr := errors.MapToError(err, config.ErrorMappers)
 
 			if requestID := config.GetRequestID(c); requestID != "" {
 				routerErr.RequestID = requestID

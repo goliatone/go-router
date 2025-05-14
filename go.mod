@@ -6,6 +6,7 @@ require (
 	dario.cat/mergo v1.0.1
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/ettle/strcase v0.2.0
+	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/gertd/go-pluralize v0.2.1
 	github.com/go-jose/go-jose/v3 v3.0.3
 	github.com/gobwas/glob v0.2.3
@@ -15,6 +16,7 @@ require (
 	github.com/gofiber/utils v1.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/goliatone/go-composite-fs v0.0.1
+	github.com/goliatone/go-errors v0.1.0
 	github.com/goliatone/hashid v0.0.6
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
@@ -79,7 +81,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/flosch/pongo2/v6 v6.0.0 // indirect
 	github.com/getkin/kin-openapi v0.126.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
@@ -92,7 +93,6 @@ require (
 	github.com/golang/glog v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/goliatone/go-errors v0.1.0 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/wire v0.5.0 // indirect

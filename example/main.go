@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/goliatone/go-errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/template/django/v3"
@@ -306,7 +307,7 @@ func createUser(store *UserStore) router.HandlerFunc {
 		}
 
 		if req.Name == "" || req.Email == "" {
-			return router.NewValidationError("Invalid request body", []router.ValidationError{
+			return router.NewValidationError("Invalid request body", errors.ValidationErrors{
 				{
 					Field:   "name",
 					Message: "name required",

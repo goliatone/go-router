@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"slices"
 	"sync"
@@ -433,6 +434,14 @@ func (c *fiberContext) Referer() string {
 
 func (c *fiberContext) OriginalURL() string {
 	return c.ctx.OriginalURL()
+}
+
+func (c *fiberContext) FormFile(key string) (*multipart.FileHeader, error) {
+	return c.ctx.FormFile(key)
+}
+
+func (c *fiberContext) FormValue(key string, defaultValues ...string) string {
+	return c.ctx.FormValue(key, defaultValues...)
 }
 
 func (c *fiberContext) SetHeader(key string, value string) Context {

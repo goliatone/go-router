@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flosch/pongo2/v6"
 	"github.com/gobwas/glob"
 	"github.com/gofiber/fiber/v2"
 	ftpl "github.com/gofiber/template"
@@ -108,6 +109,7 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (Views, error) {
 		DebugAssetPaths(lgr, compositeFS, "Composite FS")
 	}
 
+	pongo2.DefaultSet.Options.TrimBlocks = true
 	engine := django.NewPathForwardingFileSystem(
 		http.FS(compositeFS),
 		NormalizePath(cfg.GetDirFS()),

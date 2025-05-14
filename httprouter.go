@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -661,6 +662,41 @@ func (c *httpRouterContext) Referer() string {
 
 func (c *httpRouterContext) OriginalURL() string {
 	return c.r.RequestURI
+}
+
+func (c *httpRouterContext) FormFile(key string) (*multipart.FileHeader, error) {
+	if c.r.MultipartForm == nil {
+		err := c.r.ParseMultipartForm(32 << 20) // 32MB default memory buffer
+		if err != nil {
+			return nil, fmt.Errorf("formfile: failed to parse multipart form: %w", err)
+		}
+	}
+
+	_, header, err := c.r.FormFile(key)
+	if err != nil {
+		return nil, fmt.Errorf("formfile: cannot get file for key '%s': %w", key, err)
+	}
+
+	return header, nil
+}
+
+func (c *httpRouterContext) FormValue(key string, defaultValues ...string) string {
+	if c.r.Form == nil {
+		if err := c.r.ParseForm(); err != nil {
+			// should we log?
+		}
+	}
+
+	value := c.r.FormValue(key)
+	if value != "" {
+		return value
+	}
+
+	if len(defaultValues) > 0 {
+		return defaultValues[0]
+	}
+
+	return ""
 }
 
 func (c *httpRouterContext) SetHeader(key string, value string) Context {

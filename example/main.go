@@ -281,15 +281,12 @@ func (e *DomainError) Error() string {
 }
 
 // Custom error mapper for domain errors
-func domainErrorMapper(err error) *router.RouterError {
+func domainErrorMapper(err error) *errors.Error {
 	var domainErr *DomainError
 	if errors.As(err, &domainErr) {
-		return &router.RouterError{
-			Type:     router.ErrorType(domainErr.Type),
-			Code:     domainErr.Code,
-			Message:  domainErr.Message,
-			Metadata: map[string]any{},
-		}
+		return errors.Wrap(err, errors.CategoryRouting, domainErr.Message).
+			WithCode(domainErr.Code).
+			WithTextCode(domainErr.Type)
 	}
 	return nil
 }

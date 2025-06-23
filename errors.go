@@ -15,21 +15,21 @@ func NewValidationError(message string, validationErrs []errors.FieldError, meta
 }
 
 func NewUnauthorizedError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryAuth, message).
+	return errors.New(message, errors.CategoryAuth).
 		WithCode(http.StatusUnauthorized).
 		WithTextCode("UNAUTHORIZED").
 		WithMetadata(metas...)
 }
 
 func NewForbiddenError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryAuthz, message).
+	return errors.New(message, errors.CategoryAuthz).
 		WithCode(http.StatusForbidden).
 		WithTextCode("FORBIDDEN").
 		WithMetadata(metas...)
 }
 
 func NewNotFoundError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryNotFound, message).
+	return errors.New(message, errors.CategoryNotFound).
 		WithCode(http.StatusNotFound).
 		WithTextCode("NOT_FOUND").
 		WithMetadata(metas...)
@@ -44,7 +44,7 @@ func NewInternalError(err error, message string, metas ...map[string]any) *error
 
 // NewBadRequestError for generic bad requests outside of validation context
 func NewBadRequestError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryBadInput, message).
+	return errors.New(message, errors.CategoryBadInput).
 		WithCode(http.StatusBadRequest).
 		WithTextCode("BAD_REQUEST").
 		WithMetadata(metas...)
@@ -52,7 +52,7 @@ func NewBadRequestError(message string, metas ...map[string]any) *errors.Error {
 
 // NewConflictError for requests that could not be completed due to a conflict
 func NewConflictError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryConflict, message).
+	return errors.New(message, errors.CategoryConflict).
 		WithCode(http.StatusConflict).
 		WithTextCode("CONFLICT").
 		WithMetadata(metas...)
@@ -60,7 +60,7 @@ func NewConflictError(message string, metas ...map[string]any) *errors.Error {
 
 // NewTooManyRequestsError for rate-limiting scenarios
 func NewTooManyRequestsError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryRateLimit, message).
+	return errors.New(message, errors.CategoryRateLimit).
 		WithCode(http.StatusTooManyRequests).
 		WithTextCode("TOO_MANY_REQUESTS").
 		WithMetadata(metas...)
@@ -68,7 +68,7 @@ func NewTooManyRequestsError(message string, metas ...map[string]any) *errors.Er
 
 // NewMethodNotAllowedError for requests that use an unallowed HTTP method
 func NewMethodNotAllowedError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryMethodNotAllowed, message).
+	return errors.New(message, errors.CategoryMethodNotAllowed).
 		WithCode(http.StatusMethodNotAllowed).
 		WithTextCode("METHOD_NOT_ALLOWED").
 		WithMetadata(metas...)
@@ -82,7 +82,7 @@ func NewMiddlewareError(err error, message string, metas ...map[string]any) *err
 }
 
 func NewRoutingError(message string, metas ...map[string]any) *errors.Error {
-	return errors.New(errors.CategoryRouting, message).
+	return errors.New(message, errors.CategoryRouting).
 		WithCode(http.StatusNotFound).
 		WithTextCode("ROUTING_ERROR").
 		WithMetadata(metas...)

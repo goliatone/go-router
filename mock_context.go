@@ -16,23 +16,23 @@ import (
 // testing easier
 type MockContext struct {
 	mock.Mock
-	NextCalled   bool
-	headers      map[string]string
-	cookies      map[string]string
-	params       map[string]string
-	queries      map[string]string
-	locals       map[any]any
-	statusCode   int
-	responseBody string
+	NextCalled    bool
+	HeadersM      map[string]string
+	CookiesM      map[string]string
+	ParamsM       map[string]string
+	QueriesM      map[string]string
+	LocalsMock    map[any]any
+	StatusCodeM   int
+	ResponseBodyM string
 }
 
 func NewMockContext() *MockContext {
 	return &MockContext{
-		headers: make(map[string]string),
-		cookies: make(map[string]string),
-		params:  make(map[string]string),
-		queries: make(map[string]string),
-		locals:  make(map[any]any),
+		HeadersM:   make(map[string]string),
+		CookiesM:   make(map[string]string),
+		ParamsM:    make(map[string]string),
+		QueriesM:   make(map[string]string),
+		LocalsMock: make(map[any]any),
 	}
 }
 
@@ -70,32 +70,32 @@ func (m *MockContext) Body() []byte {
 
 func (m *MockContext) Status(code int) Context {
 	m.Called(code)
-	m.statusCode = code
+	m.StatusCodeM = code
 	return m
 }
 
 func (m *MockContext) SendString(s string) error {
 	args := m.Called(s)
-	m.responseBody = s
+	m.ResponseBodyM = s
 	return args.Error(0)
 }
 
 func (m *MockContext) Send(b []byte) error {
 	args := m.Called(b)
-	m.responseBody = string(b)
+	m.ResponseBodyM = string(b)
 	return args.Error(0)
 }
 
 func (m *MockContext) JSON(code int, val any) error {
 	args := m.Called(code, val)
-	m.statusCode = code
-	m.responseBody = fmt.Sprintf("%v", val)
+	m.StatusCodeM = code
+	m.ResponseBodyM = fmt.Sprintf("%v", val)
 	return args.Error(0)
 }
 
 func (m *MockContext) NoContent(code int) error {
 	args := m.Called(code)
-	m.statusCode = code
+	m.StatusCodeM = code
 	return args.Error(0)
 }
 
@@ -105,18 +105,18 @@ func (m *MockContext) Render(name string, bind any, layout ...string) error {
 		return args.Error(0)
 	}
 	args := m.Called(name, bind)
-	m.responseBody = fmt.Sprintf("rendered: %s", name)
+	m.ResponseBodyM = fmt.Sprintf("rendered: %s", name)
 	return args.Error(0)
 }
 
 func (m *MockContext) Redirect(path string, status ...int) error {
 	if len(status) > 0 {
 		args := m.Called(path, status)
-		m.statusCode = status[0]
+		m.StatusCodeM = status[0]
 		return args.Error(0)
 	}
 	args := m.Called(path)
-	m.statusCode = http.StatusFound
+	m.StatusCodeM = http.StatusFound
 	return args.Error(0)
 }
 
@@ -132,11 +132,11 @@ func (m *MockContext) RedirectToRoute(name string, data ViewContext, status ...i
 func (m *MockContext) RedirectBack(fallback string, status ...int) error {
 	if len(status) > 0 {
 		args := m.Called(fallback, status)
-		m.statusCode = status[0]
+		m.StatusCodeM = status[0]
 		return args.Error(0)
 	}
 	args := m.Called(fallback)
-	m.statusCode = http.StatusFound
+	m.StatusCodeM = http.StatusFound
 	return args.Error(0)
 }
 
@@ -161,12 +161,12 @@ func (m *MockContext) FormValue(key string, defaultValue ...string) string {
 
 func (m *MockContext) SendStatus(code int) error {
 	args := m.Called(code)
-	m.statusCode = code
+	m.StatusCodeM = code
 	return args.Error(0)
 }
 
 func (m *MockContext) Header(key string) string {
-	return m.headers[key]
+	return m.HeadersM[key]
 }
 
 func (m *MockContext) Get(key string, defaultValue any) any {
@@ -186,7 +186,7 @@ func (m *MockContext) GetInt(key string, def int) int {
 
 func (m *MockContext) Set(key string, val any) {
 	m.Called(key, val)
-	m.locals[key] = val
+	m.LocalsMock[key] = val
 }
 
 func (m *MockContext) Bind(i any) error {
@@ -217,14 +217,14 @@ func (m *MockContext) CookieParser(i any) error {
 func (m *MockContext) Cookie(cookie *Cookie) {
 	m.Called(cookie)
 	if cookie.Expires.Before(time.Now()) {
-		delete(m.cookies, cookie.Name)
+		delete(m.CookiesM, cookie.Name)
 		return
 	}
-	m.cookies[cookie.Name] = cookie.Value
+	m.CookiesM[cookie.Name] = cookie.Value
 }
 
 func (m *MockContext) Cookies(key string, defaultValue ...string) string {
-	val, ok := m.cookies[key]
+	val, ok := m.CookiesM[key]
 	if !ok {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
@@ -235,7 +235,7 @@ func (m *MockContext) Cookies(key string, defaultValue ...string) string {
 }
 
 func (m *MockContext) Param(key string, defaultValue ...string) string {
-	val, ok := m.params[key]
+	val, ok := m.ParamsM[key]
 	if !ok {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
@@ -251,7 +251,7 @@ func (m *MockContext) ParamsInt(key string, defaultValue int) int {
 }
 
 func (m *MockContext) Query(key string, defaultValue ...string) string {
-	val, ok := m.queries[key]
+	val, ok := m.QueriesM[key]
 	if !ok {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
@@ -267,7 +267,7 @@ func (m *MockContext) QueryInt(key string, defaultValue int) int {
 }
 
 func (m *MockContext) Queries() map[string]string {
-	return m.queries
+	return m.QueriesM
 }
 
 func (m *MockContext) GetString(key string, defaultValue string) string {
@@ -278,10 +278,10 @@ func (m *MockContext) GetString(key string, defaultValue string) string {
 func (m *MockContext) Locals(key any, value ...any) any {
 	if len(value) > 0 {
 		m.Called(key, value[0])
-		m.locals[key] = value[0]
+		m.LocalsMock[key] = value[0]
 		return nil
 	}
-	return m.locals[key]
+	return m.LocalsMock[key]
 }
 
 func (m *MockContext) OriginalURL() string {

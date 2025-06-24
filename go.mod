@@ -16,7 +16,7 @@ require (
 	github.com/gofiber/utils v1.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/goliatone/go-composite-fs v0.0.1
-	github.com/goliatone/go-errors v0.1.0
+	github.com/goliatone/go-errors v0.5.2
 	github.com/goliatone/hashid v0.0.6
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
@@ -89,6 +89,7 @@ require (
 	github.com/go-logr/zapr v1.2.4 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/goccy/go-json v0.10.4 // indirect
 	github.com/golang/glog v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
@@ -139,6 +140,7 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/slack-go/slack v0.12.5 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/ugorji/go v1.1.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect

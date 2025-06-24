@@ -1,5 +1,33 @@
 # Changelog
 
+# [0.2.4](https://github.com/goliatone/go-router/compare/v0.2.3...v0.2.4) - (2025-06-24)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Error migration ([a269dea](https://github.com/goliatone/go-router/commit/a269dea215455b743b11d40e689e5506cb94d4de))  - (goliatone)
+- Builder test update for new interfaces ([94c7dde](https://github.com/goliatone/go-router/commit/94c7dde98683f26190188036353fa40c13e33bca))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.2.4 ([f82b829](https://github.com/goliatone/go-router/commit/f82b82963337fef3a69a7f4ea403b86411d106c2))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Mock context for testing ([a806f95](https://github.com/goliatone/go-router/commit/a806f9543741dc009a984042919172d4695b7617))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Use go-errors package ([9e10c43](https://github.com/goliatone/go-router/commit/9e10c432edcb1cc429d37d62809036cd9dd0c8c5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.2.3 ([145b32a](https://github.com/goliatone/go-router/commit/145b32ab2acb41b55157baf7fba3202b0d16f9f3))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([d78cff3](https://github.com/goliatone/go-router/commit/d78cff3f12ec06331238fdef3f8d09a64ae8dcbd))  - (goliatone)
+- Update deps ([79db032](https://github.com/goliatone/go-router/commit/79db0325e0b26eacb8c99ddf7e1003b10c855010))  - (goliatone)
+
 # [0.2.3](https://github.com/goliatone/go-router/compare/v0.2.2...v0.2.3) - (2025-05-14)
 
 ## <!-- 1 -->🐛 Bug Fixes

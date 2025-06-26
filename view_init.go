@@ -98,21 +98,45 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (Views, error) {
 	}
 
 	compositeFS := cfs.NewCompositeFS(sources...)
+	templatePathPrefix := NormalizePath(cfg.GetDirFS())
+
+	if templatePathPrefix != "" && templatePathPrefix != "." {
+		if _, err := fs.Stat(compositeFS, templatePathPrefix); err != nil {
+			errMsg := fmt.Sprintf(
+				"template path prefix '%s' (from dir_fs config) not found in any of the configured template sources. Error: %v",
+				templatePathPrefix,
+				err,
+			)
+			if cfg.GetDebug() {
+				lgr.Debug("Root entries of the composite filesystem:")
+				fs.WalkDir(compositeFS, ".", func(path string, d fs.DirEntry, err error) error {
+					if err == nil {
+						lgr.Debug(fmt.Sprintf("  - %s", path))
+					}
+					return nil
+				})
+			}
+			return nil, errors.New(errMsg)
+		}
+	}
 
 	if cfg.GetDebug() {
-		lgr.Debug("Available templates")
-		entries, _ := fs.ReadDir(compositeFS, NormalizePath(cfg.GetDirFS()))
-		for _, entry := range entries {
-			lgr.Debug("  - " + NormalizePath(cfg.GetDirFS()) + "/" + entry.Name())
-		}
-
-		DebugAssetPaths(lgr, compositeFS, "Composite FS")
+		lgr.Debug("Available templates (full paths in composite FS)")
+		fs.WalkDir(compositeFS, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !d.IsDir() {
+				lgr.Debug("  - " + path)
+			}
+			return nil
+		})
 	}
 
 	pongo2.DefaultSet.Options.TrimBlocks = true
 	engine := django.NewPathForwardingFileSystem(
 		http.FS(compositeFS),
-		NormalizePath(cfg.GetDirFS()),
+		templatePathPrefix,
 		cfg.GetExt(),
 	)
 

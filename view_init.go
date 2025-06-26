@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
-	"path"
 	ppath "path"
 	"path/filepath"
 	"reflect"
@@ -29,6 +27,7 @@ type nameable interface {
 	Name() string
 }
 
+// ViewConfigProvider remains the public configuration interface.
 type ViewConfigProvider interface {
 	GetReload() bool
 	GetDebug() bool
@@ -36,7 +35,6 @@ type ViewConfigProvider interface {
 
 	GetCSSPath() string
 	GetJSPath() string
-	// GetDevDir() string
 	GetDirFS() string
 	GetDirOS() string
 
@@ -50,280 +48,214 @@ type ViewConfigProvider interface {
 	GetTemplatesFS() []fs.FS
 }
 
-type ViewFactory func(ViewConfigProvider) (Views, error)
-
-func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (Views, error) {
+func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("view engine config validation failed: %w", err)
 	}
 
 	lgr := getLogger(lgrs...)
+	lgr.Debug("Initializing view engine...")
 
-	var viewEngine fiber.Views
-
-	sources := make([]fs.FS, 0)
-
-	// add dev directory w highest priority
-	if dcfg, ok := cfg.(interface{ GetDevDir() string }); ok {
-		devDir := dcfg.GetDevDir()
-		if devDir != "" {
-			absDevDir, err := filepath.Abs(devDir)
-			if err == nil && DirExists(absDevDir) {
-				if cfg.GetDebug() {
-					lgr.Debug("Using dev directory", "dir", absDevDir)
-				}
-				sources = append(sources, os.DirFS(absDevDir))
-			} else if cfg.GetDebug() {
-				lgr.Debug("Dev directory not found or accessible", "dir", devDir)
-			}
-		}
-	}
+	var finalTemplateFS fs.FS
 
 	if cfg.GetEmbed() {
-		// add all embedded fs with priority order
-		embeddedSources := cfg.GetTemplatesFS()
-		if len(embeddedSources) > 0 {
-			sources = append(sources, embeddedSources...)
+		lgr.Debug("Running in Embedded Mode")
+		templateSources := make([]fs.FS, 0)
+
+		if dcfg, ok := cfg.(interface{ GetDevDir() string }); ok {
+			devDir := dcfg.GetDevDir()
+			if devDir != "" {
+				absDevDir, err := filepath.Abs(devDir)
+				if err == nil && DirExists(absDevDir) {
+					lgr.Debug("Adding development override directory for templates", "dir", absDevDir)
+					templateSources = append(templateSources, os.DirFS(absDevDir))
+				}
+			}
 		}
+
+		if len(cfg.GetTemplatesFS()) > 0 {
+			templateSources = append(templateSources, cfg.GetTemplatesFS()...)
+		}
+
+		if len(templateSources) == 0 {
+			return nil, errors.New("no valid template sources found for embed mode")
+		}
+
+		compositeTemplateFS := cfs.NewCompositeFS(templateSources...)
+		templateRootPath := NormalizePath(cfg.GetDirFS())
+
+		subFS, err := autoSubFS(compositeTemplateFS, templateRootPath, lgr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare embedded template filesystem: %w", err)
+		}
+		finalTemplateFS = subFS
+
 	} else {
+		// --- LIVE MODE LOGIC ---
+		lgr.Debug("Running in Live (Non-Embedded) Mode")
 		dirOS := cfg.GetDirOS()
 		if !DirExists(dirOS) {
-			return nil, fmt.Errorf("template directory does not exist: %s", dirOS)
+			return nil, fmt.Errorf("template directory for live mode does not exist: %s", dirOS)
 		}
-		sources = append(sources, os.DirFS(dirOS))
+		lgr.Debug("Using live template directory", "path", dirOS)
+
+		finalTemplateFS = os.DirFS(dirOS)
 	}
 
-	if len(sources) == 0 {
-		return nil, fmt.Errorf("no valid template sources found")
-	}
+	engine := django.NewPathForwardingFileSystem(
+		http.FS(finalTemplateFS),
+		".", // always use root of the prepared filesystem
+		cfg.GetExt(),
+	)
 
-	compositeFS := cfs.NewCompositeFS(sources...)
-	templatePathPrefix := NormalizePath(cfg.GetDirFS())
-
-	if templatePathPrefix != "" && templatePathPrefix != "." {
-		if _, err := fs.Stat(compositeFS, templatePathPrefix); err != nil {
-			errMsg := fmt.Sprintf(
-				"template path prefix '%s' (from dir_fs config) not found in any of the configured template sources. Error: %v",
-				templatePathPrefix,
-				err,
-			)
-			if cfg.GetDebug() {
-				lgr.Debug("Root entries of the composite filesystem:")
-				fs.WalkDir(compositeFS, ".", func(path string, d fs.DirEntry, err error) error {
-					if err == nil {
-						lgr.Debug(fmt.Sprintf("  - %s", path))
-					}
-					return nil
-				})
-			}
-			return nil, errors.New(errMsg)
-		}
-	}
+	pongo2.DefaultSet.Options.TrimBlocks = true
+	engine.Reload(cfg.GetReload())
+	engine.Debug(cfg.GetDebug())
+	engine.AddFuncMap(cfg.GetTemplateFunctions())
 
 	if cfg.GetDebug() {
-		lgr.Debug("Available templates (full paths in composite FS)")
-		fs.WalkDir(compositeFS, ".", func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if !d.IsDir() {
+		lgr.Debug("View engine templates loaded from clean root.")
+		fs.WalkDir(finalTemplateFS, ".", func(path string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
 				lgr.Debug("  - " + path)
 			}
 			return nil
 		})
 	}
 
-	pongo2.DefaultSet.Options.TrimBlocks = true
-	engine := django.NewPathForwardingFileSystem(
-		http.FS(compositeFS),
-		templatePathPrefix,
-		cfg.GetExt(),
-	)
-
-	viewEngine = engine
-
-	if engine, ok := viewEngine.(*django.Engine); ok {
-		engine.Reload(cfg.GetReload())
-		engine.Debug(cfg.GetDebug())
-		engine.AddFuncMap(cfg.GetTemplateFunctions())
-	}
-
-	return viewEngine, nil
+	return engine, nil
 }
 
-// InitializeViewEngine will initialize a view engine with default values
-func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (Views, error) {
-	var err error
-	var viewEngine fiber.Views
-
+func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
 	lgr := getLogger(lgrs...)
 
-	viewEngine, err = DefaultViewEngine(opts, lgr)
+	viewEngine, err := DefaultViewEngine(opts, lgr)
 	if err != nil {
-		return nil, fmt.Errorf("error initializing views: %w", err)
+		return nil, fmt.Errorf("error initializing default view engine: %w", err)
 	}
 
 	d, ok := viewEngine.(interface {
 		AddFunc(name string, fn any) ftpl.IEngineCore
 	})
 	if !ok {
-		return nil, fmt.Errorf("unexpected view engine type: %T", viewEngine)
+		return nil, fmt.Errorf("view engine of type %T does not support AddFunc", viewEngine)
 	}
 
-	lgr.Debug("=========== VIEW INIT =============")
-	lgr.Debug("HERE WE ARE RUNING...")
-	lgr.Debug("===================================")
-
-	assetsFs := opts.GetAssetsFS()
+	var finalAssetFS fs.FS
 	if !opts.GetEmbed() {
-		assetsFs = os.DirFS(opts.GetAssetsDir())
+		// For non-embedded mode, we deal with absolute OS paths.
+		// Use filepath.Clean, not NormalizePath.
+		assetRootPath := filepath.Clean(opts.GetAssetsDir())
+		if !DirExists(assetRootPath) {
+			return nil, fmt.Errorf("asset directory does not exist: %s", assetRootPath)
+		}
+		finalAssetFS = os.DirFS(assetRootPath)
+	} else {
+		// For embedded mode, NormalizePath is correct for virtual FS paths.
+		assetRootPath := NormalizePath(opts.GetAssetsDir())
+		if opts.GetAssetsFS() == nil {
+			return nil, errors.New("AssetFS must be provided in embed mode")
+		}
+		subFS, err := autoSubFS(opts.GetAssetsFS(), assetRootPath, lgr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare asset filesystem: %w", err)
+		}
+		finalAssetFS = subFS
 	}
 
-	if opts.GetDebug() {
-		DebugAssetPaths(lgr, assetsFs, "Assets FS")
-	}
-
-	assetPrefix := NormalizePath(opts.GetRemovePathPrefix())
-
-	jsPath := NormalizePath(opts.GetJSPath())
 	cssPath := NormalizePath(opts.GetCSSPath())
+	jsPath := NormalizePath(opts.GetJSPath())
 
-	if !DirExists(jsPath, assetsFs) {
-		jsPath = path.Join(assetPrefix, NormalizePath(opts.GetJSPath()))
-		if !DirExists(jsPath, assetsFs) {
-			return nil, errors.New("init view: JS directory does not exist: " + jsPath)
-		}
+	if !DirExists(cssPath, finalAssetFS) {
+		return nil, fmt.Errorf("init view: CSS directory '%s' does not exist within the asset filesystem", cssPath)
+	}
+	if !DirExists(jsPath, finalAssetFS) {
+		return nil, fmt.Errorf("init view: JS directory '%s' does not exist within the asset filesystem", jsPath)
 	}
 
-	if !DirExists(cssPath, assetsFs) {
-		cssPath = path.Join(assetPrefix, NormalizePath(opts.GetCSSPath()))
-		if !DirExists(cssPath, assetsFs) {
-			return nil, errors.New("init view: CSS directory does not exist: " + cssPath)
-		}
+	assetURLPrefix := "/" + NormalizePath(opts.GetRemovePathPrefix())
+	if assetURLPrefix == "/" {
+		assetURLPrefix = ""
 	}
+
+	lgr.Debug("Asset URL prefix computed", "prefix", assetURLPrefix)
 
 	d.AddFunc("css", func(name string) template.HTML {
 		var res template.HTML
 		g := glob.MustCompile(name)
 
-		matcher := func(path string, info nameable, err error) error {
-			if err != nil {
-				if opts.GetDebug() {
-					lgr.Error("Error accessing path", "path", path, err)
-				}
+		fs.WalkDir(finalAssetFS, cssPath, func(path string, info fs.DirEntry, err error) error {
+			if err != nil || info.IsDir() {
 				return nil
 			}
-
-			filename := info.Name()
-			path = filepath.ToSlash(path)
-
-			urlPath := path
-			if assetPrefix != "" && strings.HasPrefix(urlPath, assetPrefix) {
-				urlPath = strings.Replace(urlPath, assetPrefix, "", 1)
-			}
-
-			urlPath = "/" + strings.TrimPrefix(urlPath, "/")
-
-			if opts.GetDebug() {
-				lgr.Debug("CSS files",
-					"filename", filename,
-					"path", path,
-					"url_path", urlPath,
-					"match", g.Match(filename),
-				)
-			}
-
-			if g.Match(filename) {
-				res = template.HTML("<link rel=\"stylesheet\" href=\"" + urlPath + "\">")
+			if g.Match(info.Name()) {
+				urlPath := assetURLPrefix + "/" + path
+				urlPath = ppath.Clean(urlPath)
+				res = template.HTML(`<link rel="stylesheet" href="` + urlPath + `">`)
+				lgr.Debug("Resolved CSS asset", "name", name, "path", urlPath)
 				return filepath.SkipDir
 			}
 			return nil
-		}
-
-		if opts.GetDebug() {
-			lgr.Debug("Looking for CSS in embedded path", "path", cssPath)
-		}
-
-		fs.WalkDir(assetsFs, cssPath, func(path string, info fs.DirEntry, err error) error {
-			return matcher(path, info, err)
 		})
 
 		if res == "" && opts.GetDebug() {
 			res = template.HTML("<!-- CSS NOT FOUND: " + name + " (looked in " + cssPath + ") -->")
-			lgr.Warn("Could not resolve CSS: %s", "name", name)
+			lgr.Warn("Could not resolve CSS", "name", name)
 		}
-
 		return res
 	})
 
-	// TODO: take options https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script
 	d.AddFunc("js", func(name string) template.HTML {
 		var res template.HTML
 		g := glob.MustCompile(name)
 
-		matcher := func(path string, info nameable, err error) error {
-			if err != nil {
-				if opts.GetDebug() {
-					log.Printf("Error accessing path %s: %v", path, err)
-				}
+		fs.WalkDir(finalAssetFS, jsPath, func(path string, info fs.DirEntry, err error) error {
+			if err != nil || info.IsDir() {
 				return nil
 			}
-
-			filename := info.Name()
-			path = filepath.ToSlash(path)
-
-			urlPath := path
-			if assetPrefix != "" && strings.HasPrefix(urlPath, assetPrefix) {
-				urlPath = strings.Replace(urlPath, assetPrefix, "", 1)
-			}
-
-			urlPath = "/" + strings.TrimPrefix(urlPath, "/")
-
-			if opts.GetDebug() {
-				lgr.Debug("JS",
-					"filename", filename,
-					"path", path,
-					"url_path", urlPath,
-					"match", g.Match(filename),
-				)
-			}
-
-			if g.Match(filename) {
-				res = template.HTML("<script async src=\"" + urlPath + "\"></script>")
+			if g.Match(info.Name()) {
+				urlPath := assetURLPrefix + "/" + path
+				urlPath = ppath.Clean(urlPath)
+				res = template.HTML(`<script async src="` + urlPath + `"></script>`)
+				lgr.Debug("Resolved JS asset", "name", name, "path", urlPath)
 				return filepath.SkipDir
 			}
 			return nil
-		}
-
-		if opts.GetDebug() {
-			lgr.Debug("Looking for JS in embedded path", "js_path", jsPath)
-		}
-
-		fs.WalkDir(assetsFs, jsPath, func(path string, info fs.DirEntry, err error) error {
-			return matcher(path, info, err)
 		})
 
 		if res == "" && opts.GetDebug() {
 			res = template.HTML("<!-- JS NOT FOUND: " + name + " (looked in " + jsPath + ") -->")
 			lgr.Warn("Could not resolve JS", "name", name)
 		}
-
 		return res
 	})
 
 	d.AddFunc("to_json", toJSON)
-
 	d.AddFunc("match_str", matchStr)
-
 	d.AddFunc("str_time", makeTimeParser())
-
 	d.AddFunc("conditional_str", conditionalStr)
-
-	d.AddFunc("match_str", matchStr)
-
 	d.AddFunc("either", eitherCmp)
 
 	return viewEngine, nil
+}
+
+// autoSubFS is a key helper function. It inspects an fs.FS to find a
+// subdirectory and returns a new fs.FS rooted at that directory.
+// This is crucial for making embedded filesystems work intuitively.
+func autoSubFS(rootfs fs.FS, path string, lgr Logger) (fs.FS, error) {
+	path = NormalizePath(path)
+	if path == "" || path == "." {
+		lgr.Debug("Filesystem path is root, using as is.")
+		return rootfs, nil
+	}
+
+	if _, err := fs.Stat(rootfs, path); err == nil {
+		lgr.Debug("Found sub-directory in filesystem, creating sub-FS", "path", path)
+		return fs.Sub(rootfs, path)
+	}
+
+	lgr.Debug("Sub-directory not found, assuming filesystem is already correctly rooted", "path", path)
+	return rootfs, nil
 }
 
 func makeTimeParser() func(val any, format string, lang string) string {
@@ -341,27 +273,21 @@ func makeTimeParser() func(val any, format string, lang string) string {
 	parseWithFormat := func(str string) (t time.Time, err error) {
 		for _, format := range TimeFormats {
 			t, err = time.ParseInLocation(format, str, time.Local)
-
 			if err == nil {
 				return t, err
 			}
 		}
-
-		err = errors.New("Can't parse string as time: " + str)
-
-		return t, err
+		return t, errors.New("Can't parse string as time: " + str)
 	}
 
 	return func(val any, format string, lang string) string {
 		if val == nil {
 			return ""
 		}
-
 		date, ok := val.(string)
 		if !ok {
 			return ""
 		}
-
 		d, err := parseWithFormat(date)
 		if err != nil {
 			fmt.Printf("error str_time: %s\n", err)
@@ -372,7 +298,6 @@ func makeTimeParser() func(val any, format string, lang string) string {
 		if lang == "es" {
 			mloc = monday.LocaleEsES
 		}
-
 		return monday.Format(d, format, mloc)
 	}
 }
@@ -388,7 +313,7 @@ func eitherCmp(val any, def any) any {
 			return def
 		}
 	case bool:
-		if t == false {
+		if !t {
 			return def
 		}
 	case int, int8, int16, int32, int64:
@@ -439,7 +364,7 @@ func conditionalStr(arg any, ok, ko string) string {
 			return ko
 		}
 	case bool:
-		if t == false {
+		if !t {
 			return ko
 		}
 	case int, int8, int16, int32, int64:
@@ -464,21 +389,18 @@ func conditionalStr(arg any, ok, ko string) string {
 	return ok
 }
 
-// ValidateConfig checks for common configuration errors
 func ValidateConfig(cfg ViewConfigProvider) error {
-	errors := []string{}
+	var errors []string
 
 	if cfg.GetEmbed() {
 		if strings.HasPrefix(cfg.GetCSSPath(), "/") {
 			errors = append(errors, "CSS path should not start with '/' when embed is true")
 		}
-
 		if strings.HasPrefix(cfg.GetJSPath(), "/") {
 			errors = append(errors, "JS path should not start with '/' when embed is true")
 		}
-
 		if cfg.GetTemplatesFS() == nil {
-			errors = append(errors, "No template filesystems provided with embed is true")
+			errors = append(errors, "No template filesystems provided when embed is true")
 		}
 	} else {
 		if _, err := os.Stat(cfg.GetDirOS()); os.IsNotExist(err) {
@@ -493,13 +415,12 @@ func ValidateConfig(cfg ViewConfigProvider) error {
 	return nil
 }
 
-// DebugAssetPaths prints all available assets for debugging
 func DebugAssetPaths(lgr Logger, dir fs.FS, labels ...string) {
 	label := "Asset"
 	if len(labels) > 0 {
 		label = labels[0]
 	}
-	lgr.Debug("=== Available Paths ===", "label", label)
+	lgr.Debug(fmt.Sprintf("=== Available Paths in %s ===", label))
 
 	fs.WalkDir(dir, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -514,44 +435,32 @@ func DebugAssetPaths(lgr Logger, dir fs.FS, labels ...string) {
 	lgr.Debug("============================")
 }
 
-// NormalizePath ensures consistent path formatting
 func NormalizePath(path string) string {
 	path = ppath.Clean(path)
 	path = filepath.ToSlash(path)
-	path = strings.TrimPrefix(path, "/")
-
-	// remove trailing slash if present unless it's the root path
-	if path != "" {
-		path = strings.TrimSuffix(path, "/")
-	}
+	path = strings.Trim(path, "/")
 
 	if path == "." {
-		path = ""
+		return ""
 	}
-
 	return path
 }
 
-// ResolvePath combines base paths with subdirectories properly
 func ResolvePath(base, subPath string) string {
 	base = NormalizePath(base)
 	subPath = NormalizePath(subPath)
-
 	if base == "" {
 		return subPath
 	}
-
 	if subPath == "" {
 		return base
 	}
-
 	return base + "/" + subPath
 }
 
-// DirExists checks if a directory exists and is accessible
 func DirExists(path string, afs ...fs.FS) bool {
 	var err error
-	var info os.FileInfo
+	var info fs.FileInfo
 
 	if len(afs) > 0 {
 		info, err = fs.Stat(afs[0], path)
@@ -560,16 +469,14 @@ func DirExists(path string, afs ...fs.FS) bool {
 	}
 
 	if err != nil {
-		return false // prob doesnt exist or perms errors?
+		return false
 	}
-
 	return info.IsDir()
 }
 
 func getLogger(lgrs ...Logger) Logger {
-	if len(lgrs) > 0 {
+	if len(lgrs) > 0 && lgrs[0] != nil {
 		return lgrs[0]
 	}
-
 	return &defaultLogger{}
 }

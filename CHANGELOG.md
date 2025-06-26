@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.3.0](https://github.com/goliatone/go-router/compare/v0.2.4...v0.3.0) - (2025-06-26)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Return better error message, normalize path ([207104e](https://github.com/goliatone/go-router/commit/207104e4a427cea3e0204cb9bd2ba21160bc4363))  - (goliatone)
+- Test setup ([bb65316](https://github.com/goliatone/go-router/commit/bb6531669074a5761ed2f971c6576e1a46381668))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.3.0 ([0f4a279](https://github.com/goliatone/go-router/commit/0f4a279ec1604530bd5a2fe95155cd64e33e9424))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- View init to handle smart configuration for defaults ([86eb0f3](https://github.com/goliatone/go-router/commit/86eb0f30b3d0f44f6e4a8858b9dd447907c5e533))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.2.4 ([3b42af9](https://github.com/goliatone/go-router/commit/3b42af969a2b2d3d74b988869d7015f5b0218d0f))  - (goliatone)
+
 # [0.2.4](https://github.com/goliatone/go-router/compare/v0.2.3...v0.2.4) - (2025-06-24)
 
 ## <!-- 1 -->🐛 Bug Fixes

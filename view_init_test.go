@@ -161,7 +161,7 @@ func TestViewEngineValidation(t *testing.T) {
 				AssetFS: assetsFS,
 			},
 			expectError: true,
-			errorMsg:    "No template filesystems provided with embed is true",
+			errorMsg:    "No template filesystems provided when embed is true",
 		},
 		{
 			name: "Non-existent OS directory",
@@ -336,9 +336,12 @@ func TestAssetResolution(t *testing.T) {
 }
 
 func TestNonEmbeddedMode(t *testing.T) {
+	// We create a structure like:
+	// /tmp/..../templates/test.html
+	// /tmp/..../public/css/main-tmp.css
 	files := map[string]string{
-		"testdata/templates/test.html": "<h1>OS TEMPLATE: {{ Title }}</h1>",
-		"testdata/templates/with-assets.html": `<!DOCTYPE html>
+		"templates/test.html": "<h1>OS TEMPLATE: {{ Title }}</h1>",
+		"templates/with-assets.html": `<!DOCTYPE html>
 <html>
 <head>
     <title>{{ Title }}</title>
@@ -349,20 +352,24 @@ func TestNonEmbeddedMode(t *testing.T) {
     {{ js("app-*.js") | safe }}
 </body>
 </html>`,
-		"/public/css/main-tmp.css": "/* CSS content */",
-		"/public/js/app-tmp.js":    "// JS content",
+		"public/css/main-tmp.css": "/* CSS content */",
+		"public/js/app-tmp.js":    "// JS content",
 	}
 
 	tempDir := setupTempDir(t, files)
 	defer os.RemoveAll(tempDir)
 
+	// define the direct paths to our template and asset roots
+	assetDir := filepath.Join(tempDir, "public")
+	templateDir := filepath.Join(tempDir, "templates")
+
 	config := &MockViewConfig{
 		Embed:        false,
 		Debug:        true,
 		Reload:       true,
-		DirOS:        tempDir,
-		DirFS:        "testdata/templates",
-		AssetsDir:    filepath.Join(tempDir, "public"),
+		DirOS:        templateDir,
+		AssetsDir:    assetDir,
+		DirFS:        "", // DirFS is not used in live mode, so it can be empty
 		Ext:          ".html",
 		CSSPath:      "css",
 		JSPath:       "js",
@@ -370,7 +377,6 @@ func TestNonEmbeddedMode(t *testing.T) {
 		TemplateFS:   nil,
 		Functions:    map[string]any{},
 	}
-	config.AssetsDir = filepath.Join(tempDir, "public")
 
 	viewEngine, err := router.InitializeViewEngine(config)
 	require.NoError(t, err, "Failed to initialize view engine")
@@ -379,15 +385,27 @@ func TestNonEmbeddedMode(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/test-template", nil))
 	require.NoError(t, err, "Failed to send test request")
+	assert.Equal(t, 200, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "Failed to read response body")
-
 	assert.Contains(t, string(body), "OS TEMPLATE")
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/with-assets", nil))
 	require.NoError(t, err, "Failed to send test request")
+	assert.Equal(t, 200, resp.StatusCode)
 
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "Failed to read response body")
+
+	config.RemovePrefix = ""
+
+	viewEngine, err = router.InitializeViewEngine(config)
+	require.NoError(t, err, "Failed to initialize view engine")
+	app = createFiberApp(t, viewEngine)
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/with-assets", nil))
+	require.NoError(t, err, "Failed to send test request")
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "Failed to read response body")
 

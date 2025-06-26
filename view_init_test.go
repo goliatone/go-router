@@ -18,13 +18,13 @@ import (
 	"github.com/goliatone/go-router"
 )
 
-//go:embed testdata/assets/*
+//go:embed testdata/assets
 var assetsFS embed.FS
 
-//go:embed testdata/templates/*
+//go:embed testdata/templates
 var baseTemplates embed.FS
 
-//go:embed testdata/theme/*
+//go:embed testdata/theme
 var themeTemplates embed.FS
 
 type MockViewConfig struct {
@@ -209,16 +209,22 @@ func TestEmbeddedTemplates(t *testing.T) {
 	})
 	// }
 
+	templateRoot, err := fs.Sub(baseTemplates, "testdata/templates")
+	require.NoError(t, err)
+
+	assetRoot, err := fs.Sub(assetsFS, "testdata/assets")
+	require.NoError(t, err)
+
 	config := &MockViewConfig{
 		Embed:      true,
 		Debug:      true,
 		Reload:     true,
-		DirFS:      "testdata/templates",
+		DirFS:      ".",
 		Ext:        ".html",
-		CSSPath:    "testdata/assets/css",
-		JSPath:     "testdata/assets/js",
-		TemplateFS: []fs.FS{baseTemplates},
-		AssetFS:    assetsFS,
+		CSSPath:    "css",
+		JSPath:     "js",
+		TemplateFS: []fs.FS{templateRoot},
+		AssetFS:    assetRoot,
 		Functions:  map[string]any{},
 	}
 
@@ -291,17 +297,23 @@ func TestTemplateOverriding(t *testing.T) {
 }
 
 func TestAssetResolution(t *testing.T) {
+	templateRoot, err := fs.Sub(baseTemplates, "testdata/templates")
+	require.NoError(t, err)
+
+	assetRoot, err := fs.Sub(assetsFS, "testdata/assets")
+	require.NoError(t, err)
+
 	config := &MockViewConfig{
 		Embed:        true,
 		Debug:        true,
 		Reload:       true,
-		DirFS:        "testdata/templates",
+		DirFS:        ".",
 		Ext:          ".html",
 		CSSPath:      "css",
 		JSPath:       "js",
-		TemplateFS:   []fs.FS{baseTemplates},
-		AssetFS:      assetsFS,
-		RemovePrefix: "testdata/assets",
+		TemplateFS:   []fs.FS{templateRoot},
+		AssetFS:      assetRoot,
+		RemovePrefix: "",
 		Functions:    map[string]any{},
 	}
 
@@ -350,7 +362,7 @@ func TestNonEmbeddedMode(t *testing.T) {
 		Reload:       true,
 		DirOS:        tempDir,
 		DirFS:        "testdata/templates",
-		AssetsDir:    tempDir,
+		AssetsDir:    filepath.Join(tempDir, "public"),
 		Ext:          ".html",
 		CSSPath:      "css",
 		JSPath:       "js",
@@ -358,6 +370,7 @@ func TestNonEmbeddedMode(t *testing.T) {
 		TemplateFS:   nil,
 		Functions:    map[string]any{},
 	}
+	config.AssetsDir = filepath.Join(tempDir, "public")
 
 	viewEngine, err := router.InitializeViewEngine(config)
 	require.NoError(t, err, "Failed to initialize view engine")
@@ -421,7 +434,7 @@ func TestAssetPathEdgeCases(t *testing.T) {
 			config := &MockViewConfig{
 				Embed:      true,
 				Debug:      true,
-				DirFS:      "testdata/templates",
+				DirFS:      ".",
 				Ext:        ".html",
 				CSSPath:    tc.cssPath,
 				JSPath:     tc.jsPath,

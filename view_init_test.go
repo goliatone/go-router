@@ -28,20 +28,20 @@ var baseTemplates embed.FS
 var themeTemplates embed.FS
 
 type MockViewConfig struct {
-	Reload       bool
-	Debug        bool
-	Embed        bool
-	CSSPath      string
-	JSPath       string
-	DevDir       string
-	DirFS        string
-	DirOS        string
-	RemovePrefix string
-	Ext          string
-	TemplateFS   []fs.FS
-	AssetFS      fs.FS
-	AssetsDir    string
-	Functions    map[string]any
+	Reload     bool
+	Debug      bool
+	Embed      bool
+	CSSPath    string
+	JSPath     string
+	DevDir     string
+	DirFS      string
+	DirOS      string
+	URLPrefix  string
+	Ext        string
+	TemplateFS []fs.FS
+	AssetFS    fs.FS
+	AssetsDir  string
+	Functions  map[string]any
 }
 
 func (m *MockViewConfig) GetReload() bool                      { return m.Reload }
@@ -52,7 +52,7 @@ func (m *MockViewConfig) GetJSPath() string                    { return m.JSPath
 func (m *MockViewConfig) GetDevDir() string                    { return m.DevDir }
 func (m *MockViewConfig) GetDirFS() string                     { return m.DirFS }
 func (m *MockViewConfig) GetDirOS() string                     { return m.DirOS }
-func (m *MockViewConfig) GetRemovePathPrefix() string          { return m.RemovePrefix }
+func (m *MockViewConfig) GetURLPrefix() string                 { return m.URLPrefix }
 func (m *MockViewConfig) GetExt() string                       { return m.Ext }
 func (m *MockViewConfig) GetAssetsFS() fs.FS                   { return m.AssetFS }
 func (m *MockViewConfig) GetAssetsDir() string                 { return m.AssetsDir }
@@ -304,17 +304,17 @@ func TestAssetResolution(t *testing.T) {
 	require.NoError(t, err)
 
 	config := &MockViewConfig{
-		Embed:        true,
-		Debug:        true,
-		Reload:       true,
-		DirFS:        ".",
-		Ext:          ".html",
-		CSSPath:      "css",
-		JSPath:       "js",
-		TemplateFS:   []fs.FS{templateRoot},
-		AssetFS:      assetRoot,
-		RemovePrefix: "",
-		Functions:    map[string]any{},
+		Embed:      true,
+		Debug:      true,
+		Reload:     true,
+		DirFS:      ".",
+		Ext:        ".html",
+		CSSPath:    "css",
+		JSPath:     "js",
+		TemplateFS: []fs.FS{templateRoot},
+		AssetFS:    assetRoot,
+		URLPrefix:  "",
+		Functions:  map[string]any{},
 	}
 
 	viewEngine, err := router.InitializeViewEngine(config)
@@ -364,18 +364,18 @@ func TestNonEmbeddedMode(t *testing.T) {
 	templateDir := filepath.Join(tempDir, "templates")
 
 	config := &MockViewConfig{
-		Embed:        false,
-		Debug:        true,
-		Reload:       true,
-		DirOS:        templateDir,
-		AssetsDir:    assetDir,
-		DirFS:        "", // DirFS is not used in live mode, so it can be empty
-		Ext:          ".html",
-		CSSPath:      "css",
-		JSPath:       "js",
-		RemovePrefix: "public",
-		TemplateFS:   nil,
-		Functions:    map[string]any{},
+		Embed:      false,
+		Debug:      true,
+		Reload:     true,
+		DirOS:      templateDir,
+		AssetsDir:  assetDir,
+		DirFS:      "", // DirFS is not used in live mode, so it can be empty
+		Ext:        ".html",
+		CSSPath:    "css",
+		JSPath:     "js",
+		URLPrefix:  "",
+		TemplateFS: nil,
+		Functions:  map[string]any{},
 	}
 
 	viewEngine, err := router.InitializeViewEngine(config)
@@ -398,7 +398,7 @@ func TestNonEmbeddedMode(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "Failed to read response body")
 
-	config.RemovePrefix = ""
+	config.URLPrefix = ""
 
 	viewEngine, err = router.InitializeViewEngine(config)
 	require.NoError(t, err, "Failed to initialize view engine")
@@ -411,6 +411,21 @@ func TestNonEmbeddedMode(t *testing.T) {
 
 	assert.Contains(t, string(body), `/css/main-tmp.css`)
 	assert.Contains(t, string(body), `/js/app-tmp.js`)
+
+	t.Run("with URL prefix", func(t *testing.T) {
+		config.URLPrefix = "/static"
+		viewEngine, err = router.InitializeViewEngine(config)
+		require.NoError(t, err, "Failed to initialize view engine")
+		app = createFiberApp(t, viewEngine)
+
+		resp, err := app.Test(httptest.NewRequest("GET", "/with-assets", nil))
+		require.NoError(t, err, "Failed to send test request")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "Failed to read response body")
+
+		assert.Contains(t, string(body), `/static/css/main-tmp.css`)
+		assert.Contains(t, string(body), `/static/js/app-tmp.js`)
+	})
 }
 
 func TestAssetPathEdgeCases(t *testing.T) {

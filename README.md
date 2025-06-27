@@ -110,6 +110,188 @@ users := builder.Group("/users")
 }
 ```
 
+## View Engine
+
+### View Engine Initialization
+
+`go-router` includes a powerful and flexible view engine initializer that works seamlessly with frameworks that support `fiber.Views` (like Fiber itself). It's built on `pongo2`, offering a Django-like template syntax, and handles both live-reloading for development and high-performance embedded assets for production.
+
+The core function is `router.InitializeViewEngine(config)`. It takes a configuration object that implements the `ViewConfigProvider` interface.
+
+#### Key Features
+
+*   **Embedded & Live Modes**: Use `go:embed` for single-binary production builds, or load templates directly from the OS for rapid development.
+*   **Composite Filesystems**: In embedded mode, you can layer multiple filesystems. This is perfect for theme overriding, where a theme's templates can transparently override a base set of templates.
+*   **Automatic Asset Handling**: Template functions `css(glob)` and `js(glob)` automatically find your versioned assets (e.g., `main-*.css`) and generate the correct HTML tags.
+*   **Intelligent Pathing**: The engine automatically handles subdirectories in embedded filesystems, so your paths are always clean and relative to your declared asset/template roots.
+
+#### Configuration (`ViewConfigProvider` Interface)
+
+Your configuration struct must provide getters for the following options:
+
+| Option | Type | Description |
+| :--- | :--- | :--- |
+| `GetEmbed()` | `bool` | **(Required)** `true` to use embedded `fs.FS` filesystems, `false` to load from the operating system. |
+| `GetDebug()` | `bool` | Enables debug logging from the template engine. |
+| `GetReload()` | `bool` | If `true`, templates are reloaded on every request. Ideal for development. |
+| `GetExt()` | `string` | The file extension for your templates (e.g., `.html`, `.p2`). |
+| `GetTemplateFunctions()` | `map[string]any` | A map of custom functions to register with the template engine. |
+| **Embedded Mode Options** | | |
+| `GetTemplatesFS()` | `[]fs.FS` | **(Required)** A slice of `fs.FS` filesystems containing your templates. Order matters for overrides (first found wins). |
+| `GetAssetsFS()` | `fs.FS` | **(Required)** The `fs.FS` filesystem containing your static assets (CSS, JS). |
+| `GetDirFS()` | `string` | The path *inside* `GetTemplatesFS` to the root of your templates (e.g., "templates"). |
+| `GetAssetsDir()` | `string` | The path *inside* `GetAssetsFS` to the root of your assets (e.g., "public"). |
+| `GetDevDir()` | `string` | An absolute OS path to a directory of override templates. These take highest priority, perfect for local development without changing embedded files. |
+| **Live (Non-Embedded) Mode Options** | | |
+| `GetDirOS()` | `string` | **(Required)** The absolute or relative OS path to your templates directory. |
+| `GetAssetsDir()` | `string` | **(Required)** The absolute or relative OS path to your assets directory. |
+| **Asset URL Generation** | | |
+| `GetCSSPath()` | `string` | The subdirectory within your `AssetsDir` where CSS files are located (e.g., "css"). |
+| `GetJSPath()` | `string` | The subdirectory within your `AssetsDir` where JS files are located (e.g., "js"). |
+| `GetURLPrefix()` | `string` | An optional prefix to add to all generated asset URLs. Useful for serving assets from a namespaced path like `/static`. |
+
+---
+
+#### Example 1: Embedded Mode for Production
+
+This setup is ideal for creating a self-contained, single-binary application.
+
+**Directory Structure:**
+```
+.
+├── assets/
+│   ├── css/main-a1b2c3d4.css
+│   └── js/app-e5f6g7h8.js
+├── templates/
+│   ├── layouts/base.html
+│   └── index.html
+└── main.go
+```
+
+**main.go:**
+```go
+package main
+
+import (
+	"embed"
+	"io/fs"
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/goliatone/go-router"
+)
+
+//go:embed templates
+var templateFS embed.FS
+
+//go:embed assets
+var assetFS embed.FS
+
+// A simple config struct implementing the interface
+type AppConfig struct {
+    // ... other app settings
+}
+func (c *AppConfig) GetEmbed() bool         { return true }
+func (c *AppConfig) GetDebug() bool         { return true }
+func (c *AppConfig) GetReload() bool        { return false } // a
+func (c *AppConfig) GetExt() string         { return ".html" }
+func (c *AppConfig) GetDirFS() string       { return "templates" } // Root of templates in templateFS
+func (c *AppConfig) GetAssetsDir() string   { return "assets" } // Root of assets in assetFS
+func (c *AppConfig) GetCSSPath() string     { return "css" }
+func (c *AppConfig) GetJSPath() string      { return "js" }
+func (c *AppConfig) GetURLPrefix() string   { return "static" } // URL will be /static/css/...
+func (c *AppConfig) GetDevDir() string      { return "" } // No dev overrides
+func (c *AppConfig) GetTemplatesFS() []fs.FS { return []fs.FS{templateFS} }
+func (c *AppConfig) GetAssetsFS() fs.FS     { return assetFS }
+// Live mode options are ignored when embed is true
+func (c *AppConfig) GetDirOS() string { return "" }
+func (c *AppConfig) GetTemplateFunctions() map[string]any { return nil }
+
+func main() {
+    config := &AppConfig{}
+
+    viewEngine, err := router.InitializeViewEngine(config)
+    if err != nil {
+        log.Fatalf("Failed to init view engine: %v", err)
+    }
+
+    app := fiber.New(fiber.Config{
+        Views: viewEngine,
+    })
+
+    // IMPORTANT: Serve your static files with the same prefix!
+    // The router only generates URLs; it doesn't serve files.
+    // fs.Sub is used to serve the `assets` directory content.
+    staticFS, _ := fs.Sub(assetFS, "assets")
+    app.Static("/static", filesystem.New(filesystem.Config{
+        Root: http.FS(staticFS),
+    }))
+
+    app.Get("/", func(c *fiber.Ctx) error {
+        return c.Render("index", fiber.Map{"Title": "Welcome"})
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+**templates/layouts/base.html:**
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ Title }}</title>
+    {{ css("main-*.css") | safe }}
+</head>
+<body>
+    {% block content %}{% endblock %}
+    {{ js("app-*.js") | safe }}
+</body>
+</html>
+```
+This will render `<link href="/static/css/main-a1b2c3d4.css">` in the final HTML.
+
+---
+
+#### Example 2: Live Mode for Development
+
+This setup loads files directly from your disk, and `Reload: true` ensures you see template changes without restarting the server.
+
+**main.go:**
+```go
+// A simple config struct implementing the interface
+type DevConfig struct {
+    // ...
+}
+func (c *DevConfig) GetEmbed() bool       { return false }
+func (c *DevConfig) GetReload() bool      { return true }
+func (c *DevConfig) GetDirOS() string     { return "./templates" } // Path on your disk
+func (c *DevConfig) GetAssetsDir() string { return "./assets" }    // Path on your disk
+func (c *DevConfig) GetURLPrefix() string { return "" } // Serve from root URL /
+// ... other getters returning sensible defaults ...
+```
+
+**Server Setup:**
+```go
+func main() {
+    config := &DevConfig{}
+
+    viewEngine, err := router.InitializeViewEngine(config)
+    // ... error handling ...
+
+    app := fiber.New(fiber.Config{
+        Views: viewEngine,
+    })
+
+    // Serve assets directly from the filesystem path
+    app.Static("/", "./assets")
+
+    // ... routes ...
+    log.Fatal(app.Listen(":3000"))
+}
+```
+This will render `<link href="/css/main-a1b2c3d4.css">` in the final HTML, which is served by `app.Static`.
+
 ## API Reference
 
 ### Server Interface

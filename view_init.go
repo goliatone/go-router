@@ -23,10 +23,6 @@ import (
 	"github.com/goodsign/monday"
 )
 
-type nameable interface {
-	Name() string
-}
-
 // ViewConfigProvider remains the public configuration interface.
 type ViewConfigProvider interface {
 	GetReload() bool
@@ -38,7 +34,7 @@ type ViewConfigProvider interface {
 	GetDirFS() string
 	GetDirOS() string
 
-	GetRemovePathPrefix() string
+	GetURLPrefix() string
 	GetTemplateFunctions() map[string]any
 
 	GetExt() string
@@ -115,12 +111,7 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 
 	if cfg.GetDebug() {
 		lgr.Debug("View engine templates loaded from clean root.")
-		fs.WalkDir(finalTemplateFS, ".", func(path string, d fs.DirEntry, err error) error {
-			if err == nil && !d.IsDir() {
-				lgr.Debug("  - " + path)
-			}
-			return nil
-		})
+		DebugAssetPaths(lgr, finalTemplateFS, "template FS")
 	}
 
 	return engine, nil
@@ -142,16 +133,14 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 	}
 
 	var finalAssetFS fs.FS
+
 	if !opts.GetEmbed() {
-		// For non-embedded mode, we deal with absolute OS paths.
-		// Use filepath.Clean, not NormalizePath.
 		assetRootPath := filepath.Clean(opts.GetAssetsDir())
 		if !DirExists(assetRootPath) {
 			return nil, fmt.Errorf("asset directory does not exist: %s", assetRootPath)
 		}
 		finalAssetFS = os.DirFS(assetRootPath)
 	} else {
-		// For embedded mode, NormalizePath is correct for virtual FS paths.
 		assetRootPath := NormalizePath(opts.GetAssetsDir())
 		if opts.GetAssetsFS() == nil {
 			return nil, errors.New("AssetFS must be provided in embed mode")
@@ -173,7 +162,7 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 		return nil, fmt.Errorf("init view: JS directory '%s' does not exist within the asset filesystem", jsPath)
 	}
 
-	assetURLPrefix := "/" + NormalizePath(opts.GetRemovePathPrefix())
+	assetURLPrefix := "/" + NormalizePath(opts.GetURLPrefix())
 	if assetURLPrefix == "/" {
 		assetURLPrefix = ""
 	}

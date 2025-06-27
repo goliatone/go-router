@@ -187,23 +187,22 @@ var templateFS embed.FS
 //go:embed assets
 var assetFS embed.FS
 
-// A simple config struct implementing the interface
 type AppConfig struct {
-    // ... other app settings
+    // app settings
 }
 func (c *AppConfig) GetEmbed() bool         { return true }
 func (c *AppConfig) GetDebug() bool         { return true }
 func (c *AppConfig) GetReload() bool        { return false } // a
 func (c *AppConfig) GetExt() string         { return ".html" }
-func (c *AppConfig) GetDirFS() string       { return "templates" } // Root of templates in templateFS
+func (c *AppConfig) GetDirFS() string       { return "templates" } // root of templates in templateFS
 func (c *AppConfig) GetAssetsDir() string   { return "assets" } // Root of assets in assetFS
 func (c *AppConfig) GetCSSPath() string     { return "css" }
 func (c *AppConfig) GetJSPath() string      { return "js" }
 func (c *AppConfig) GetURLPrefix() string   { return "static" } // URL will be /static/css/...
-func (c *AppConfig) GetDevDir() string      { return "" } // No dev overrides
+func (c *AppConfig) GetDevDir() string      { return "" } // no dev overrides
 func (c *AppConfig) GetTemplatesFS() []fs.FS { return []fs.FS{templateFS} }
 func (c *AppConfig) GetAssetsFS() fs.FS     { return assetFS }
-// Live mode options are ignored when embed is true
+// live mode options are ignored when embed is true
 func (c *AppConfig) GetDirOS() string { return "" }
 func (c *AppConfig) GetTemplateFunctions() map[string]any { return nil }
 
@@ -259,16 +258,15 @@ This setup loads files directly from your disk, and `Reload: true` ensures you s
 
 **main.go:**
 ```go
-// A simple config struct implementing the interface
 type DevConfig struct {
     // ...
 }
 func (c *DevConfig) GetEmbed() bool       { return false }
 func (c *DevConfig) GetReload() bool      { return true }
-func (c *DevConfig) GetDirOS() string     { return "./templates" } // Path on your disk
-func (c *DevConfig) GetAssetsDir() string { return "./assets" }    // Path on your disk
-func (c *DevConfig) GetURLPrefix() string { return "" } // Serve from root URL /
-// ... other getters returning sensible defaults ...
+func (c *DevConfig) GetDirOS() string     { return "./templates" } // path on disk
+func (c *DevConfig) GetAssetsDir() string { return "./assets" }    // path on your disk
+func (c *DevConfig) GetURLPrefix() string { return "" } // we serve from root URL /
+// other getters
 ```
 
 **Server Setup:**
@@ -277,20 +275,79 @@ func main() {
     config := &DevConfig{}
 
     viewEngine, err := router.InitializeViewEngine(config)
-    // ... error handling ...
+    // define error handling, etc...
 
     app := fiber.New(fiber.Config{
         Views: viewEngine,
     })
 
-    // Serve assets directly from the filesystem path
+    // serve assets directly from the filesystem path
     app.Static("/", "./assets")
 
-    // ... routes ...
+    // define your routes...
     log.Fatal(app.Listen(":3000"))
 }
 ```
 This will render `<link href="/css/main-a1b2c3d4.css">` in the final HTML, which is served by `app.Static`.
+
+### Pro-Tip: Generating Configuration
+
+Manually implementing the `ViewConfigProvider` interface for every project can be repetitive. You can accelerate this process by defining your configuration in a JSON or YAML file and using the **[go-generators](https://github.com/goliatone/go-generators?tab=readme-ov-file#app-config)** tool to automatically generate the required Go struct and methods.
+
+**1. Define your configuration in `config/app.json`:**
+```json
+{
+  "views": {
+    "embed": true,
+    "debug": true,
+    "reload": false,
+    "ext": ".html",
+    "dir_fs": "views",
+    "assets_dir": "public",
+    "css_path": "css",
+    "js_path": "js",
+    "url_prefix": "static"
+  }
+}
+```
+
+**2. Run the generator:**
+The generator will parse your JSON file, create a corresponding Go struct (`ViewsConfig`), and automatically implement all the necessary methods of the `ViewConfigProvider` interface.
+
+```bash
+go run github.com/goliatone/go-generators/cmd/config-gen --source ./config/app.json --key views --type ViewsConfig
+```
+
+**3. Use the generated config:**
+Now you can simply load your configuration from the file and pass it directly to the view engine initializer.
+
+```go
+package main
+
+import (
+    "path/to/your/generated/config"
+    "github.com/goliatone/go-router"
+    // ...
+)
+
+func main() {
+    // load config from file
+    appConfig, err := config.Load()
+    if err != nil {
+        // handle error
+    }
+
+    // the generated appConfig.Views field already implements ViewConfigProvider
+    viewEngine, err := router.InitializeViewEngine(appConfig.Views)
+    if err != nil {
+        log.Fatalf("Failed to init view engine: %v", err)
+    }
+
+    //... setup Fiber app
+}
+```
+
+This approach keeps your configuration clean and separate from your application logic while eliminating boilerplate code.
 
 ## API Reference
 

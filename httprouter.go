@@ -359,8 +359,7 @@ func (c *httpRouterContext) Render(name string, bind any, layouts ...string) err
 		if _, err := readContent(buf, name); err != nil {
 			return err
 		}
-		// Parse template
-		tmpl, err := template.New("").Parse(string(buf.Bytes()))
+		tmpl, err := template.New("").Parse(buf.String())
 		if err != nil {
 			return fmt.Errorf("failed to parse: %w", err)
 		}

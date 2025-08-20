@@ -110,6 +110,23 @@ users := builder.Group("/users")
 }
 ```
 
+## Flash Middleware
+
+### Template
+
+```html
+{% if flash.error %}
+<div class="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 border border-red-400" role="alert">
+    <span class="font-medium">Authentication Failed!</span>
+    {% if flash.error_message %}
+    <p>{{ flash.error_message }}</p>
+    {% else %}
+    Please check your credentials and try again.
+    {% endif %}
+</div>
+{% endif %}
+```
+
 ## View Engine
 
 ### View Engine Initialization

@@ -1,3 +1,4 @@
+//go:build skip
 // +build skip
 
 package router_test
@@ -94,14 +95,14 @@ func (m *mockWebSocketContext) SetPingHandler(handler func([]byte) error) {}
 func (m *mockWebSocketContext) SetPongHandler(handler func([]byte) error) {}
 
 // Additional methods to satisfy WebSocketContext interface
-func (m *mockWebSocketContext) Bind(v interface{}) error { return nil }
-func (m *mockWebSocketContext) Body() []byte { return nil }
-func (m *mockWebSocketContext) Context() context.Context { return context.Background() }
-func (m *mockWebSocketContext) SetContext(ctx context.Context) {}
-func (m *mockWebSocketContext) Next() error { return nil }
+func (m *mockWebSocketContext) Bind(v interface{}) error                      { return nil }
+func (m *mockWebSocketContext) Body() []byte                                  { return nil }
+func (m *mockWebSocketContext) Context() context.Context                      { return context.Background() }
+func (m *mockWebSocketContext) SetContext(ctx context.Context)                {}
+func (m *mockWebSocketContext) Next() error                                   { return nil }
 func (m *mockWebSocketContext) CloseWithStatus(code int, reason string) error { return nil }
-func (m *mockWebSocketContext) IsWebSocket() bool { return true }
-func (m *mockWebSocketContext) WebSocketUpgrade() error { return nil }
+func (m *mockWebSocketContext) IsWebSocket() bool                             { return true }
+func (m *mockWebSocketContext) WebSocketUpgrade() error                       { return nil }
 
 // Tests
 

@@ -1,3 +1,4 @@
+//go:build skip
 // +build skip
 
 package router_test
@@ -63,85 +64,85 @@ func TestJSONMessageRouter(t *testing.T) {
 	t.Skip("Skipping JSON message router test - needs updated mock")
 	return
 	/* Commented out until mock is updated
-	msgRouter := router.NewJSONMessageRouter(1024)
+		msgRouter := router.NewJSONMessageRouter(1024)
 
-	// Register handlers
-	testHandlerCalled := false
-	// TODO: Fix type issues with WebSocketContext and JSONMessage
-	_ = testHandlerCalled // Avoid unused variable error
-	_ = msgRouter         // Avoid unused variable error
-	// msgRouter.Register("test", func(ctx router.WebSocketContext, msg *router.JSONMessage) error {
-	//     testHandlerCalled = true
-	//     return nil
-	// })
+		// Register handlers
+		testHandlerCalled := false
+		// TODO: Fix type issues with WebSocketContext and JSONMessage
+		_ = testHandlerCalled // Avoid unused variable error
+		_ = msgRouter         // Avoid unused variable error
+		// msgRouter.Register("test", func(ctx router.WebSocketContext, msg *router.JSONMessage) error {
+		//     testHandlerCalled = true
+		//     return nil
+		// })
 
-	// Create mock context
-	ctx := newMockWebSocketContext()
-	ctx.mockUpgrade()
+		// Create mock context
+		ctx := newMockWebSocketContext()
+		ctx.mockUpgrade()
 
-	// Write a test message
-	// TODO: Fix JSONMessage type issue
-	// testMsg := router.JSONMessage{
-	//     Type:      "test",
-	//     Timestamp: time.Now(),
-	//     Data:      json.RawMessage(`{"test":"data"}`),
-	// }
-	testMsg := struct {
-		Type      string
-		Timestamp time.Time
-		Data      json.RawMessage
-	}{
-		Type:      "test",
-		Timestamp: time.Now(),
-		Data:      json.RawMessage(`{"test":"data"}`),
+		// Write a test message
+		// TODO: Fix JSONMessage type issue
+		// testMsg := router.JSONMessage{
+		//     Type:      "test",
+		//     Timestamp: time.Now(),
+		//     Data:      json.RawMessage(`{"test":"data"}`),
+		// }
+		testMsg := struct {
+			Type      string
+			Timestamp time.Time
+			Data      json.RawMessage
+		}{
+			Type:      "test",
+			Timestamp: time.Now(),
+			Data:      json.RawMessage(`{"test":"data"}`),
+		}
+
+		msgData, _ := json.Marshal(testMsg)
+		ctx.WriteMessage(router.TextMessage, msgData)
+
+		// Route the message
+		// TODO: Re-enable when type issues are fixed
+		// if err := msgRouter.Route(ctx); err != nil {
+		//     t.Errorf("Failed to route message: %v", err)
+		// }
+		// if !testHandlerCalled {
+		//     t.Error("Test handler was not called")
+		// }
+		t.Log("JSON Message Router test temporarily disabled due to type visibility issues")
 	}
 
-	msgData, _ := json.Marshal(testMsg)
-	ctx.WriteMessage(router.TextMessage, msgData)
+	// Test: Deadline Manager
+	func TestDeadlineManager(t *testing.T) {
+		t.Skip("Skipping deadline manager test - mock doesn't implement full WebSocketContext interface")
+		return
+		/* Commented out until mock is updated
+		config := router.WebSocketConfig{
+			PingPeriod:   100 * time.Millisecond,
+			PongWait:     200 * time.Millisecond,
+			WriteTimeout: 50 * time.Millisecond,
+		}
 
-	// Route the message
-	// TODO: Re-enable when type issues are fixed
-	// if err := msgRouter.Route(ctx); err != nil {
-	//     t.Errorf("Failed to route message: %v", err)
-	// }
-	// if !testHandlerCalled {
-	//     t.Error("Test handler was not called")
-	// }
-	t.Log("JSON Message Router test temporarily disabled due to type visibility issues")
-}
+		ctx := newMockWebSocketContext()
+		// Don't upgrade yet - test should fail
 
-// Test: Deadline Manager
-func TestDeadlineManager(t *testing.T) {
-	t.Skip("Skipping deadline manager test - mock doesn't implement full WebSocketContext interface")
-	return
-	/* Commented out until mock is updated
-	config := router.WebSocketConfig{
-		PingPeriod:   100 * time.Millisecond,
-		PongWait:     200 * time.Millisecond,
-		WriteTimeout: 50 * time.Millisecond,
-	}
+		manager := router.NewDeadlineManager(ctx, config)
 
-	ctx := newMockWebSocketContext()
-	// Don't upgrade yet - test should fail
+		// Test health check before connection
+		if err := manager.HealthCheck(); err == nil {
+			t.Error("Health check should fail before connection")
+		}
 
-	manager := router.NewDeadlineManager(ctx, config)
+		// Now upgrade
+		ctx.mockUpgrade()
 
-	// Test health check before connection
-	if err := manager.HealthCheck(); err == nil {
-		t.Error("Health check should fail before connection")
-	}
+		// Start the manager
+		manager.Start()
+		defer manager.Stop()
 
-	// Now upgrade
-	ctx.mockUpgrade()
-
-	// Start the manager
-	manager.Start()
-	defer manager.Stop()
-
-	// Test health check after start
-	if err := manager.HealthCheck(); err != nil {
-		t.Errorf("Health check failed: %v", err)
-	}
+		// Test health check after start
+		if err := manager.HealthCheck(); err != nil {
+			t.Errorf("Health check failed: %v", err)
+		}
 	*/
 }
 

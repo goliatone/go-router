@@ -1,3 +1,4 @@
+//go:build skip
 // +build skip
 
 package router_test
@@ -418,7 +419,6 @@ func echoWebSocketHandler(c router.Context) error {
 	// Basic echo implementation for testing
 	return wsCtx.Close()
 }
-
 
 // WebSocketConfig is now defined in websocket.go - no need to redefine here
 

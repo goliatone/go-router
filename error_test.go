@@ -293,13 +293,13 @@ func TestErrorResponseJSONFormat(t *testing.T) {
 		t.Fatalf("failed to marshal error response: %v", marshalErr)
 	}
 
-	var unmarshaled map[string]interface{}
+	var unmarshaled map[string]any
 	if unmarshalErr := json.Unmarshal(data, &unmarshaled); unmarshalErr != nil {
 		t.Fatalf("failed to unmarshal error response: %v", unmarshalErr)
 	}
 
 	// Verify the structure
-	errorObj, ok := unmarshaled["error"].(map[string]interface{})
+	errorObj, ok := unmarshaled["error"].(map[string]any)
 	if !ok {
 		t.Fatal("expected 'error' field to be an object")
 	}
@@ -312,7 +312,7 @@ func TestErrorResponseJSONFormat(t *testing.T) {
 	}
 
 	// Verify validation errors structure
-	validationErrors, ok := errorObj["validation_errors"].([]interface{})
+	validationErrors, ok := errorObj["validation_errors"].([]any)
 	if !ok {
 		t.Fatal("expected 'validation_errors' to be an array")
 	}
@@ -322,7 +322,7 @@ func TestErrorResponseJSONFormat(t *testing.T) {
 	}
 
 	// Check first validation error
-	firstError, ok := validationErrors[0].(map[string]interface{})
+	firstError, ok := validationErrors[0].(map[string]any)
 	if !ok {
 		t.Fatal("expected validation error to be an object")
 	}

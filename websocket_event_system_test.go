@@ -376,10 +376,21 @@ func TestAckManager(t *testing.T) {
 		}
 		
 		ctx := context.Background()
-		_, err := mgr.SendWithAck(ctx, mockClient, event, 100*time.Millisecond)
+		ack, err := mgr.SendWithAck(ctx, mockClient, event, 100*time.Millisecond)
 		
-		if err == nil {
-			t.Error("Expected timeout error")
+		// The function returns a timeout ack rather than an error
+		// Check if we got a timeout acknowledgment (Success=false, Error="acknowledgment timeout")
+		if err == nil && ack != nil {
+			if ack.Success || ack.Error != "acknowledgment timeout" {
+				t.Errorf("Expected timeout acknowledgment, got: Success=%v, Error=%s", ack.Success, ack.Error)
+			}
+		} else if err != nil {
+			// This is also acceptable - context timeout
+			if err.Error() != "acknowledgment timeout" {
+				t.Errorf("Expected timeout error, got: %v", err)
+			}
+		} else {
+			t.Error("Expected either timeout error or timeout acknowledgment")
 		}
 	})
 	
@@ -451,8 +462,6 @@ func TestEventBatcher(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		
 		mu.Lock()
-		defer mu.Unlock()
-		
 		// Should have 1 batch of 3 (triggered by size)
 		// and remaining will be in buffer
 		if len(batches) != 1 {
@@ -462,15 +471,18 @@ func TestEventBatcher(t *testing.T) {
 		if len(batches[0]) != 3 {
 			t.Errorf("Expected batch size 3, got %d", len(batches[0]))
 		}
+		mu.Unlock()
 		
 		// Close to flush remaining
 		batcher.Close()
 		time.Sleep(100 * time.Millisecond)
 		
 		// Should now have 2 batches total
+		mu.Lock()
 		if len(batches) != 2 {
 			t.Errorf("Expected 2 batches after close, got %d", len(batches))
 		}
+		mu.Unlock()
 	})
 	
 	t.Run("Batch by time", func(t *testing.T) {

@@ -22,11 +22,11 @@ func TestWebSocketMessageTypes(t *testing.T) {
 		msgType  int
 		expected string
 	}{
-		{"TextMessage", TextMessage, "text"},
-		{"BinaryMessage", BinaryMessage, "binary"},
-		{"CloseMessage", CloseMessage, "close"},
-		{"PingMessage", PingMessage, "ping"},
-		{"PongMessage", PongMessage, "pong"},
+		{"TextMessage", router.TextMessage, "text"},
+		{"BinaryMessage", router.BinaryMessage, "binary"},
+		{"CloseMessage", router.CloseMessage, "close"},
+		{"PingMessage", router.PingMessage, "ping"},
+		{"PongMessage", router.PongMessage, "pong"},
 	}
 
 	for _, tt := range tests {
@@ -45,20 +45,20 @@ func TestWebSocketCloseCodes(t *testing.T) {
 		code     int
 		expected int
 	}{
-		{"CloseNormalClosure", CloseNormalClosure, 1000},
-		{"CloseGoingAway", CloseGoingAway, 1001},
-		{"CloseProtocolError", CloseProtocolError, 1002},
-		{"CloseUnsupportedData", CloseUnsupportedData, 1003},
-		{"CloseNoStatusReceived", CloseNoStatusReceived, 1005},
-		{"CloseAbnormalClosure", CloseAbnormalClosure, 1006},
-		{"CloseInvalidFramePayloadData", CloseInvalidFramePayloadData, 1007},
-		{"ClosePolicyViolation", ClosePolicyViolation, 1008},
-		{"CloseMessageTooBig", CloseMessageTooBig, 1009},
-		{"CloseMandatoryExtension", CloseMandatoryExtension, 1010},
-		{"CloseInternalServerErr", CloseInternalServerErr, 1011},
-		{"CloseServiceRestart", CloseServiceRestart, 1012},
-		{"CloseTryAgainLater", CloseTryAgainLater, 1013},
-		{"CloseTLSHandshake", CloseTLSHandshake, 1015},
+		{"CloseNormalClosure", router.CloseNormalClosure, 1000},
+		{"CloseGoingAway", router.CloseGoingAway, 1001},
+		{"CloseProtocolError", router.CloseProtocolError, 1002},
+		{"CloseUnsupportedData", router.CloseUnsupportedData, 1003},
+		{"CloseNoStatusReceived", router.CloseNoStatusReceived, 1005},
+		{"CloseAbnormalClosure", router.CloseAbnormalClosure, 1006},
+		{"CloseInvalidFramePayloadData", router.CloseInvalidFramePayloadData, 1007},
+		{"ClosePolicyViolation", router.ClosePolicyViolation, 1008},
+		{"CloseMessageTooBig", router.CloseMessageTooBig, 1009},
+		{"CloseMandatoryExtension", router.CloseMandatoryExtension, 1010},
+		{"CloseInternalServerErr", router.CloseInternalServerErr, 1011},
+		{"CloseServiceRestart", router.CloseServiceRestart, 1012},
+		{"CloseTryAgainLater", router.CloseTryAgainLater, 1013},
+		{"CloseTLSHandshake", router.CloseTLSHandshake, 1015},
 	}
 
 	for _, tt := range tests {
@@ -73,7 +73,7 @@ func TestWebSocketCloseCodes(t *testing.T) {
 // Test: WebSocket Config Validation
 func TestWebSocketConfigValidation(t *testing.T) {
 	t.Run("DefaultConfig", func(t *testing.T) {
-		config := DefaultWebSocketConfig()
+		config := router.DefaultWebSocketConfig()
 
 		if config.ReadBufferSize != 4096 {
 			t.Errorf("Expected ReadBufferSize 4096, got %d", config.ReadBufferSize)
@@ -93,15 +93,15 @@ func TestWebSocketConfigValidation(t *testing.T) {
 		disconnectCalled := false
 		messageCalled := false
 
-		config := WebSocketConfig{
-			OnConnect: func(ctx WebSocketContext) error {
+		config := router.WebSocketConfig{
+			OnConnect: func(ctx router.WebSocketContext) error {
 				connectCalled = true
 				return nil
 			},
-			OnDisconnect: func(ctx WebSocketContext, err error) {
+			OnDisconnect: func(ctx router.WebSocketContext, err error) {
 				disconnectCalled = true
 			},
-			OnMessage: func(ctx WebSocketContext, msgType int, data []byte) error {
+			OnMessage: func(ctx router.WebSocketContext, msgType int, data []byte) error {
 				messageCalled = true
 				return nil
 			},
@@ -116,7 +116,7 @@ func TestWebSocketConfigValidation(t *testing.T) {
 			t.Error("OnConnect handler not called")
 		}
 
-		config.OnMessage(ctx, TextMessage, []byte("test"))
+		config.OnMessage(ctx, router.TextMessage, []byte("test"))
 		if !messageCalled {
 			t.Error("OnMessage handler not called")
 		}
@@ -132,14 +132,14 @@ func TestWebSocketConfigValidation(t *testing.T) {
 func TestWebSocketErrorTypes(t *testing.T) {
 	t.Run("ErrorCreation", func(t *testing.T) {
 		cause := errors.New("underlying error")
-		err := &WebSocketError{
-			Code:    CloseProtocolError,
+		err := &router.WebSocketError{
+			Code:    router.CloseProtocolError,
 			Message: "protocol error occurred",
 			Cause:   cause,
 		}
 
-		if err.Code != CloseProtocolError {
-			t.Errorf("Expected code %d, got %d", CloseProtocolError, err.Code)
+		if err.Code != router.CloseProtocolError {
+			t.Errorf("Expected code %d, got %d", router.CloseProtocolError, err.Code)
 		}
 
 		// The error message includes format "websocket [type] error [code]: message"
@@ -155,27 +155,27 @@ func TestWebSocketErrorTypes(t *testing.T) {
 	t.Run("PredefinedErrors", func(t *testing.T) {
 		cause := errors.New("test cause")
 
-		upgradeErr := ErrWebSocketUpgradeFailed(cause)
+		upgradeErr := router.ErrWebSocketUpgradeFailed(cause)
 		if upgradeErr.Code != 1001 {
 			t.Errorf("Upgrade error should have code 1001, got %d", upgradeErr.Code)
 		}
 
 		// Test custom error creation
-		readErr := &WebSocketError{
-			Code:    CloseAbnormalClosure,
+		readErr := &router.WebSocketError{
+			Code:    router.CloseAbnormalClosure,
 			Message: "read failed",
 			Cause:   cause,
 		}
-		if readErr.Code != CloseAbnormalClosure {
+		if readErr.Code != router.CloseAbnormalClosure {
 			t.Error("Read error should have abnormal closure code")
 		}
 
-		writeErr := &WebSocketError{
-			Code:    CloseAbnormalClosure,
+		writeErr := &router.WebSocketError{
+			Code:    router.CloseAbnormalClosure,
 			Message: "write failed",
 			Cause:   cause,
 		}
-		if writeErr.Code != CloseAbnormalClosure {
+		if writeErr.Code != router.CloseAbnormalClosure {
 			t.Error("Write error should have abnormal closure code")
 		}
 	})
@@ -213,7 +213,7 @@ func TestContextFactoryRegistry(t *testing.T) {
 // Test: Message Validation
 func TestMessageValidation(t *testing.T) {
 	t.Run("ValidMessageTypes", func(t *testing.T) {
-		validTypes := []int{TextMessage, BinaryMessage, CloseMessage, PingMessage, PongMessage}
+		validTypes := []int{router.TextMessage, router.BinaryMessage, router.CloseMessage, router.PingMessage, router.PongMessage}
 
 		for _, msgType := range validTypes {
 			if msgType < 0 || msgType > 10 {
@@ -251,7 +251,7 @@ func TestConcurrentWebSocketOperations(t *testing.T) {
 			go func(id int) {
 				defer wg.Done()
 				msg := []byte("message " + string(rune(id)))
-				if err := ctx.WriteMessage(TextMessage, msg); err != nil {
+				if err := ctx.WriteMessage(router.TextMessage, msg); err != nil {
 					errors <- err
 				}
 			}(i)
@@ -273,7 +273,7 @@ func TestConcurrentWebSocketOperations(t *testing.T) {
 
 		// Pre-populate messages
 		for i := 0; i < 10; i++ {
-			ctx.WriteMessage(TextMessage, []byte("test"))
+			ctx.WriteMessage(router.TextMessage, []byte("test"))
 		}
 
 		var wg sync.WaitGroup
@@ -328,7 +328,7 @@ func TestJSONOperations(t *testing.T) {
 		// Write JSON data first
 		testData := map[string]string{"key": "value"}
 		jsonData, _ := json.Marshal(testData)
-		ctx.WriteMessage(TextMessage, jsonData)
+		ctx.WriteMessage(router.TextMessage, jsonData)
 
 		// Read it back
 		var result map[string]string
@@ -346,7 +346,7 @@ func TestJSONOperations(t *testing.T) {
 		ctx.mockUpgrade()
 
 		// Write invalid JSON
-		ctx.WriteMessage(TextMessage, []byte("{invalid json}"))
+		ctx.WriteMessage(router.TextMessage, []byte("{invalid json}"))
 
 		var result map[string]string
 		err := ctx.ReadJSON(&result)
@@ -491,7 +491,7 @@ func TestCloseHandling(t *testing.T) {
 		ctx := newMockWebSocketContext()
 		ctx.mockUpgrade()
 
-		if err := ctx.CloseWithStatus(CloseNormalClosure, "goodbye"); err != nil {
+		if err := ctx.CloseWithStatus(router.CloseNormalClosure, "goodbye"); err != nil {
 			t.Errorf("CloseWithStatus failed: %v", err)
 		}
 	})
@@ -501,14 +501,14 @@ func TestCloseHandling(t *testing.T) {
 		ctx.mockUpgrade()
 
 		ctx.SetCloseHandler(func(code int, text string) error {
-			if code != CloseNormalClosure {
-				t.Errorf("Expected close code %d, got %d", CloseNormalClosure, code)
+			if code != router.CloseNormalClosure {
+				t.Errorf("Expected close code %d, got %d", router.CloseNormalClosure, code)
 			}
 			return nil
 		})
 
 		// Close the connection
-		ctx.CloseWithStatus(CloseNormalClosure, "test")
+		ctx.CloseWithStatus(router.CloseNormalClosure, "test")
 
 		// Note: In real implementation, handler would be called
 		// This is a mock test to verify the interface
@@ -625,7 +625,7 @@ func TestBufferManagement(t *testing.T) {
 		// Write multiple messages
 		for i := 0; i < 100; i++ {
 			msg := bytes.Repeat([]byte("a"), 1024)
-			if err := ctx.WriteMessage(TextMessage, msg); err != nil {
+			if err := ctx.WriteMessage(router.TextMessage, msg); err != nil {
 				t.Errorf("Write %d failed: %v", i, err)
 			}
 		}
@@ -638,7 +638,7 @@ func TestBufferManagement(t *testing.T) {
 		// Create a large message
 		largeMsg := bytes.Repeat([]byte("x"), 1024*1024) // 1MB
 
-		if err := ctx.WriteMessage(BinaryMessage, largeMsg); err != nil {
+		if err := ctx.WriteMessage(router.BinaryMessage, largeMsg); err != nil {
 			t.Errorf("Failed to write large message: %v", err)
 		}
 	})
@@ -647,7 +647,7 @@ func TestBufferManagement(t *testing.T) {
 // Mock WebSocket Factory for testing
 type mockWebSocketFactory struct{}
 
-func (f *mockWebSocketFactory) CreateWebSocketContext(ctx Context) (WebSocketContext, error) {
+func (f *mockWebSocketFactory) CreateWebSocketContext(ctx router.Context) (router.WebSocketContext, error) {
 	if mockCtx, ok := ctx.(*mockWebSocketContext); ok {
 		mockCtx.mockUpgrade()
 		return mockCtx, nil
@@ -655,7 +655,7 @@ func (f *mockWebSocketFactory) CreateWebSocketContext(ctx Context) (WebSocketCon
 	return nil, errors.New("invalid context type")
 }
 
-func (f *mockWebSocketFactory) CanUpgrade(ctx Context) bool {
+func (f *mockWebSocketFactory) CanUpgrade(ctx router.Context) bool {
 	_, ok := ctx.(*mockWebSocketContext)
 	return ok
 }

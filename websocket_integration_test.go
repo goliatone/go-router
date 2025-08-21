@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goliatone/go-router"
-
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )

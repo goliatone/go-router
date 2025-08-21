@@ -138,7 +138,7 @@ func BenchmarkWebSocketLargeMessage(b *testing.B) {
 // Benchmark: Connection Pool Operations
 func BenchmarkConnectionPool(b *testing.B) {
 	b.Run("Add", func(b *testing.B) {
-		pool := NewConnectionPool(10000)
+		pool := router.NewConnectionPool(10000)
 
 		b.ResetTimer()
 		b.ReportAllocs()
@@ -151,10 +151,10 @@ func BenchmarkConnectionPool(b *testing.B) {
 	})
 
 	b.Run("Get", func(b *testing.B) {
-		pool := NewConnectionPool(1000)
+		pool := router.NewConnectionPool(1000)
 
 		// Pre-populate pool
-		contexts := make([]WebSocketContext, 100)
+		contexts := make([]router.WebSocketContext, 100)
 		for i := 0; i < 100; i++ {
 			ctx := newMockWebSocketContext()
 			ctx.mockUpgrade()
@@ -171,7 +171,7 @@ func BenchmarkConnectionPool(b *testing.B) {
 	})
 
 	b.Run("Broadcast", func(b *testing.B) {
-		pool := NewConnectionPool(100)
+		pool := router.NewConnectionPool(100)
 
 		// Pre-populate pool
 		for i := 0; i < 100; i++ {
@@ -193,14 +193,14 @@ func BenchmarkConnectionPool(b *testing.B) {
 
 // Benchmark: JSON Message Router
 func BenchmarkJSONMessageRouter(b *testing.B) {
-	router := NewJSONMessageRouter(1024 * 1024)
+	jsonRouter := router.NewJSONMessageRouter(1024 * 1024)
 
 	// Register handlers
-	router.Register("test", func(ctx WebSocketContext, msg *JSONMessage) error {
+	jsonRouter.Register("test", func(ctx router.WebSocketContext, msg *router.JSONMessage) error {
 		return nil
 	})
 
-	router.Register("echo", func(ctx WebSocketContext, msg *JSONMessage) error {
+	jsonRouter.Register("echo", func(ctx router.WebSocketContext, msg *router.JSONMessage) error {
 		return ctx.WriteJSON(msg)
 	})
 
@@ -208,7 +208,7 @@ func BenchmarkJSONMessageRouter(b *testing.B) {
 	ctx.mockUpgrade()
 
 	// Prepare test message
-	testMsg := JSONMessage{
+	testMsg := router.JSONMessage{
 		Type:      "test",
 		ID:        "123",
 		Timestamp: time.Now(),
@@ -222,13 +222,13 @@ func BenchmarkJSONMessageRouter(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		ctx.WriteMessage(router.TextMessage, msgData)
-		router.Route(ctx)
+		jsonRouter.Route(ctx)
 	}
 }
 
 // Benchmark: Deadline Manager
 func BenchmarkDeadlineManager(b *testing.B) {
-	config := WebSocketConfig{
+	config := router.WebSocketConfig{
 		PingPeriod:   100 * time.Millisecond,
 		PongWait:     200 * time.Millisecond,
 		WriteTimeout: 50 * time.Millisecond,
@@ -241,7 +241,7 @@ func BenchmarkDeadlineManager(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		manager := NewDeadlineManager(ctx, config)
+		manager := router.NewDeadlineManager(ctx, config)
 		manager.Start()
 		manager.HealthCheck()
 		manager.Stop()
@@ -250,8 +250,8 @@ func BenchmarkDeadlineManager(b *testing.B) {
 
 // Benchmark: Compression Manager
 func BenchmarkCompressionManager(b *testing.B) {
-	config := DefaultCompressionConfig()
-	manager := NewCompressionManager(config)
+	config := router.DefaultCompressionConfig()
+	manager := router.NewCompressionManager(config)
 
 	testData := []struct {
 		name string
@@ -278,12 +278,12 @@ func BenchmarkCompressionManager(b *testing.B) {
 
 // Benchmark: Subprotocol Negotiation
 func BenchmarkSubprotocolNegotiation(b *testing.B) {
-	negotiator := NewSubprotocolNegotiator()
+	negotiator := router.NewSubprotocolNegotiator()
 
 	// Register multiple protocols
 	protocols := []string{"chat", "echo", "api", "stream", "control"}
 	for _, p := range protocols {
-		negotiator.Register(SubprotocolHandler{
+		negotiator.Register(router.SubprotocolHandler{
 			Name:    p,
 			Version: "1.0",
 		})
@@ -307,8 +307,8 @@ func BenchmarkWebSocketError(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		err := &WebSocketError{
-			Code:    CloseProtocolError,
+		err := &router.WebSocketError{
+			Code:    router.CloseProtocolError,
 			Message: "protocol error",
 			Cause:   cause,
 		}
@@ -365,7 +365,7 @@ func BenchmarkMemoryAllocation(b *testing.B) {
 
 // Benchmark: Concurrent Connection Handling
 func BenchmarkConcurrentConnections(b *testing.B) {
-	pool := NewConnectionPool(1000)
+	pool := router.NewConnectionPool(1000)
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -420,7 +420,7 @@ func BenchmarkConfigValidation(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		config := WebSocketConfig{
+		config := router.WebSocketConfig{
 			ReadBufferSize:   1024,
 			WriteBufferSize:  1024,
 			HandshakeTimeout: 10 * time.Second,
@@ -450,7 +450,7 @@ func BenchmarkBroadcastJSON(b *testing.B) {
 	for _, n := range numConnections {
 		b.Run(fmt.Sprintf("Connections_%d", n), func(b *testing.B) {
 			// Create connections
-			connections := make([]WebSocketContext, n)
+			connections := make([]router.WebSocketContext, n)
 			for i := 0; i < n; i++ {
 				ctx := newMockWebSocketContext()
 				ctx.mockUpgrade()
@@ -467,7 +467,7 @@ func BenchmarkBroadcastJSON(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				BroadcastJSON(connections, testData, 1024*1024)
+				router.BroadcastJSON(connections, testData, 1024*1024)
 			}
 		})
 	}
@@ -534,7 +534,7 @@ func BenchmarkCloseOperations(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			ctx := newMockWebSocketContext()
 			ctx.mockUpgrade()
-			ctx.CloseWithStatus(CloseNormalClosure, "goodbye")
+			ctx.CloseWithStatus(router.CloseNormalClosure, "goodbye")
 		}
 	})
 }
@@ -556,10 +556,10 @@ func BenchmarkConnectionState(b *testing.B) {
 
 // Benchmark: Handler Chain Execution
 func BenchmarkHandlerChain(b *testing.B) {
-	handlers := []func(WebSocketContext) error{
-		func(ctx WebSocketContext) error { return nil },
-		func(ctx WebSocketContext) error { return nil },
-		func(ctx WebSocketContext) error { return nil },
+	handlers := []func(router.WebSocketContext) error{
+		func(ctx router.WebSocketContext) error { return nil },
+		func(ctx router.WebSocketContext) error { return nil },
+		func(ctx router.WebSocketContext) error { return nil },
 	}
 
 	ctx := newMockWebSocketContext()
@@ -633,7 +633,7 @@ func BenchmarkEndToEndPerformance(b *testing.B) {
 		Duration: time.Duration(b.N) * time.Second,
 	}
 
-	pool := NewConnectionPool(100)
+	pool := router.NewConnectionPool(100)
 
 	// Simulate realistic WebSocket usage
 	b.ResetTimer()
@@ -674,3 +674,6 @@ func BenchmarkEndToEndPerformance(b *testing.B) {
 
 	b.Logf("\n%s", metrics.Report())
 }
+
+// Note: Helper functions (validateTestOrigin, mockWebSocketFactory) are defined in other test files
+// since all test files are in the same package (router_test)

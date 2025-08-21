@@ -164,7 +164,7 @@ func TestHTTPRouterWebSocketIntegration(t *testing.T) {
 		// Create a mock context for testing
 		mockCtx := newMockWebSocketContext()
 		mockCtx.setHeader("Origin", "https://example.com")
-		
+
 		// Should allow with matching origin
 		config := router.WebSocketConfig{
 			Origins: []string{"https://example.com"},
@@ -473,7 +473,7 @@ func (m *mockWebSocketContext) ReadMessage() (messageType int, p []byte, err err
 	if !m.isWebSocket {
 		return 0, nil, fmt.Errorf("not connected")
 	}
-	
+
 	if m.readIndex >= len(m.messages) {
 		return 0, nil, nil // EOF
 	}

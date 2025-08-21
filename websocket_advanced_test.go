@@ -64,7 +64,7 @@ func TestJSONMessageRouter(t *testing.T) {
 	testHandlerCalled := false
 	// TODO: Fix type issues with WebSocketContext and JSONMessage
 	_ = testHandlerCalled // Avoid unused variable error
-	_ = msgRouter // Avoid unused variable error
+	_ = msgRouter         // Avoid unused variable error
 	// msgRouter.Register("test", func(ctx router.WebSocketContext, msg *router.JSONMessage) error {
 	//     testHandlerCalled = true
 	//     return nil

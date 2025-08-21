@@ -12,10 +12,10 @@ import (
 type EventHistory struct {
 	events   []*EventMessage
 	eventsMu sync.RWMutex
-	
+
 	maxSize int
 	ttl     time.Duration
-	
+
 	// Index for fast lookup
 	byType      map[string][]*EventMessage
 	byNamespace map[string][]*EventMessage
@@ -27,20 +27,20 @@ type EventHistory struct {
 type EventHistoryFilter struct {
 	// Filter by event type
 	Type string
-	
+
 	// Filter by namespace
 	Namespace string
-	
+
 	// Filter by client ID
 	ClientID string
-	
+
 	// Filter by time range
 	Since  *time.Time
 	Before *time.Time
-	
+
 	// Maximum number of events to return
 	Limit int
-	
+
 	// Offset for pagination
 	Offset int
 }
@@ -55,10 +55,10 @@ func NewEventHistory(maxSize int, ttl time.Duration) *EventHistory {
 		byNamespace: make(map[string][]*EventMessage),
 		byClient:    make(map[string][]*EventMessage),
 	}
-	
+
 	// Start cleanup goroutine
 	go h.cleanup()
-	
+
 	return h
 }
 
@@ -68,7 +68,7 @@ func (h *EventHistory) Add(event *EventMessage) {
 	h.indexMu.Lock()
 	defer h.eventsMu.Unlock()
 	defer h.indexMu.Unlock()
-	
+
 	// Check size limit
 	if len(h.events) >= h.maxSize {
 		// Remove oldest event
@@ -76,10 +76,10 @@ func (h *EventHistory) Add(event *EventMessage) {
 		h.events = h.events[1:]
 		h.removeFromIndex(oldest)
 	}
-	
+
 	// Add to history
 	h.events = append(h.events, event)
-	
+
 	// Update indexes
 	h.addToIndex(event)
 }
@@ -88,9 +88,9 @@ func (h *EventHistory) Add(event *EventMessage) {
 func (h *EventHistory) Get(filter EventHistoryFilter) []*EventMessage {
 	h.eventsMu.RLock()
 	defer h.eventsMu.RUnlock()
-	
+
 	var filtered []*EventMessage
-	
+
 	// Use index if possible
 	if filter.Type != "" {
 		h.indexMu.RLock()
@@ -107,7 +107,7 @@ func (h *EventHistory) Get(filter EventHistoryFilter) []*EventMessage {
 	} else {
 		filtered = h.events
 	}
-	
+
 	// Apply additional filters
 	result := make([]*EventMessage, 0)
 	for _, event := range filtered {
@@ -115,7 +115,7 @@ func (h *EventHistory) Get(filter EventHistoryFilter) []*EventMessage {
 			result = append(result, event)
 		}
 	}
-	
+
 	// Apply pagination
 	if filter.Offset > 0 {
 		if filter.Offset >= len(result) {
@@ -123,18 +123,18 @@ func (h *EventHistory) Get(filter EventHistoryFilter) []*EventMessage {
 		}
 		result = result[filter.Offset:]
 	}
-	
+
 	if filter.Limit > 0 && len(result) > filter.Limit {
 		result = result[:filter.Limit]
 	}
-	
+
 	return result
 }
 
 // Replay replays events to a client
 func (h *EventHistory) Replay(client WSClient, filter EventHistoryFilter) error {
 	events := h.Get(filter)
-	
+
 	for _, event := range events {
 		// Create replay event with metadata
 		replayEvent := &EventMessage{
@@ -143,20 +143,20 @@ func (h *EventHistory) Replay(client WSClient, filter EventHistoryFilter) error 
 			Namespace: event.Namespace,
 			Data:      event.Data,
 			Metadata: map[string]interface{}{
-				"replay":           true,
+				"replay":            true,
 				"originalTimestamp": event.Timestamp,
 			},
 			Timestamp: time.Now(),
 		}
-		
+
 		if err := client.SendJSON(replayEvent); err != nil {
 			return err
 		}
-		
+
 		// Small delay between replayed events
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	return nil
 }
 
@@ -166,7 +166,7 @@ func (h *EventHistory) Clear() {
 	h.indexMu.Lock()
 	defer h.eventsMu.Unlock()
 	defer h.indexMu.Unlock()
-	
+
 	h.events = h.events[:0]
 	h.byType = make(map[string][]*EventMessage)
 	h.byNamespace = make(map[string][]*EventMessage)
@@ -185,12 +185,12 @@ func (h *EventHistory) matchesFilter(event *EventMessage, filter EventHistoryFil
 	if filter.Type != "" && event.Type != filter.Type {
 		return false
 	}
-	
+
 	// Check namespace
 	if filter.Namespace != "" && event.Namespace != filter.Namespace {
 		return false
 	}
-	
+
 	// Check time range
 	if filter.Since != nil && event.Timestamp.Before(*filter.Since) {
 		return false
@@ -198,7 +198,7 @@ func (h *EventHistory) matchesFilter(event *EventMessage, filter EventHistoryFil
 	if filter.Before != nil && event.Timestamp.After(*filter.Before) {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -207,12 +207,12 @@ func (h *EventHistory) addToIndex(event *EventMessage) {
 	if event.Type != "" {
 		h.byType[event.Type] = append(h.byType[event.Type], event)
 	}
-	
+
 	// Add to namespace index
 	if event.Namespace != "" {
 		h.byNamespace[event.Namespace] = append(h.byNamespace[event.Namespace], event)
 	}
-	
+
 	// Add to client index (if client ID is in metadata)
 	if clientID, ok := event.Metadata["clientID"].(string); ok && clientID != "" {
 		h.byClient[clientID] = append(h.byClient[clientID], event)
@@ -226,14 +226,14 @@ func (h *EventHistory) removeFromIndex(event *EventMessage) {
 		h.removeFromSlice(&events, event)
 		h.byType[event.Type] = events
 	}
-	
+
 	// Remove from namespace index
 	if event.Namespace != "" {
 		events := h.byNamespace[event.Namespace]
 		h.removeFromSlice(&events, event)
 		h.byNamespace[event.Namespace] = events
 	}
-	
+
 	// Remove from client index
 	if clientID, ok := event.Metadata["clientID"].(string); ok && clientID != "" {
 		events := h.byClient[clientID]
@@ -254,7 +254,7 @@ func (h *EventHistory) removeFromSlice(slice *[]*EventMessage, event *EventMessa
 func (h *EventHistory) cleanup() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		h.cleanupOldEvents()
 	}
@@ -264,14 +264,14 @@ func (h *EventHistory) cleanupOldEvents() {
 	if h.ttl == 0 {
 		return
 	}
-	
+
 	h.eventsMu.Lock()
 	h.indexMu.Lock()
 	defer h.eventsMu.Unlock()
 	defer h.indexMu.Unlock()
-	
+
 	cutoff := time.Now().Add(-h.ttl)
-	
+
 	// Find first event that is not expired
 	firstValid := 0
 	for i, event := range h.events {
@@ -281,7 +281,7 @@ func (h *EventHistory) cleanupOldEvents() {
 		}
 		h.removeFromIndex(event)
 	}
-	
+
 	// Remove expired events
 	if firstValid > 0 {
 		h.events = h.events[firstValid:]
@@ -306,7 +306,7 @@ func NewEventBatcher(maxSize int, interval time.Duration, processor func([]*Even
 	if interval == 0 {
 		interval = 100 * time.Millisecond
 	}
-	
+
 	return &EventBatcher{
 		maxSize:   maxSize,
 		interval:  interval,
@@ -318,14 +318,14 @@ func NewEventBatcher(maxSize int, interval time.Duration, processor func([]*Even
 func (b *EventBatcher) Add(event *EventMessage) {
 	b.batchMu.Lock()
 	defer b.batchMu.Unlock()
-	
+
 	b.batch = append(b.batch, event)
-	
+
 	// Start flush timer if needed
 	if b.flushTimer == nil {
 		b.flushTimer = time.AfterFunc(b.interval, b.flush)
 	}
-	
+
 	// Flush if batch is full
 	if len(b.batch) >= b.maxSize {
 		b.flushNow()
@@ -342,13 +342,13 @@ func (b *EventBatcher) flushNow() {
 	if len(b.batch) == 0 {
 		return
 	}
-	
+
 	// Process current batch
 	if b.processor != nil {
 		batch := b.batch
 		go b.processor(batch)
 	}
-	
+
 	// Reset batch and timer
 	b.batch = nil
 	if b.flushTimer != nil {
@@ -361,20 +361,20 @@ func (b *EventBatcher) flushNow() {
 func (b *EventBatcher) Close() {
 	b.batchMu.Lock()
 	defer b.batchMu.Unlock()
-	
+
 	if b.flushTimer != nil {
 		b.flushTimer.Stop()
 	}
-	
+
 	b.flushNow()
 }
 
 // EventThrottler throttles events by type
 type EventThrottler struct {
-	limits    map[string]*throttleLimit
-	limitsMu  sync.RWMutex
+	limits       map[string]*throttleLimit
+	limitsMu     sync.RWMutex
 	defaultLimit int
-	window    time.Duration
+	window       time.Duration
 }
 
 type throttleLimit struct {
@@ -391,7 +391,7 @@ func NewEventThrottler(defaultLimit int, window time.Duration) *EventThrottler {
 	if window == 0 {
 		window = 1 * time.Second
 	}
-	
+
 	return &EventThrottler{
 		limits:       make(map[string]*throttleLimit),
 		defaultLimit: defaultLimit,
@@ -404,7 +404,7 @@ func (t *EventThrottler) Allow(eventType string) bool {
 	t.limitsMu.RLock()
 	limit, exists := t.limits[eventType]
 	t.limitsMu.RUnlock()
-	
+
 	if !exists {
 		t.limitsMu.Lock()
 		limit = &throttleLimit{
@@ -413,16 +413,16 @@ func (t *EventThrottler) Allow(eventType string) bool {
 		t.limits[eventType] = limit
 		t.limitsMu.Unlock()
 	}
-	
+
 	limit.mu.Lock()
 	defer limit.mu.Unlock()
-	
+
 	now := time.Now()
 	if now.After(limit.resetTime) {
 		limit.count = 0
 		limit.resetTime = now.Add(t.window)
 	}
-	
+
 	limit.count++
 	return limit.count <= t.defaultLimit
 }
@@ -431,7 +431,7 @@ func (t *EventThrottler) Allow(eventType string) bool {
 func (t *EventThrottler) SetLimit(eventType string, limit int) {
 	t.limitsMu.Lock()
 	defer t.limitsMu.Unlock()
-	
+
 	if l, exists := t.limits[eventType]; exists {
 		l.mu.Lock()
 		// Store the custom limit in metadata (simplified)
@@ -446,7 +446,7 @@ func ThrottleMiddleware(throttler *EventThrottler) EventMiddleware {
 			// Event is throttled
 			return nil // Silently drop throttled events
 		}
-		
+
 		return next(ctx, client, event)
 	}
 }

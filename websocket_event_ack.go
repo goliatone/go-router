@@ -31,7 +31,7 @@ type EventWithAck struct {
 type AckManager struct {
 	pending   map[string]*pendingAck
 	pendingMu sync.RWMutex
-	
+
 	defaultTimeout time.Duration
 }
 
@@ -49,7 +49,7 @@ func NewAckManager(defaultTimeout time.Duration) *AckManager {
 	if defaultTimeout == 0 {
 		defaultTimeout = 30 * time.Second
 	}
-	
+
 	return &AckManager{
 		pending:        make(map[string]*pendingAck),
 		defaultTimeout: defaultTimeout,
@@ -61,39 +61,39 @@ func (m *AckManager) SendWithAck(ctx context.Context, client WSClient, event *Ev
 	if timeout == 0 {
 		timeout = m.defaultTimeout
 	}
-	
+
 	// Generate ACK ID if not present
 	if event.AckID == "" {
 		event.AckID = generateID()
 	}
-	
+
 	// Create pending acknowledgment
 	ackChan := make(chan *EventAck, 1)
 	ackCtx, cancel := context.WithTimeout(ctx, timeout)
-	
+
 	pending := &pendingAck{
 		event:   event,
 		ackChan: ackChan,
 		ctx:     ackCtx,
 		cancel:  cancel,
 	}
-	
+
 	// Store pending ack
 	m.pendingMu.Lock()
 	m.pending[event.AckID] = pending
 	m.pendingMu.Unlock()
-	
+
 	// Set up cleanup timer
 	pending.timer = time.AfterFunc(timeout, func() {
 		m.timeoutAck(event.AckID)
 	})
-	
+
 	// Send the event
 	if err := client.SendJSON(event); err != nil {
 		m.cleanupAck(event.AckID)
 		return nil, fmt.Errorf("failed to send event: %w", err)
 	}
-	
+
 	// Wait for acknowledgment
 	select {
 	case ack := <-ackChan:
@@ -109,38 +109,38 @@ func (m *AckManager) SendWithCallback(ctx context.Context, client WSClient, even
 	if timeout == 0 {
 		timeout = m.defaultTimeout
 	}
-	
+
 	// Generate ACK ID if not present
 	if event.AckID == "" {
 		event.AckID = generateID()
 	}
-	
+
 	// Create pending acknowledgment
 	ackCtx, cancel := context.WithTimeout(ctx, timeout)
-	
+
 	pending := &pendingAck{
 		event:    event,
 		callback: callback,
 		ctx:      ackCtx,
 		cancel:   cancel,
 	}
-	
+
 	// Store pending ack
 	m.pendingMu.Lock()
 	m.pending[event.AckID] = pending
 	m.pendingMu.Unlock()
-	
+
 	// Set up cleanup timer
 	pending.timer = time.AfterFunc(timeout, func() {
 		m.timeoutAck(event.AckID)
 	})
-	
+
 	// Send the event
 	if err := client.SendJSON(event); err != nil {
 		m.cleanupAck(event.AckID)
 		return fmt.Errorf("failed to send event: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -149,16 +149,16 @@ func (m *AckManager) HandleAck(ack *EventAck) error {
 	m.pendingMu.RLock()
 	pending, exists := m.pending[ack.ID]
 	m.pendingMu.RUnlock()
-	
+
 	if !exists {
 		return fmt.Errorf("no pending acknowledgment for ID: %s", ack.ID)
 	}
-	
+
 	// Stop timeout timer
 	if pending.timer != nil {
 		pending.timer.Stop()
 	}
-	
+
 	// Handle based on type
 	if pending.ackChan != nil {
 		// Channel-based acknowledgment
@@ -176,10 +176,10 @@ func (m *AckManager) HandleAck(ack *EventAck) error {
 			}
 		}()
 	}
-	
+
 	// Cleanup
 	m.cleanupAck(ack.ID)
-	
+
 	return nil
 }
 
@@ -187,11 +187,11 @@ func (m *AckManager) timeoutAck(ackID string) {
 	m.pendingMu.RLock()
 	pending, exists := m.pending[ackID]
 	m.pendingMu.RUnlock()
-	
+
 	if !exists {
 		return
 	}
-	
+
 	// Create timeout acknowledgment
 	timeoutAck := &EventAck{
 		ID:        ackID,
@@ -199,7 +199,7 @@ func (m *AckManager) timeoutAck(ackID string) {
 		Error:     "acknowledgment timeout",
 		Timestamp: time.Now(),
 	}
-	
+
 	// Handle based on type
 	if pending.ackChan != nil {
 		select {
@@ -215,7 +215,7 @@ func (m *AckManager) timeoutAck(ackID string) {
 			}
 		}()
 	}
-	
+
 	// Cleanup
 	m.cleanupAck(ackID)
 }
@@ -223,7 +223,7 @@ func (m *AckManager) timeoutAck(ackID string) {
 func (m *AckManager) cleanupAck(ackID string) {
 	m.pendingMu.Lock()
 	defer m.pendingMu.Unlock()
-	
+
 	if pending, exists := m.pending[ackID]; exists {
 		if pending.timer != nil {
 			pending.timer.Stop()
@@ -260,7 +260,7 @@ func AckMiddleware(ackManager *AckManager) EventMiddleware {
 				return ackManager.HandleAck(ackData)
 			}
 		}
-		
+
 		// Continue with normal event processing
 		return next(ctx, client, event)
 	}
@@ -276,7 +276,7 @@ func EmitWithAck(ctx context.Context, client WSClient, eventType string, data in
 		Timestamp: time.Now(),
 		AckID:     generateID(),
 	}
-	
+
 	// Create a temporary ack manager for this operation
 	ackMgr := NewAckManager(timeout)
 	return ackMgr.SendWithAck(ctx, client, event, timeout)
@@ -288,23 +288,23 @@ func RequestResponse(ctx context.Context, client WSClient, request *EventMessage
 	if request.AckID == "" {
 		request.AckID = generateID()
 	}
-	
+
 	// Create response channel
 	responseChan := make(chan *EventMessage, 1)
-	
+
 	// Set up timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	// Send request
 	if err := client.SendJSON(request); err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	
+
 	// Wait for response
 	select {
 	case response := <-responseChan:
@@ -341,7 +341,7 @@ func NewAckBatcher(maxSize int, interval time.Duration, flushFunc func([]*EventA
 	if interval == 0 {
 		interval = 100 * time.Millisecond
 	}
-	
+
 	return &AckBatcher{
 		maxSize:   maxSize,
 		interval:  interval,
@@ -353,14 +353,14 @@ func NewAckBatcher(maxSize int, interval time.Duration, flushFunc func([]*EventA
 func (b *AckBatcher) Add(ack *EventAck) {
 	b.batchMu.Lock()
 	defer b.batchMu.Unlock()
-	
+
 	b.batch = append(b.batch, ack)
-	
+
 	// Start flush timer if needed
 	if b.flushTimer == nil {
 		b.flushTimer = time.AfterFunc(b.interval, b.flush)
 	}
-	
+
 	// Flush if batch is full
 	if len(b.batch) >= b.maxSize {
 		b.flushNow()
@@ -377,13 +377,13 @@ func (b *AckBatcher) flushNow() {
 	if len(b.batch) == 0 {
 		return
 	}
-	
+
 	// Call flush function with current batch
 	if b.flushFunc != nil {
 		batch := b.batch
 		go b.flushFunc(batch)
 	}
-	
+
 	// Reset batch and timer
 	b.batch = nil
 	if b.flushTimer != nil {
@@ -396,10 +396,10 @@ func (b *AckBatcher) flushNow() {
 func (b *AckBatcher) Close() {
 	b.batchMu.Lock()
 	defer b.batchMu.Unlock()
-	
+
 	if b.flushTimer != nil {
 		b.flushTimer.Stop()
 	}
-	
+
 	b.flushNow()
 }

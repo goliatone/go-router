@@ -25,7 +25,7 @@ func BenchmarkWebSocketWriteMessage(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		ctx.WriteMessage(TextMessage, data)
+		ctx.WriteMessage(router.TextMessage, data)
 	}
 }
 
@@ -36,7 +36,7 @@ func BenchmarkWebSocketReadMessage(b *testing.B) {
 
 	// Pre-populate messages
 	for i := 0; i < b.N; i++ {
-		ctx.WriteMessage(TextMessage, []byte("test message"))
+		ctx.WriteMessage(router.TextMessage, []byte("test message"))
 	}
 
 	b.ResetTimer()
@@ -79,7 +79,7 @@ func BenchmarkWebSocketReadJSON(b *testing.B) {
 	testData := map[string]string{"test": "data"}
 	jsonData, _ := json.Marshal(testData)
 	for i := 0; i < b.N; i++ {
-		ctx.WriteMessage(TextMessage, jsonData)
+		ctx.WriteMessage(router.TextMessage, jsonData)
 	}
 
 	var result map[string]string
@@ -104,7 +104,7 @@ func BenchmarkWebSocketConcurrentWrites(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ctx.WriteMessage(TextMessage, data)
+			ctx.WriteMessage(router.TextMessage, data)
 		}
 	})
 }
@@ -129,7 +129,7 @@ func BenchmarkWebSocketLargeMessage(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				ctx.WriteMessage(BinaryMessage, data)
+				ctx.WriteMessage(router.BinaryMessage, data)
 			}
 		})
 	}
@@ -186,7 +186,7 @@ func BenchmarkConnectionPool(b *testing.B) {
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			pool.Broadcast(TextMessage, data)
+			pool.Broadcast(router.TextMessage, data)
 		}
 	})
 }
@@ -221,7 +221,7 @@ func BenchmarkJSONMessageRouter(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		ctx.WriteMessage(TextMessage, msgData)
+		ctx.WriteMessage(router.TextMessage, msgData)
 		router.Route(ctx)
 	}
 }
@@ -356,7 +356,7 @@ func BenchmarkMemoryAllocation(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				ctx.WriteMessage(BinaryMessage, data)
+				ctx.WriteMessage(router.BinaryMessage, data)
 				ctx.ReadMessage()
 			}
 		})
@@ -385,11 +385,11 @@ func BenchmarkConcurrentConnections(b *testing.B) {
 // Benchmark: Message Type Conversion
 func BenchmarkMessageTypeOperations(b *testing.B) {
 	messageTypes := []int{
-		TextMessage,
-		BinaryMessage,
-		CloseMessage,
-		PingMessage,
-		PongMessage,
+		router.TextMessage,
+		router.BinaryMessage,
+		router.CloseMessage,
+		router.PingMessage,
+		router.PongMessage,
 	}
 
 	b.ResetTimer()
@@ -400,15 +400,15 @@ func BenchmarkMessageTypeOperations(b *testing.B) {
 
 		// Simulate type checking operations
 		switch msgType {
-		case TextMessage:
+		case router.TextMessage:
 			_ = "text"
-		case BinaryMessage:
+		case router.BinaryMessage:
 			_ = "binary"
-		case CloseMessage:
+		case router.CloseMessage:
 			_ = "close"
-		case PingMessage:
+		case router.PingMessage:
 			_ = "ping"
-		case PongMessage:
+		case router.PongMessage:
 			_ = "pong"
 		}
 	}
@@ -648,7 +648,7 @@ func BenchmarkEndToEndPerformance(b *testing.B) {
 
 		// Send message
 		msg := []byte(fmt.Sprintf("Message %d", i))
-		if err := ctx.WriteMessage(TextMessage, msg); err == nil {
+		if err := ctx.WriteMessage(router.TextMessage, msg); err == nil {
 			metrics.RecordSent(len(msg))
 		} else {
 			metrics.Errors++
@@ -663,7 +663,7 @@ func BenchmarkEndToEndPerformance(b *testing.B) {
 
 		// Occasional broadcast
 		if i%10 == 0 {
-			pool.Broadcast(TextMessage, []byte("broadcast"))
+			pool.Broadcast(router.TextMessage, []byte("broadcast"))
 		}
 
 		// Cleanup old connections

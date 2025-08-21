@@ -58,13 +58,14 @@ func TestJSONMessageHelpers(t *testing.T) {
 
 // Test: JSON Message Router
 func TestJSONMessageRouter(t *testing.T) {
-	router := router.NewJSONMessageRouter(1024)
+	msgRouter := router.NewJSONMessageRouter(1024)
 
 	// Register handlers
 	testHandlerCalled := false
 	// TODO: Fix type issues with WebSocketContext and JSONMessage
 	_ = testHandlerCalled // Avoid unused variable error
-	// router.Register("test", func(ctx router.WebSocketContext, msg *router.JSONMessage) error {
+	_ = msgRouter // Avoid unused variable error
+	// msgRouter.Register("test", func(ctx router.WebSocketContext, msg *router.JSONMessage) error {
 	//     testHandlerCalled = true
 	//     return nil
 	// })
@@ -95,7 +96,7 @@ func TestJSONMessageRouter(t *testing.T) {
 
 	// Route the message
 	// TODO: Re-enable when type issues are fixed
-	// if err := router.Route(ctx); err != nil {
+	// if err := msgRouter.Route(ctx); err != nil {
 	//     t.Errorf("Failed to route message: %v", err)
 	// }
 	// if !testHandlerCalled {

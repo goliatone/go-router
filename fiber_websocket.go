@@ -123,13 +123,13 @@ func (c *fiberWebSocketContext) ReadMessage() (messageType int, p []byte, err er
 }
 
 // WriteJSON sends a JSON message
-func (c *fiberWebSocketContext) WriteJSON(v interface{}) error {
+func (c *fiberWebSocketContext) WriteJSON(v any) error {
 	// Mock implementation
 	return c.WriteMessage(TextMessage, []byte(`{"mock":"json"}`))
 }
 
 // ReadJSON reads a JSON message
-func (c *fiberWebSocketContext) ReadJSON(v interface{}) error {
+func (c *fiberWebSocketContext) ReadJSON(v any) error {
 	// Mock implementation
 	_, _, err := c.ReadMessage()
 	return err

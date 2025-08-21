@@ -222,7 +222,7 @@ func (c *httpRouterWebSocketContext) ReadMessage() (messageType int, p []byte, e
 }
 
 // WriteJSON sends a JSON message
-func (c *httpRouterWebSocketContext) WriteJSON(v interface{}) error {
+func (c *httpRouterWebSocketContext) WriteJSON(v any) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -243,7 +243,7 @@ func (c *httpRouterWebSocketContext) WriteJSON(v interface{}) error {
 }
 
 // ReadJSON reads a JSON message
-func (c *httpRouterWebSocketContext) ReadJSON(v interface{}) error {
+func (c *httpRouterWebSocketContext) ReadJSON(v any) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -651,7 +651,7 @@ func WriteBinaryMessage(conn *websocket.Conn, data []byte, timeout time.Duration
 }
 
 // WriteJSONMessage is a helper to write JSON messages
-func WriteJSONMessage(conn *websocket.Conn, v interface{}, timeout time.Duration) error {
+func WriteJSONMessage(conn *websocket.Conn, v any, timeout time.Duration) error {
 	if timeout > 0 {
 		if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
 			return err

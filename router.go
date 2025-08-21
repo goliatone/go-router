@@ -152,8 +152,8 @@ type WebSocketContext interface {
 	// Message operations
 	WriteMessage(messageType int, data []byte) error
 	ReadMessage() (messageType int, p []byte, err error)
-	WriteJSON(v interface{}) error
-	ReadJSON(v interface{}) error
+	WriteJSON(v any) error
+	ReadJSON(v any) error
 	WritePing(data []byte) error
 	WritePong(data []byte) error
 

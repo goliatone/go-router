@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.5.0](https://github.com/goliatone/go-router/compare/v0.4.0...v0.5.0) - (2025-08-23)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Simplify code ([a89ca99](https://github.com/goliatone/go-router/commit/a89ca990d3f3e9050772dabd69ec1a519af8ceee))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.5.0 ([ba925dd](https://github.com/goliatone/go-router/commit/ba925dd72c457654b052fbccf1c28bd032fbefa9))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Meta generator ([912f475](https://github.com/goliatone/go-router/commit/912f475d823066ad28f2c4819067e739d1ccf6ca))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.4.0 ([2f3455c](https://github.com/goliatone/go-router/commit/2f3455c24ac5fea701bff48f1f45ad7f5745cc4d))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Flash middlware note in readme ([1f52c7d](https://github.com/goliatone/go-router/commit/1f52c7de532e1bcd89f28d11ee800e28d6f37c59))  - (goliatone)
+- Update readme ([e31057e](https://github.com/goliatone/go-router/commit/e31057e2aff14cb8c543d6bb5ea4c080d65c3c12))  - (goliatone)
+
 # [0.4.0](https://github.com/goliatone/go-router/compare/v0.3.0...v0.4.0) - (2025-06-27)
 
 ## <!-- 13 -->📦 Bumps

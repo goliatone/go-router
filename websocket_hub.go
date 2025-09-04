@@ -34,6 +34,9 @@ type WSHub struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	// Logging
+	logger Logger
+
 	// Configuration
 	config WSHubConfig
 }
@@ -103,6 +106,7 @@ func NewWSHub(opts ...func(*WSHubConfig)) *WSHub {
 		broadcast:     make(chan broadcastMessage),
 		ctx:           ctx,
 		cancel:        cancel,
+		logger:        &defaultLogger{},
 		config:        config,
 	}
 
@@ -127,9 +131,7 @@ func (h *WSHub) run() {
 	for {
 		select {
 		case client := <-h.register:
-			h.clientsMu.Lock()
 			h.clients[client.ID()] = client
-			h.clientsMu.Unlock()
 
 			// Call connect handlers
 			h.handlersMu.RLock()
@@ -419,7 +421,11 @@ func (h *WSHub) broadcastToAll(msg broadcastMessage) {
 
 		// Non-blocking send
 		go func(c WSClient) {
-			c.SendWithContext(msg.ctx, msg.data)
+			if err := c.SendWithContext(msg.ctx, msg.data); err != nil {
+				h.logger.Error("Failed to send message to client",
+					"client_id", c.ID(),
+					"error", err)
+			}
 		}(client)
 	}
 }

@@ -45,6 +45,9 @@ type Room struct {
 	// Parent hub reference
 	hub *WSHub
 
+	// Logging
+	logger Logger
+
 	// Lifecycle
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -119,6 +122,7 @@ func NewRoom(id, name string, config RoomConfig, hub *WSHub) *Room {
 		metadata:  make(map[string]any),
 		config:    config,
 		hub:       hub,
+		logger:    &defaultLogger{},
 		ctx:       ctx,
 		cancel:    cancel,
 	}
@@ -306,6 +310,11 @@ func (r *Room) BroadcastExcept(ctx context.Context, data []byte, except []string
 	var lastErr error
 	for _, client := range clients {
 		if err := client.SendWithContext(ctx, data); err != nil {
+			r.logger.Error("Failed to broadcast message to client in room",
+				"room_id", r.id,
+				"room_name", r.name,
+				"client_id", client.ID(),
+				"error", err)
 			lastErr = err
 		}
 	}
@@ -543,7 +552,11 @@ func (r *Room) triggerOnJoin(ctx context.Context, client WSClient) {
 	for _, handler := range handlers {
 		go func(h RoomEventHandler) {
 			if err := h(ctx, r, client); err != nil {
-				// Log error
+				r.logger.Error("Room onJoin handler failed",
+					"room_id", r.id,
+					"room_name", r.name,
+					"client_id", client.ID(),
+					"error", err)
 			}
 		}(handler)
 	}
@@ -557,7 +570,11 @@ func (r *Room) triggerOnLeave(ctx context.Context, client WSClient) {
 	for _, handler := range handlers {
 		go func(h RoomEventHandler) {
 			if err := h(ctx, r, client); err != nil {
-				// Log error
+				r.logger.Error("Room onLeave handler failed",
+					"room_id", r.id,
+					"room_name", r.name,
+					"client_id", client.ID(),
+					"error", err)
 			}
 		}(handler)
 	}
@@ -571,7 +588,10 @@ func (r *Room) triggerOnCreate() {
 	for _, handler := range handlers {
 		go func(h RoomLifecycleHandler) {
 			if err := h(r.ctx, r); err != nil {
-				// Log error
+				r.logger.Error("Room onCreate handler failed",
+					"room_id", r.id,
+					"room_name", r.name,
+					"error", err)
 			}
 		}(handler)
 	}
@@ -585,7 +605,10 @@ func (r *Room) triggerOnDestroy() {
 	for _, handler := range handlers {
 		go func(h RoomLifecycleHandler) {
 			if err := h(r.ctx, r); err != nil {
-				// Log error
+				r.logger.Error("Room onDestroy handler failed",
+					"room_id", r.id,
+					"room_name", r.name,
+					"error", err)
 			}
 		}(handler)
 	}
@@ -598,7 +621,14 @@ func (r *Room) broadcastPresenceUpdate(ctx context.Context, action string, clien
 		JoinedAt: time.Now(),
 	}
 
-	r.EmitExcept(ctx, "presence:"+action, presence, []string{client.ID()})
+	if err := r.EmitExcept(ctx, "presence:"+action, presence, []string{client.ID()}); err != nil {
+		r.logger.Error("Failed to broadcast presence update",
+			"room_id", r.id,
+			"room_name", r.name,
+			"action", action,
+			"client_id", client.ID(),
+			"error", err)
+	}
 }
 
 func (r *Room) watchEmpty() {

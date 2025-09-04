@@ -23,15 +23,15 @@ type WSClient interface {
 	OnMessage(handler MessageHandler) error
 	OnJSON(event string, handler JSONHandler) error
 	Send(data []byte) error
-	SendJSON(v interface{}) error
+	SendJSON(v any) error
 	SendWithContext(ctx context.Context, data []byte) error
-	SendJSONWithContext(ctx context.Context, v interface{}) error
+	SendJSONWithContext(ctx context.Context, v any) error
 
 	// Broadcasting
 	Broadcast(data []byte) error
-	BroadcastJSON(v interface{}) error
+	BroadcastJSON(v any) error
 	BroadcastWithContext(ctx context.Context, data []byte) error
-	BroadcastJSONWithContext(ctx context.Context, v interface{}) error
+	BroadcastJSONWithContext(ctx context.Context, v any) error
 
 	// Room management (for Phase 2, basic interface now)
 	Join(room string) error
@@ -42,9 +42,9 @@ type WSClient interface {
 	Rooms() []string
 
 	// Client state management
-	Set(key string, value interface{})
-	SetWithContext(ctx context.Context, key string, value interface{})
-	Get(key string) interface{}
+	Set(key string, value any)
+	SetWithContext(ctx context.Context, key string, value any)
+	Get(key string) any
 	GetString(key string) string
 	GetInt(key string) int
 	GetBool(key string) bool
@@ -58,8 +58,8 @@ type WSClient interface {
 	Query(key string, defaultValue ...string) string
 
 	// Event emission
-	Emit(event string, data interface{}) error
-	EmitWithContext(ctx context.Context, event string, data interface{}) error
+	Emit(event string, data any) error
+	EmitWithContext(ctx context.Context, event string, data any) error
 
 	// Low-level access when needed
 	Conn() WebSocketContext
@@ -72,12 +72,12 @@ type MessageHandler func(ctx context.Context, data []byte) error
 type JSONHandler func(ctx context.Context, data json.RawMessage) error
 
 // EventHandler handles typed events with context and error support
-type EventHandler func(ctx context.Context, client WSClient, data interface{}) error
+type EventHandler func(ctx context.Context, client WSClient, data any) error
 
 // RoomBroadcaster allows broadcasting to a specific room
 type RoomBroadcaster interface {
-	Emit(event string, data interface{}) error
-	EmitWithContext(ctx context.Context, event string, data interface{}) error
+	Emit(event string, data any) error
+	EmitWithContext(ctx context.Context, event string, data any) error
 	Except(clients ...WSClient) RoomBroadcaster
 	Clients() []WSClient
 }
@@ -95,7 +95,7 @@ type wsClient struct {
 	jsonHandlers    map[string][]JSONHandler
 
 	// State management
-	state   map[string]interface{}
+	state   map[string]any
 	stateMu sync.RWMutex
 
 	// Room management
@@ -122,7 +122,7 @@ func NewWSClient(conn WebSocketContext, hub *WSHub) WSClient {
 		ctx:          ctx,
 		cancel:       cancel,
 		jsonHandlers: make(map[string][]JSONHandler),
-		state:        make(map[string]interface{}),
+		state:        make(map[string]any),
 		rooms:        make(map[string]bool),
 		send:         make(chan []byte, 256),
 		done:         make(chan struct{}),
@@ -191,12 +191,12 @@ func (c *wsClient) SendWithContext(ctx context.Context, data []byte) error {
 }
 
 // SendJSON sends JSON data to the client
-func (c *wsClient) SendJSON(v interface{}) error {
+func (c *wsClient) SendJSON(v any) error {
 	return c.SendJSONWithContext(c.ctx, v)
 }
 
 // SendJSONWithContext sends JSON data with context
-func (c *wsClient) SendJSONWithContext(ctx context.Context, v interface{}) error {
+func (c *wsClient) SendJSONWithContext(ctx context.Context, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -218,12 +218,12 @@ func (c *wsClient) BroadcastWithContext(ctx context.Context, data []byte) error 
 }
 
 // BroadcastJSON sends JSON data to all connected clients
-func (c *wsClient) BroadcastJSON(v interface{}) error {
+func (c *wsClient) BroadcastJSON(v any) error {
 	return c.BroadcastJSONWithContext(c.ctx, v)
 }
 
 // BroadcastJSONWithContext sends JSON data to all connected clients with context
-func (c *wsClient) BroadcastJSONWithContext(ctx context.Context, v interface{}) error {
+func (c *wsClient) BroadcastJSONWithContext(ctx context.Context, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -242,8 +242,8 @@ func (c *wsClient) JoinWithContext(ctx context.Context, room string) error {
 	defer c.roomsMu.Unlock()
 
 	c.rooms[room] = true
-	if c.hub != nil {
-		return c.hub.joinRoom(ctx, c, room)
+	if c.hub != nil && c.hub.roomManager != nil {
+		return c.hub.roomManager.JoinRoom(ctx, room, c)
 	}
 	return nil
 }
@@ -259,8 +259,8 @@ func (c *wsClient) LeaveWithContext(ctx context.Context, room string) error {
 	defer c.roomsMu.Unlock()
 
 	delete(c.rooms, room)
-	if c.hub != nil {
-		return c.hub.leaveRoom(ctx, c, room)
+	if c.hub != nil && c.hub.roomManager != nil {
+		return c.hub.roomManager.LeaveRoom(ctx, room, c)
 	}
 	return nil
 }
@@ -286,19 +286,19 @@ func (c *wsClient) Rooms() []string {
 }
 
 // Set stores a value in the client's state
-func (c *wsClient) Set(key string, value interface{}) {
+func (c *wsClient) Set(key string, value any) {
 	c.SetWithContext(c.ctx, key, value)
 }
 
 // SetWithContext stores a value in the client's state with context
-func (c *wsClient) SetWithContext(ctx context.Context, key string, value interface{}) {
+func (c *wsClient) SetWithContext(ctx context.Context, key string, value any) {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
 	c.state[key] = value
 }
 
 // Get retrieves a value from the client's state
-func (c *wsClient) Get(key string) interface{} {
+func (c *wsClient) Get(key string) any {
 	c.stateMu.RLock()
 	defer c.stateMu.RUnlock()
 	return c.state[key]
@@ -388,13 +388,13 @@ func (c *wsClient) Query(key string, defaultValue ...string) string {
 }
 
 // Emit sends an event with data
-func (c *wsClient) Emit(event string, data interface{}) error {
+func (c *wsClient) Emit(event string, data any) error {
 	return c.EmitWithContext(c.ctx, event, data)
 }
 
 // EmitWithContext sends an event with data and context
-func (c *wsClient) EmitWithContext(ctx context.Context, event string, data interface{}) error {
-	payload := map[string]interface{}{
+func (c *wsClient) EmitWithContext(ctx context.Context, event string, data any) error {
+	payload := map[string]any{
 		"type": event,
 		"data": data,
 	}
@@ -494,8 +494,8 @@ func (c *wsClient) writePump() {
 // nullRoomBroadcaster is a no-op room broadcaster
 type nullRoomBroadcaster struct{}
 
-func (n *nullRoomBroadcaster) Emit(event string, data interface{}) error { return nil }
-func (n *nullRoomBroadcaster) EmitWithContext(ctx context.Context, event string, data interface{}) error {
+func (n *nullRoomBroadcaster) Emit(event string, data any) error { return nil }
+func (n *nullRoomBroadcaster) EmitWithContext(ctx context.Context, event string, data any) error {
 	return nil
 }
 func (n *nullRoomBroadcaster) Except(clients ...WSClient) RoomBroadcaster { return n }

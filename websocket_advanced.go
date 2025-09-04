@@ -27,7 +27,7 @@ type JSONMessage struct {
 type JSONMessageHandler func(ctx WebSocketContext, msg *JSONMessage) error
 
 // WriteJSONSafe writes a JSON message with size validation
-func WriteJSONSafe(ctx WebSocketContext, v interface{}, maxSize int64) error {
+func WriteJSONSafe(ctx WebSocketContext, v any, maxSize int64) error {
 	// Marshal to JSON first to check size
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -44,7 +44,7 @@ func WriteJSONSafe(ctx WebSocketContext, v interface{}, maxSize int64) error {
 }
 
 // ReadJSONSafe reads a JSON message with size validation
-func ReadJSONSafe(ctx WebSocketContext, v interface{}, maxSize int64) error {
+func ReadJSONSafe(ctx WebSocketContext, v any, maxSize int64) error {
 	messageType, data, err := ctx.ReadMessage()
 	if err != nil {
 		return err
@@ -658,7 +658,7 @@ func AdvancedWebSocketMiddleware(config WebSocketConfig) MiddlewareFunc {
 // ============================================================================
 
 // BroadcastJSON broadcasts a JSON message to multiple connections
-func BroadcastJSON(connections []WebSocketContext, v interface{}, maxSize int64) error {
+func BroadcastJSON(connections []WebSocketContext, v any, maxSize int64) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("json marshal error: %w", err)

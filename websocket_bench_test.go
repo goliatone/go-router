@@ -52,7 +52,7 @@ func BenchmarkWebSocketReadMessage(b *testing.B) {
 func BenchmarkWebSocketWriteJSON(b *testing.B) {
 	ctx := newMockWebSocketContext("bench-write-text")
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":        123,
 		"message":   "test message",
 		"timestamp": time.Now(),
@@ -447,7 +447,7 @@ func BenchmarkBroadcastJSON(b *testing.B) {
 				connections[i] = ctx
 			}
 
-			testData := map[string]interface{}{
+			testData := map[string]any{
 				"type":    "broadcast",
 				"message": "test",
 				"time":    time.Now(),

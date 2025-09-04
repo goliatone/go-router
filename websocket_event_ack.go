@@ -10,11 +10,11 @@ import (
 
 // EventAck represents an event acknowledgment
 type EventAck struct {
-	ID        string      `json:"id"`
-	Success   bool        `json:"success"`
-	Data      interface{} `json:"data,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	Timestamp time.Time   `json:"timestamp"`
+	ID        string    `json:"id"`
+	Success   bool      `json:"success"`
+	Data      any       `json:"data,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // AckHandler handles acknowledgments for events
@@ -267,7 +267,7 @@ func AckMiddleware(ackManager *AckManager) EventMiddleware {
 }
 
 // EmitWithAck sends an event and waits for acknowledgment
-func EmitWithAck(ctx context.Context, client WSClient, eventType string, data interface{}, timeout time.Duration) (*EventAck, error) {
+func EmitWithAck(ctx context.Context, client WSClient, eventType string, data any, timeout time.Duration) (*EventAck, error) {
 	// This would be integrated with the client's ack manager
 	event := &EventMessage{
 		ID:        generateID(),
@@ -316,11 +316,11 @@ func RequestResponse(ctx context.Context, client WSClient, request *EventMessage
 
 // BatchedAck allows acknowledging multiple events at once
 type BatchedAck struct {
-	IDs       []string    `json:"ids"`
-	Success   bool        `json:"success"`
-	Results   interface{} `json:"results,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	Timestamp time.Time   `json:"timestamp"`
+	IDs       []string  `json:"ids"`
+	Success   bool      `json:"success"`
+	Results   any       `json:"results,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // AckBatcher batches acknowledgments for efficiency

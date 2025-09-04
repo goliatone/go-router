@@ -15,10 +15,6 @@ type WSHub struct {
 	clients   map[string]WSClient
 	clientsMu sync.RWMutex
 
-	// Room management (legacy - for backward compatibility)
-	rooms   map[string]map[string]WSClient
-	roomsMu sync.RWMutex
-
 	// Advanced room management
 	roomManager *RoomManager
 
@@ -101,7 +97,6 @@ func NewWSHub(opts ...func(*WSHubConfig)) *WSHub {
 
 	hub := &WSHub{
 		clients:       make(map[string]WSClient),
-		rooms:         make(map[string]map[string]WSClient),
 		eventHandlers: make(map[string][]EventHandler),
 		register:      make(chan WSClient),
 		unregisterCh:  make(chan WSClient),
@@ -155,8 +150,10 @@ func (h *WSHub) run() {
 				delete(h.clients, client.ID())
 				h.clientsMu.Unlock()
 
-				// Remove from all rooms
-				h.removeFromAllRooms(client)
+				// Remove from all rooms using RoomManager
+				if h.roomManager != nil {
+					h.roomManager.LeaveAllRooms(h.ctx, client)
+				}
 
 				// Call disconnect handlers
 				h.handlersMu.RLock()
@@ -176,8 +173,25 @@ func (h *WSHub) run() {
 
 		case msg := <-h.broadcast:
 			if msg.room != "" {
-				// Broadcast to specific room
-				h.broadcastToRoom(msg)
+				// Broadcast to specific room using RoomManager
+				if h.roomManager != nil {
+					if room, err := h.roomManager.GetRoom(msg.room); err == nil {
+						// Convert except map to slice
+						var except []string
+						if msg.except != nil {
+							except = make([]string, 0, len(msg.except))
+							for clientID := range msg.except {
+								except = append(except, clientID)
+							}
+						}
+						// Use broadcast methods from Room
+						if except != nil {
+							room.BroadcastExcept(msg.ctx, msg.data, except)
+						} else {
+							room.Broadcast(msg.ctx, msg.data)
+						}
+					}
+				}
 			} else {
 				// Broadcast to all clients
 				h.broadcastToAll(msg)
@@ -242,12 +256,12 @@ func (h *WSHub) OnError(handler WSErrorHandler) error {
 }
 
 // Emit triggers an event with data
-func (h *WSHub) Emit(event string, data interface{}) error {
+func (h *WSHub) Emit(event string, data any) error {
 	return h.EmitWithContext(h.ctx, event, data)
 }
 
 // EmitWithContext triggers an event with context
-func (h *WSHub) EmitWithContext(ctx context.Context, event string, data interface{}) error {
+func (h *WSHub) EmitWithContext(ctx context.Context, event string, data any) error {
 	h.handlersMu.RLock()
 	handlers, ok := h.eventHandlers[event]
 	h.handlersMu.RUnlock()
@@ -293,12 +307,12 @@ func (h *WSHub) BroadcastWithContext(ctx context.Context, data []byte) error {
 }
 
 // BroadcastJSON sends JSON data to all connected clients
-func (h *WSHub) BroadcastJSON(v interface{}) error {
+func (h *WSHub) BroadcastJSON(v any) error {
 	return h.BroadcastJSONWithContext(h.ctx, v)
 }
 
 // BroadcastJSONWithContext sends JSON data to all connected clients with context
-func (h *WSHub) BroadcastJSONWithContext(ctx context.Context, v interface{}) error {
+func (h *WSHub) BroadcastJSONWithContext(ctx context.Context, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -308,18 +322,23 @@ func (h *WSHub) BroadcastJSONWithContext(ctx context.Context, v interface{}) err
 
 // Room returns a room broadcaster
 func (h *WSHub) Room(name string) RoomBroadcaster {
-	// Try to get advanced room first
+	// Use RoomManager exclusively
 	if h.roomManager != nil {
 		if room, err := h.roomManager.GetRoom(name); err == nil {
 			return &advancedRoomBroadcaster{room: room}
 		}
+		// If room doesn't exist, try to create it (RoomManager handles dynamic room creation)
+		if room, err := h.roomManager.GetOrCreateRoom(h.ctx, name, name, RoomConfig{
+			MaxClients:       100,
+			DestroyWhenEmpty: true,
+			TrackPresence:    true,
+		}); err == nil {
+			return &advancedRoomBroadcaster{room: room}
+		}
 	}
 
-	// Fall back to legacy room broadcaster
-	return &roomBroadcaster{
-		hub:  h,
-		room: name,
-	}
+	// Return nil if RoomManager is not available or room creation fails
+	return nil
 }
 
 // Handler returns an HTTP handler for WebSocket connections
@@ -405,69 +424,6 @@ func (h *WSHub) broadcastToAll(msg broadcastMessage) {
 	}
 }
 
-func (h *WSHub) broadcastToRoom(msg broadcastMessage) {
-	h.roomsMu.RLock()
-	room, ok := h.rooms[msg.room]
-	h.roomsMu.RUnlock()
-
-	if !ok {
-		return
-	}
-
-	for id, client := range room {
-		if msg.except != nil && msg.except[id] {
-			continue
-		}
-
-		// Non-blocking send
-		go func(c WSClient) {
-			c.SendWithContext(msg.ctx, msg.data)
-		}(client)
-	}
-}
-
-func (h *WSHub) joinRoom(ctx context.Context, client WSClient, room string) error {
-	h.roomsMu.Lock()
-	defer h.roomsMu.Unlock()
-
-	if h.rooms[room] == nil {
-		h.rooms[room] = make(map[string]WSClient)
-	}
-
-	h.rooms[room][client.ID()] = client
-	return nil
-}
-
-func (h *WSHub) leaveRoom(ctx context.Context, client WSClient, room string) error {
-	h.roomsMu.Lock()
-	defer h.roomsMu.Unlock()
-
-	if h.rooms[room] != nil {
-		delete(h.rooms[room], client.ID())
-
-		// Clean up empty rooms
-		if len(h.rooms[room]) == 0 {
-			delete(h.rooms, room)
-		}
-	}
-
-	return nil
-}
-
-func (h *WSHub) removeFromAllRooms(client WSClient) {
-	h.roomsMu.Lock()
-	defer h.roomsMu.Unlock()
-
-	for room, clients := range h.rooms {
-		delete(clients, client.ID())
-
-		// Clean up empty rooms
-		if len(clients) == 0 {
-			delete(h.rooms, room)
-		}
-	}
-}
-
 func (h *WSHub) unregister(client WSClient) {
 	select {
 	case h.unregisterCh <- client:
@@ -482,11 +438,11 @@ type advancedRoomBroadcaster struct {
 	except []string
 }
 
-func (r *advancedRoomBroadcaster) Emit(event string, data interface{}) error {
+func (r *advancedRoomBroadcaster) Emit(event string, data any) error {
 	return r.EmitWithContext(context.Background(), event, data)
 }
 
-func (r *advancedRoomBroadcaster) EmitWithContext(ctx context.Context, event string, data interface{}) error {
+func (r *advancedRoomBroadcaster) EmitWithContext(ctx context.Context, event string, data any) error {
 	if r.except != nil {
 		return r.room.EmitExcept(ctx, event, data, r.except)
 	}
@@ -506,68 +462,4 @@ func (r *advancedRoomBroadcaster) Except(clients ...WSClient) RoomBroadcaster {
 
 func (r *advancedRoomBroadcaster) Clients() []WSClient {
 	return r.room.Clients()
-}
-
-// roomBroadcaster implements RoomBroadcaster for a specific room (legacy)
-type roomBroadcaster struct {
-	hub    *WSHub
-	room   string
-	except map[string]bool
-}
-
-func (r *roomBroadcaster) Emit(event string, data interface{}) error {
-	return r.EmitWithContext(r.hub.ctx, event, data)
-}
-
-func (r *roomBroadcaster) EmitWithContext(ctx context.Context, event string, data interface{}) error {
-	payload := map[string]interface{}{
-		"type": event,
-		"data": data,
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal event: %w", err)
-	}
-
-	select {
-	case r.hub.broadcast <- broadcastMessage{
-		ctx:    ctx,
-		data:   jsonData,
-		room:   r.room,
-		except: r.except,
-	}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (r *roomBroadcaster) Except(clients ...WSClient) RoomBroadcaster {
-	except := make(map[string]bool)
-	for _, client := range clients {
-		except[client.ID()] = true
-	}
-
-	return &roomBroadcaster{
-		hub:    r.hub,
-		room:   r.room,
-		except: except,
-	}
-}
-
-func (r *roomBroadcaster) Clients() []WSClient {
-	r.hub.roomsMu.RLock()
-	defer r.hub.roomsMu.RUnlock()
-
-	room, ok := r.hub.rooms[r.room]
-	if !ok {
-		return nil
-	}
-
-	clients := make([]WSClient, 0, len(room))
-	for _, client := range room {
-		clients = append(clients, client)
-	}
-	return clients
 }

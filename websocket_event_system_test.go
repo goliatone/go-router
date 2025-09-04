@@ -215,7 +215,7 @@ func TestEventRouter(t *testing.T) {
 		// Try to join with non-admin client
 		nonAdminClient := &mockWSClient{
 			id:    "user1",
-			state: map[string]interface{}{"role": "user"},
+			state: map[string]any{"role": "user"},
 		}
 
 		err := ns.Join(context.Background(), nonAdminClient)
@@ -226,7 +226,7 @@ func TestEventRouter(t *testing.T) {
 		// Try to join with admin client
 		adminClient := &mockWSClient{
 			id:    "admin1",
-			state: map[string]interface{}{"role": "admin"},
+			state: map[string]any{"role": "admin"},
 		}
 
 		err = ns.Join(context.Background(), adminClient)
@@ -580,7 +580,7 @@ func generateTestID() string {
 // Mock implementations
 type mockWSClient struct {
 	id    string
-	state map[string]interface{}
+	state map[string]any
 	mu    sync.RWMutex
 }
 
@@ -591,37 +591,37 @@ func (m *mockWSClient) SetContext(ctx context.Context)                        {}
 func (m *mockWSClient) OnMessage(handler router.MessageHandler) error         { return nil }
 func (m *mockWSClient) OnJSON(event string, handler router.JSONHandler) error { return nil }
 func (m *mockWSClient) Send(data []byte) error                                { return nil }
-func (m *mockWSClient) SendJSON(v interface{}) error {
+func (m *mockWSClient) SendJSON(v any) error {
 	// For testing ack manager
 	_, err := json.Marshal(v)
 	return err
 }
 func (m *mockWSClient) SendWithContext(ctx context.Context, data []byte) error { return nil }
-func (m *mockWSClient) SendJSONWithContext(ctx context.Context, v interface{}) error {
+func (m *mockWSClient) SendJSONWithContext(ctx context.Context, v any) error {
 	return m.SendJSON(v)
 }
-func (m *mockWSClient) Broadcast(data []byte) error                                       { return nil }
-func (m *mockWSClient) BroadcastJSON(v interface{}) error                                 { return nil }
-func (m *mockWSClient) BroadcastWithContext(ctx context.Context, data []byte) error       { return nil }
-func (m *mockWSClient) BroadcastJSONWithContext(ctx context.Context, v interface{}) error { return nil }
-func (m *mockWSClient) Join(room string) error                                            { return nil }
-func (m *mockWSClient) JoinWithContext(ctx context.Context, room string) error            { return nil }
-func (m *mockWSClient) Leave(room string) error                                           { return nil }
-func (m *mockWSClient) LeaveWithContext(ctx context.Context, room string) error           { return nil }
-func (m *mockWSClient) Room(name string) router.RoomBroadcaster                           { return nil }
-func (m *mockWSClient) Rooms() []string                                                   { return nil }
-func (m *mockWSClient) Set(key string, value interface{}) {
+func (m *mockWSClient) Broadcast(data []byte) error                                 { return nil }
+func (m *mockWSClient) BroadcastJSON(v any) error                                   { return nil }
+func (m *mockWSClient) BroadcastWithContext(ctx context.Context, data []byte) error { return nil }
+func (m *mockWSClient) BroadcastJSONWithContext(ctx context.Context, v any) error   { return nil }
+func (m *mockWSClient) Join(room string) error                                      { return nil }
+func (m *mockWSClient) JoinWithContext(ctx context.Context, room string) error      { return nil }
+func (m *mockWSClient) Leave(room string) error                                     { return nil }
+func (m *mockWSClient) LeaveWithContext(ctx context.Context, room string) error     { return nil }
+func (m *mockWSClient) Room(name string) router.RoomBroadcaster                     { return nil }
+func (m *mockWSClient) Rooms() []string                                             { return nil }
+func (m *mockWSClient) Set(key string, value any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.state == nil {
-		m.state = make(map[string]interface{})
+		m.state = make(map[string]any)
 	}
 	m.state[key] = value
 }
-func (m *mockWSClient) SetWithContext(ctx context.Context, key string, value interface{}) {
+func (m *mockWSClient) SetWithContext(ctx context.Context, key string, value any) {
 	m.Set(key, value)
 }
-func (m *mockWSClient) Get(key string) interface{} {
+func (m *mockWSClient) Get(key string) any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.state == nil {
@@ -661,8 +661,8 @@ func (m *mockWSClient) Query(key string, defaultValue ...string) string {
 	}
 	return ""
 }
-func (m *mockWSClient) Emit(event string, data interface{}) error { return nil }
-func (m *mockWSClient) EmitWithContext(ctx context.Context, event string, data interface{}) error {
+func (m *mockWSClient) Emit(event string, data any) error { return nil }
+func (m *mockWSClient) EmitWithContext(ctx context.Context, event string, data any) error {
 	return nil
 }
 func (m *mockWSClient) Conn() router.WebSocketContext { return nil }

@@ -313,7 +313,7 @@ func TestJSONOperations(t *testing.T) {
 		ctx := newMockWebSocketContext()
 		ctx.mockUpgrade()
 
-		testData := map[string]interface{}{
+		testData := map[string]any{
 			"id":      123,
 			"message": "test",
 			"active":  true,

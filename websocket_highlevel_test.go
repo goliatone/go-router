@@ -49,7 +49,7 @@ func (m *mockWebSocketContext) WriteMessage(messageType int, data []byte) error 
 	return nil
 }
 
-func (m *mockWebSocketContext) WriteJSON(v interface{}) error {
+func (m *mockWebSocketContext) WriteJSON(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func (m *mockWebSocketContext) WriteJSON(v interface{}) error {
 	return m.WriteMessage(router.TextMessage, data)
 }
 
-func (m *mockWebSocketContext) ReadJSON(v interface{}) error {
+func (m *mockWebSocketContext) ReadJSON(v any) error {
 	_, data, err := m.ReadMessage()
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func (m *mockWebSocketContext) SetPingHandler(handler func([]byte) error) {}
 func (m *mockWebSocketContext) SetPongHandler(handler func([]byte) error) {}
 
 // Additional methods to satisfy WebSocketContext interface
-func (m *mockWebSocketContext) Bind(v interface{}) error                      { return nil }
+func (m *mockWebSocketContext) Bind(v any) error                              { return nil }
 func (m *mockWebSocketContext) Body() []byte                                  { return nil }
 func (m *mockWebSocketContext) Context() context.Context                      { return context.Background() }
 func (m *mockWebSocketContext) SetContext(ctx context.Context)                {}
@@ -151,17 +151,17 @@ func TestWSHubEventEmitter(t *testing.T) {
 	eventCalled := false
 
 	// Register event handlers
-	hub.OnConnect(func(ctx context.Context, client router.WSClient, _ interface{}) error {
+	hub.OnConnect(func(ctx context.Context, client router.WSClient, _ any) error {
 		connectCalled = true
 		return nil
 	})
 
-	hub.OnDisconnect(func(ctx context.Context, client router.WSClient, _ interface{}) error {
+	hub.OnDisconnect(func(ctx context.Context, client router.WSClient, _ any) error {
 		disconnectCalled = true
 		return nil
 	})
 
-	hub.On("test-event", func(ctx context.Context, client router.WSClient, data interface{}) error {
+	hub.On("test-event", func(ctx context.Context, client router.WSClient, data any) error {
 		eventCalled = true
 		return nil
 	})
@@ -378,7 +378,7 @@ func TestErrorHandling(t *testing.T) {
 	})
 
 	// Register an event that will cause an error
-	hub.On("error-event", func(ctx context.Context, client router.WSClient, data interface{}) error {
+	hub.On("error-event", func(ctx context.Context, client router.WSClient, data any) error {
 		return router.ErrMessageTooLarge
 	})
 

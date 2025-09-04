@@ -513,14 +513,14 @@ func createMockWSClient(id string, hub *router.WSHub) router.WSClient {
 	return &mockWSClientImpl{
 		id:    id,
 		hub:   hub,
-		state: make(map[string]interface{}),
+		state: make(map[string]any),
 	}
 }
 
 type mockWSClientImpl struct {
 	id    string
 	hub   *router.WSHub
-	state map[string]interface{}
+	state map[string]any
 	mu    sync.RWMutex
 }
 
@@ -531,15 +531,15 @@ func (m *mockWSClientImpl) SetContext(ctx context.Context)                      
 func (m *mockWSClientImpl) OnMessage(handler router.MessageHandler) error          { return nil }
 func (m *mockWSClientImpl) OnJSON(event string, handler router.JSONHandler) error  { return nil }
 func (m *mockWSClientImpl) Send(data []byte) error                                 { return nil }
-func (m *mockWSClientImpl) SendJSON(v interface{}) error                           { return nil }
+func (m *mockWSClientImpl) SendJSON(v any) error                                   { return nil }
 func (m *mockWSClientImpl) SendWithContext(ctx context.Context, data []byte) error { return nil }
-func (m *mockWSClientImpl) SendJSONWithContext(ctx context.Context, v interface{}) error {
+func (m *mockWSClientImpl) SendJSONWithContext(ctx context.Context, v any) error {
 	return nil
 }
 func (m *mockWSClientImpl) Broadcast(data []byte) error                                 { return nil }
-func (m *mockWSClientImpl) BroadcastJSON(v interface{}) error                           { return nil }
+func (m *mockWSClientImpl) BroadcastJSON(v any) error                                   { return nil }
 func (m *mockWSClientImpl) BroadcastWithContext(ctx context.Context, data []byte) error { return nil }
-func (m *mockWSClientImpl) BroadcastJSONWithContext(ctx context.Context, v interface{}) error {
+func (m *mockWSClientImpl) BroadcastJSONWithContext(ctx context.Context, v any) error {
 	return nil
 }
 func (m *mockWSClientImpl) Join(room string) error                                  { return nil }
@@ -549,17 +549,17 @@ func (m *mockWSClientImpl) LeaveWithContext(ctx context.Context, room string) er
 func (m *mockWSClientImpl) Room(name string) router.RoomBroadcaster                 { return nil }
 func (m *mockWSClientImpl) Rooms() []string                                         { return nil }
 
-func (m *mockWSClientImpl) Set(key string, value interface{}) {
+func (m *mockWSClientImpl) Set(key string, value any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.state[key] = value
 }
 
-func (m *mockWSClientImpl) SetWithContext(ctx context.Context, key string, value interface{}) {
+func (m *mockWSClientImpl) SetWithContext(ctx context.Context, key string, value any) {
 	m.Set(key, value)
 }
 
-func (m *mockWSClientImpl) Get(key string) interface{} {
+func (m *mockWSClientImpl) Get(key string) any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.state[key]

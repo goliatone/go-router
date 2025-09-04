@@ -101,7 +101,7 @@ func TestHTTPRouterRealWebSocket(t *testing.T) {
 
 			// JSON echo with transformation
 			for {
-				var msg map[string]interface{}
+				var msg map[string]any
 				if err := conn.ReadJSON(&msg); err != nil {
 					break
 				}
@@ -129,7 +129,7 @@ func TestHTTPRouterRealWebSocket(t *testing.T) {
 		defer ws.Close()
 
 		// Test JSON message
-		testData := map[string]interface{}{
+		testData := map[string]any{
 			"action": "test",
 			"value":  42,
 		}
@@ -138,7 +138,7 @@ func TestHTTPRouterRealWebSocket(t *testing.T) {
 			t.Fatalf("Failed to write JSON: %v", err)
 		}
 
-		var received map[string]interface{}
+		var received map[string]any
 		if err := ws.ReadJSON(&received); err != nil {
 			t.Fatalf("Failed to read JSON: %v", err)
 		}

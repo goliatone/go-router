@@ -13,11 +13,11 @@ import (
 
 // BinaryPayload represents a binary WebSocket message with metadata
 type BinaryPayload struct {
-	Type      string                 `json:"type"`
-	ID        string                 `json:"id"`
-	Data      []byte                 `json:"-"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	Timestamp time.Time              `json:"timestamp"`
+	Type      string         `json:"type"`
+	ID        string         `json:"id"`
+	Data      []byte         `json:"-"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
 }
 
 // BinaryHandler handles binary messages
@@ -62,8 +62,8 @@ type FileTransferManager struct {
 
 // FileStorage interface for storing transferred files
 type FileStorage interface {
-	Store(ctx context.Context, id string, data []byte, metadata map[string]interface{}) error
-	Retrieve(ctx context.Context, id string) ([]byte, map[string]interface{}, error)
+	Store(ctx context.Context, id string, data []byte, metadata map[string]any) error
+	Retrieve(ctx context.Context, id string) ([]byte, map[string]any, error)
 	Delete(ctx context.Context, id string) error
 	Exists(ctx context.Context, id string) bool
 }
@@ -76,7 +76,7 @@ type MemoryFileStorage struct {
 
 type storedFile struct {
 	data     []byte
-	metadata map[string]interface{}
+	metadata map[string]any
 }
 
 // NewFileTransferManager creates a new file transfer manager
@@ -96,7 +96,7 @@ func NewFileTransferManager(storage FileStorage, maxFileSize int64) *FileTransfe
 }
 
 // StartUpload initiates a file upload
-func (m *FileTransferManager) StartUpload(ctx context.Context, client WSClient, metadata map[string]interface{}) (*FileTransfer, error) {
+func (m *FileTransferManager) StartUpload(ctx context.Context, client WSClient, metadata map[string]any) (*FileTransfer, error) {
 	// Extract file info from metadata
 	name, _ := metadata["name"].(string)
 	size, _ := metadata["size"].(float64)
@@ -143,7 +143,7 @@ func (m *FileTransferManager) StartUpload(ctx context.Context, client WSClient, 
 	go m.monitorTransfer(transfer)
 
 	// Notify client
-	client.SendJSON(map[string]interface{}{
+	client.SendJSON(map[string]any{
 		"type":         "upload_ready",
 		"transfer_id":  transfer.ID,
 		"chunk_size":   transfer.ChunkSize,
@@ -208,7 +208,7 @@ func (m *FileTransferManager) completeTransfer(ctx context.Context, transfer *Fi
 	data := buffer.Bytes()
 
 	// Store file
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"name":      transfer.Name,
 		"size":      transfer.Size,
 		"mime_type": transfer.MimeType,
@@ -262,7 +262,7 @@ func (m *FileTransferManager) StartDownload(ctx context.Context, client WSClient
 	m.transfersMu.Unlock()
 
 	// Send file info
-	client.SendJSON(map[string]interface{}{
+	client.SendJSON(map[string]any{
 		"type":         "download_ready",
 		"transfer_id":  transfer.ID,
 		"name":         transfer.Name,
@@ -294,7 +294,7 @@ func (m *FileTransferManager) sendChunks(ctx context.Context, client WSClient, t
 			Type: "file_chunk",
 			ID:   transfer.ID,
 			Data: chunk,
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"chunk_index":  i,
 				"total_chunks": transfer.TotalChunks,
 				"final":        i == transfer.TotalChunks-1,
@@ -323,7 +323,7 @@ func (m *FileTransferManager) sendChunks(ctx context.Context, client WSClient, t
 	transfer.EndTime = time.Now()
 
 	// Send completion message
-	client.SendJSON(map[string]interface{}{
+	client.SendJSON(map[string]any{
 		"type":        "download_complete",
 		"transfer_id": transfer.ID,
 	})
@@ -405,7 +405,7 @@ func NewMemoryFileStorage() *MemoryFileStorage {
 }
 
 // Store stores a file in memory
-func (s *MemoryFileStorage) Store(ctx context.Context, id string, data []byte, metadata map[string]interface{}) error {
+func (s *MemoryFileStorage) Store(ctx context.Context, id string, data []byte, metadata map[string]any) error {
 	s.filesMu.Lock()
 	defer s.filesMu.Unlock()
 
@@ -418,7 +418,7 @@ func (s *MemoryFileStorage) Store(ctx context.Context, id string, data []byte, m
 }
 
 // Retrieve retrieves a file from memory
-func (s *MemoryFileStorage) Retrieve(ctx context.Context, id string) ([]byte, map[string]interface{}, error) {
+func (s *MemoryFileStorage) Retrieve(ctx context.Context, id string) ([]byte, map[string]any, error) {
 	s.filesMu.RLock()
 	defer s.filesMu.RUnlock()
 

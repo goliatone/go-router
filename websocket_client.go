@@ -109,6 +109,7 @@ type wsClient struct {
 
 	// Error handling
 	errHandler func(error)
+	logger     Logger
 }
 
 // NewWSClient creates a new WebSocket client with automatic pump management
@@ -126,6 +127,7 @@ func NewWSClient(conn WebSocketContext, hub *WSHub) WSClient {
 		rooms:        make(map[string]bool),
 		send:         make(chan []byte, 256),
 		done:         make(chan struct{}),
+		logger:       &defaultLogger{},
 	}
 
 	// Start automatic pump management
@@ -415,6 +417,9 @@ func (c *wsClient) readPump() {
 	for {
 		messageType, data, err := c.conn.ReadMessage()
 		if err != nil {
+			c.logger.Error("WebSocket read error",
+				"client_id", c.ID(),
+				"error", err)
 			if c.errHandler != nil {
 				c.errHandler(err)
 			}
@@ -427,6 +432,9 @@ func (c *wsClient) readPump() {
 			// Process through handlers
 			for _, handler := range c.messageHandlers {
 				if err := handler(c.ctx, data); err != nil {
+					c.logger.Error("Message handler failed",
+						"client_id", c.ID(),
+						"error", err)
 					if c.errHandler != nil {
 						c.errHandler(err)
 					}
@@ -442,6 +450,10 @@ func (c *wsClient) readPump() {
 				if handlers, ok := c.jsonHandlers[event.Type]; ok {
 					for _, handler := range handlers {
 						if err := handler(c.ctx, event.Data); err != nil {
+							c.logger.Error("JSON handler failed",
+								"client_id", c.ID(),
+								"event_type", event.Type,
+								"error", err)
 							if c.errHandler != nil {
 								c.errHandler(err)
 							}
@@ -477,11 +489,17 @@ func (c *wsClient) writePump() {
 			}
 
 			if err := c.conn.WriteMessage(TextMessage, message); err != nil {
+				c.logger.Error("WebSocket write error",
+					"client_id", c.ID(),
+					"error", err)
 				return
 			}
 
 		case <-ticker.C:
 			if err := c.conn.WritePing([]byte{}); err != nil {
+				c.logger.Error("WebSocket ping error",
+					"client_id", c.ID(),
+					"error", err)
 				return
 			}
 

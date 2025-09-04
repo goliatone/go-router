@@ -260,7 +260,7 @@ func (rm *RoomManager) BroadcastToRoom(ctx context.Context, roomID string, data 
 }
 
 // EmitToRoom emits an event to all clients in a room
-func (rm *RoomManager) EmitToRoom(ctx context.Context, roomID, event string, data interface{}) error {
+func (rm *RoomManager) EmitToRoom(ctx context.Context, roomID, event string, data any) error {
 	room, err := rm.GetRoom(roomID)
 	if err != nil {
 		return err
@@ -345,7 +345,7 @@ type RoomFilter struct {
 
 	// Filter by metadata key/value
 	MetadataKey   string
-	MetadataValue interface{}
+	MetadataValue any
 
 	// Custom filter function
 	CustomFilter func(*Room) bool

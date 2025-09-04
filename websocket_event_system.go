@@ -13,13 +13,13 @@ import (
 
 // EventMessage represents a structured event message
 type EventMessage struct {
-	ID        string                 `json:"id,omitempty"`
-	Type      string                 `json:"type"`
-	Namespace string                 `json:"namespace,omitempty"`
-	Data      interface{}            `json:"data,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	Timestamp time.Time              `json:"timestamp"`
-	AckID     string                 `json:"ack_id,omitempty"`
+	ID        string         `json:"id,omitempty"`
+	Type      string         `json:"type"`
+	Namespace string         `json:"namespace,omitempty"`
+	Data      any            `json:"data,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
+	AckID     string         `json:"ack_id,omitempty"`
 }
 
 // EventRouter manages event routing with namespaces
@@ -89,14 +89,14 @@ type EventNamespace struct {
 type TypedEventHandler interface {
 	Handle(ctx context.Context, client WSClient, event *EventMessage) error
 	EventType() string
-	Validate(data interface{}) error
+	Validate(data any) error
 }
 
 // GenericEventHandler handles events with a generic function
 type GenericEventHandler struct {
 	Type      string
 	Handler   func(context.Context, WSClient, *EventMessage) error
-	Validator func(interface{}) error
+	Validator func(any) error
 }
 
 func (h *GenericEventHandler) Handle(ctx context.Context, client WSClient, event *EventMessage) error {
@@ -107,7 +107,7 @@ func (h *GenericEventHandler) EventType() string {
 	return h.Type
 }
 
-func (h *GenericEventHandler) Validate(data interface{}) error {
+func (h *GenericEventHandler) Validate(data any) error {
 	if h.Validator != nil {
 		return h.Validator(data)
 	}
@@ -155,7 +155,7 @@ func (h *typedHandlerImpl[T]) EventType() string {
 	return h.eventType
 }
 
-func (h *typedHandlerImpl[T]) Validate(data interface{}) error {
+func (h *typedHandlerImpl[T]) Validate(data any) error {
 	// Basic type validation
 	var zero T
 	expectedType := reflect.TypeOf(zero)
@@ -474,7 +474,7 @@ func LoggingMiddleware() EventMiddleware {
 }
 
 // ValidationMiddleware validates event data against schemas
-func ValidationMiddleware(schemas map[string]interface{}) EventMiddleware {
+func ValidationMiddleware(schemas map[string]any) EventMiddleware {
 	return func(ctx context.Context, client WSClient, event *EventMessage, next EventMiddlewareNext) error {
 		// Validate against schema if exists
 		if schema, exists := schemas[event.Type]; exists {

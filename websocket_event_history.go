@@ -142,7 +142,7 @@ func (h *EventHistory) Replay(client WSClient, filter EventHistoryFilter) error 
 			Type:      event.Type,
 			Namespace: event.Namespace,
 			Data:      event.Data,
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"replay":            true,
 				"originalTimestamp": event.Timestamp,
 			},
@@ -434,6 +434,7 @@ func (t *EventThrottler) SetLimit(eventType string, limit int) {
 
 	if l, exists := t.limits[eventType]; exists {
 		l.mu.Lock()
+		// TODO: Implement actual limit
 		// Store the custom limit in metadata (simplified)
 		l.mu.Unlock()
 	}
@@ -443,7 +444,8 @@ func (t *EventThrottler) SetLimit(eventType string, limit int) {
 func ThrottleMiddleware(throttler *EventThrottler) EventMiddleware {
 	return func(ctx context.Context, client WSClient, event *EventMessage, next EventMiddlewareNext) error {
 		if !throttler.Allow(event.Type) {
-			// Event is throttled
+			//Event is throttled
+			// TODO: We should track dropped events, so that we log and keep stats
 			return nil // Silently drop throttled events
 		}
 

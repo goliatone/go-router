@@ -22,11 +22,11 @@ type Room struct {
 	clientsMu sync.RWMutex
 
 	// Room state
-	state   map[string]interface{}
+	state   map[string]any
 	stateMu sync.RWMutex
 
 	// Metadata
-	metadata   map[string]interface{}
+	metadata   map[string]any
 	metadataMu sync.RWMutex
 
 	// Configuration
@@ -87,23 +87,23 @@ type RoomAuthFunc func(ctx context.Context, room *Room, client WSClient) (bool, 
 
 // RoomPresence tracks who's in the room
 type RoomPresence struct {
-	ClientID string                 `json:"client_id"`
-	Username string                 `json:"username,omitempty"`
-	JoinedAt time.Time              `json:"joined_at"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	ClientID string         `json:"client_id"`
+	Username string         `json:"username,omitempty"`
+	JoinedAt time.Time      `json:"joined_at"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // RoomInfo provides public information about a room
 type RoomInfo struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Type        string                 `json:"type,omitempty"`
-	Tags        []string               `json:"tags,omitempty"`
-	ClientCount int                    `json:"client_count"`
-	MaxClients  int                    `json:"max_clients"`
-	CreatedAt   time.Time              `json:"created_at"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-	Private     bool                   `json:"private"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Type        string         `json:"type,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
+	ClientCount int            `json:"client_count"`
+	MaxClients  int            `json:"max_clients"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	Private     bool           `json:"private"`
 }
 
 // NewRoom creates a new room with the given configuration
@@ -115,8 +115,8 @@ func NewRoom(id, name string, config RoomConfig, hub *WSHub) *Room {
 		name:      name,
 		createdAt: time.Now(),
 		clients:   make(map[string]WSClient),
-		state:     make(map[string]interface{}),
-		metadata:  make(map[string]interface{}),
+		state:     make(map[string]any),
+		metadata:  make(map[string]any),
 		config:    config,
 		hub:       hub,
 		ctx:       ctx,
@@ -273,7 +273,7 @@ func (r *Room) GetPresence() []RoomPresence {
 			ClientID: client.ID(),
 			Username: client.GetString("username"),
 			JoinedAt: time.Now(), // In production, track actual join time
-			Metadata: make(map[string]interface{}),
+			Metadata: make(map[string]any),
 		}
 		presence = append(presence, p)
 	}
@@ -314,7 +314,7 @@ func (r *Room) BroadcastExcept(ctx context.Context, data []byte, except []string
 }
 
 // BroadcastJSON sends JSON data to all clients in the room
-func (r *Room) BroadcastJSON(ctx context.Context, v interface{}) error {
+func (r *Room) BroadcastJSON(ctx context.Context, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -323,8 +323,8 @@ func (r *Room) BroadcastJSON(ctx context.Context, v interface{}) error {
 }
 
 // Emit sends an event to all clients in the room
-func (r *Room) Emit(ctx context.Context, event string, data interface{}) error {
-	payload := map[string]interface{}{
+func (r *Room) Emit(ctx context.Context, event string, data any) error {
+	payload := map[string]any{
 		"type": event,
 		"room": r.name,
 		"data": data,
@@ -333,8 +333,8 @@ func (r *Room) Emit(ctx context.Context, event string, data interface{}) error {
 }
 
 // EmitExcept sends an event to all clients except specified ones
-func (r *Room) EmitExcept(ctx context.Context, event string, data interface{}, except []string) error {
-	payload := map[string]interface{}{
+func (r *Room) EmitExcept(ctx context.Context, event string, data any, except []string) error {
+	payload := map[string]any{
 		"type": event,
 		"room": r.name,
 		"data": data,
@@ -351,14 +351,14 @@ func (r *Room) EmitExcept(ctx context.Context, event string, data interface{}, e
 // State management
 
 // SetState sets a value in the room's state
-func (r *Room) SetState(key string, value interface{}) {
+func (r *Room) SetState(key string, value any) {
 	r.stateMu.Lock()
 	defer r.stateMu.Unlock()
 	r.state[key] = value
 }
 
 // GetState gets a value from the room's state
-func (r *Room) GetState(key string) interface{} {
+func (r *Room) GetState(key string) any {
 	r.stateMu.RLock()
 	defer r.stateMu.RUnlock()
 	return r.state[key]
@@ -401,31 +401,31 @@ func (r *Room) GetStateBool(key string) bool {
 func (r *Room) ClearState() {
 	r.stateMu.Lock()
 	defer r.stateMu.Unlock()
-	r.state = make(map[string]interface{})
+	r.state = make(map[string]any)
 }
 
 // Metadata management
 
 // SetMetadata sets metadata for the room
-func (r *Room) SetMetadata(key string, value interface{}) {
+func (r *Room) SetMetadata(key string, value any) {
 	r.metadataMu.Lock()
 	defer r.metadataMu.Unlock()
 	r.metadata[key] = value
 }
 
 // GetMetadata gets metadata from the room
-func (r *Room) GetMetadata(key string) interface{} {
+func (r *Room) GetMetadata(key string) any {
 	r.metadataMu.RLock()
 	defer r.metadataMu.RUnlock()
 	return r.metadata[key]
 }
 
 // GetAllMetadata returns all metadata
-func (r *Room) GetAllMetadata() map[string]interface{} {
+func (r *Room) GetAllMetadata() map[string]any {
 	r.metadataMu.RLock()
 	defer r.metadataMu.RUnlock()
 
-	meta := make(map[string]interface{})
+	meta := make(map[string]any)
 	for k, v := range r.metadata {
 		meta[k] = v
 	}
@@ -506,7 +506,7 @@ func (r *Room) Destroy() error {
 	r.clientsMu.Lock()
 	for _, client := range r.clients {
 		// Notify client they're being removed
-		client.SendJSON(map[string]interface{}{
+		client.SendJSON(map[string]any{
 			"type":   "room:destroyed",
 			"room":   r.name,
 			"reason": "room destroyed",

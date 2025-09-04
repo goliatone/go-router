@@ -78,7 +78,7 @@ type WebSocketConfig struct {
 	OnError      func(WebSocketContext, error)
 
 	// Custom upgrader (adapter-specific)
-	CustomUpgrader interface{}
+	CustomUpgrader any
 
 	// Metrics and monitoring
 	EnableMetrics bool

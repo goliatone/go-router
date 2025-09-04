@@ -51,7 +51,7 @@ type ReconnectConfig struct {
 type ClientSession struct {
 	ID             string
 	ClientID       string
-	State          map[string]interface{}
+	State          map[string]any
 	LastSeen       time.Time
 	DisconnectTime time.Time
 	ReconnectToken string
@@ -71,12 +71,12 @@ type MessageQueue struct {
 
 // QueuedMessage represents a queued message
 type QueuedMessage struct {
-	ID        string                 `json:"id"`
-	Type      string                 `json:"type"`
-	Data      interface{}            `json:"data"`
-	Metadata  map[string]interface{} `json:"metadata"`
-	Timestamp time.Time              `json:"timestamp"`
-	Attempts  int                    `json:"attempts"`
+	ID        string         `json:"id"`
+	Type      string         `json:"type"`
+	Data      any            `json:"data"`
+	Metadata  map[string]any `json:"metadata"`
+	Timestamp time.Time      `json:"timestamp"`
+	Attempts  int            `json:"attempts"`
 }
 
 // MessageQueueManager manages message queues for all clients
@@ -151,7 +151,7 @@ func (m *ReconnectManager) CreateSession(client WSClient) (*ClientSession, error
 	session := &ClientSession{
 		ID:             generateID(),
 		ClientID:       client.ID(),
-		State:          make(map[string]interface{}),
+		State:          make(map[string]any),
 		LastSeen:       time.Now(),
 		ReconnectToken: generateSecureToken(),
 		Subscriptions:  make([]string, 0),
@@ -166,7 +166,7 @@ func (m *ReconnectManager) CreateSession(client WSClient) (*ClientSession, error
 	m.sessionsMu.Unlock()
 
 	// Send session info to client
-	client.SendJSON(map[string]interface{}{
+	client.SendJSON(map[string]any{
 		"type":               "session_created",
 		"session_id":         session.ID,
 		"reconnect_token":    session.ReconnectToken,
@@ -224,7 +224,7 @@ func (m *ReconnectManager) HandleReconnect(ctx context.Context, client WSClient,
 	}
 
 	// Send reconnect success
-	client.SendJSON(map[string]interface{}{
+	client.SendJSON(map[string]any{
 		"type":            "reconnect_success",
 		"session_id":      session.ID,
 		"queued_messages": session.MessageQueue.Size(),

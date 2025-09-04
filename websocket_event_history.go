@@ -375,6 +375,7 @@ type EventThrottler struct {
 	limitsMu     sync.RWMutex
 	defaultLimit int
 	window       time.Duration
+	OnThrottled  func(event *EventMessage) // Optional handler for throttled events
 }
 
 type throttleLimit struct {
@@ -460,9 +461,11 @@ func (t *EventThrottler) SetLimit(eventType string, limit int) {
 func ThrottleMiddleware(throttler *EventThrottler) EventMiddleware {
 	return func(ctx context.Context, client WSClient, event *EventMessage, next EventMiddlewareNext) error {
 		if !throttler.Allow(event.Type) {
-			//Event is throttled
-			// TODO: We should track dropped events, so that we log and keep stats
-			return nil // Silently drop throttled events
+			// Event is throttled - invoke observer if configured
+			if throttler.OnThrottled != nil {
+				throttler.OnThrottled(event)
+			}
+			return nil // Drop throttled events
 		}
 
 		return next(ctx, client, event)

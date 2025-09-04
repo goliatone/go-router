@@ -380,6 +380,7 @@ type EventThrottler struct {
 type throttleLimit struct {
 	count     int
 	resetTime time.Time
+	limit     int
 	mu        sync.Mutex
 }
 
@@ -401,16 +402,22 @@ func NewEventThrottler(defaultLimit int, window time.Duration) *EventThrottler {
 
 // Allow checks if an event should be allowed
 func (t *EventThrottler) Allow(eventType string) bool {
+	// First, try to get existing limit with read lock
 	t.limitsMu.RLock()
 	limit, exists := t.limits[eventType]
 	t.limitsMu.RUnlock()
 
 	if !exists {
+		// Need to create new limit - use write lock and double-check
 		t.limitsMu.Lock()
-		limit = &throttleLimit{
-			resetTime: time.Now().Add(t.window),
+		// Double-check pattern: another goroutine might have created it
+		if limit, exists = t.limits[eventType]; !exists {
+			limit = &throttleLimit{
+				resetTime: time.Now().Add(t.window),
+				limit:     t.defaultLimit,
+			}
+			t.limits[eventType] = limit
 		}
-		t.limits[eventType] = limit
 		t.limitsMu.Unlock()
 	}
 
@@ -424,7 +431,12 @@ func (t *EventThrottler) Allow(eventType string) bool {
 	}
 
 	limit.count++
-	return limit.count <= t.defaultLimit
+	// Use custom limit if set, otherwise use default limit
+	effectiveLimit := limit.limit
+	if effectiveLimit == 0 {
+		effectiveLimit = t.defaultLimit
+	}
+	return limit.count <= effectiveLimit
 }
 
 // SetLimit sets a custom limit for an event type
@@ -434,9 +446,13 @@ func (t *EventThrottler) SetLimit(eventType string, limit int) {
 
 	if l, exists := t.limits[eventType]; exists {
 		l.mu.Lock()
-		// TODO: Implement actual limit
-		// Store the custom limit in metadata (simplified)
+		l.limit = limit
 		l.mu.Unlock()
+	} else {
+		t.limits[eventType] = &throttleLimit{
+			limit:     limit,
+			resetTime: time.Now().Add(t.window),
+		}
 	}
 }
 

@@ -147,10 +147,8 @@ func (h *WSHub) run() {
 			}
 
 		case client := <-h.unregisterCh:
-			h.clientsMu.Lock()
 			if _, ok := h.clients[client.ID()]; ok {
 				delete(h.clients, client.ID())
-				h.clientsMu.Unlock()
 
 				// Remove from all rooms using RoomManager
 				if h.roomManager != nil {
@@ -169,8 +167,6 @@ func (h *WSHub) run() {
 						}
 					}(handler)
 				}
-			} else {
-				h.clientsMu.Unlock()
 			}
 
 		case msg := <-h.broadcast:

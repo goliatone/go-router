@@ -366,6 +366,39 @@ func main() {
 
 This approach keeps your configuration clean and separate from your application logic while eliminating boilerplate code.
 
+## WebSocket Support
+
+`go-router` provides comprehensive WebSocket support with an event-driven architecture, room management, and extensive middleware capabilities. The WebSocket implementation works seamlessly with existing HTTP routers and provides both simple and advanced usage patterns.
+
+### Quick Start
+
+```go
+// Simple WebSocket handler
+app.Router().Get("/ws", router.EasyWebSocket(func(ctx context.Context, client router.WSClient) error {
+    // Handle messages
+    client.OnMessage(func(ctx context.Context, data []byte) error {
+        fmt.Printf("Received: %s\n", data)
+        return client.Send([]byte("Echo: " + string(data)))
+    })
+    
+    // Wait for disconnection
+    <-ctx.Done()
+    return nil
+}))
+```
+
+### Features
+
+- **Event-driven architecture** with connect/disconnect/message handlers
+- **Room management** with join/leave and targeted broadcasting
+- **Middleware system** including authentication, logging, metrics, rate limiting, and panic recovery
+- **Context support** throughout the API for cancellation and request-scoped data
+- **JSON message handling** with structured event routing
+- **Client state management** with get/set operations
+- **Automatic connection lifecycle** management with ping/pong handling
+
+For complete WebSocket documentation, examples, and advanced features, see [README_WEBSOCKET.md](README_WEBSOCKET.md).
+
 ## Error Handling Policy
 
 This project follows a consistent error handling strategy to ensure reliability and maintainability across the WebSocket and HTTP components.

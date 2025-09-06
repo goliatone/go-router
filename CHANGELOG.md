@@ -1,9 +1,52 @@
 # Changelog
 
+# [0.6.0](https://github.com/goliatone/go-router/compare/v0.5.0...v0.6.0) - (2025-09-06)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Log throttled events ([9453f49](https://github.com/goliatone/go-router/commit/9453f49c9a58db660210c39c309e771b5694b082))  - (goliatone)
+- Implement locks ([280f1e0](https://github.com/goliatone/go-router/commit/280f1e0b5ade93bca20ff836e9c4695174c2e8a7))  - (goliatone)
+- Implement error log ([8ce2ec9](https://github.com/goliatone/go-router/commit/8ce2ec9e743d946866a1c273ca05e17d104cc751))  - (goliatone)
+- Update tests ([0e0b3a1](https://github.com/goliatone/go-router/commit/0e0b3a192ecc34e5f2645286df363adb4fea2c00))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.6.0 ([1e422fd](https://github.com/goliatone/go-router/commit/1e422fd4bcab99603599dfb25c57160eb065f701))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Ws auth ([5a293c9](https://github.com/goliatone/go-router/commit/5a293c94c1150f802cc6c00273ec1f35061203b6))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Rename methods ([c8377ee](https://github.com/goliatone/go-router/commit/c8377ee9ab62aaa35b8d98a73a0d9a50e05aad92))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Refactor websocket middleware ([dddcdf0](https://github.com/goliatone/go-router/commit/dddcdf0278980c3277def23a5f0709dc39244c23))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.5.0 ([67b76b9](https://github.com/goliatone/go-router/commit/67b76b9b9795d664e7587e29901700402bff349a))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- Merge branch 'add_websockets' ([b8d0392](https://github.com/goliatone/go-router/commit/b8d039244ac38c37c6e46105be596f8941c59e28))  - (goliatone)
+- PR [#6](https://github.com/goliatone/go-router/pull/6): websockets ([041e6a4](https://github.com/goliatone/go-router/commit/041e6a462fbeda14896f887fc5c78eece52a8abf))  - (goliatone)
+- Merge branch 'main' into add_websockets ([8a23bca](https://github.com/goliatone/go-router/commit/8a23bca96d150c18f8673f5ca01041d26d125f05))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([7879358](https://github.com/goliatone/go-router/commit/78793587fbf4e5c6374c2c4409cc8ebd057ce40d))  - (goliatone)
+- Update deps ([8b962c2](https://github.com/goliatone/go-router/commit/8b962c2cab0ff9891e5e40c832423be06b82b55a))  - (goliatone)
+
 # [0.5.0](https://github.com/goliatone/go-router/compare/v0.4.0...v0.5.0) - (2025-08-23)
 
 ## <!-- 1 -->🐛 Bug Fixes
 
+- Test setup ([72668ff](https://github.com/goliatone/go-router/commit/72668ffc20cd7f7408764f3924857b68d85592fc))  - (goliatone)
+- Code linter ([568f472](https://github.com/goliatone/go-router/commit/568f472c53de1b2ac2399eda445fe6c43c0713d9))  - (goliatone)
+- Update tests ([bbdb405](https://github.com/goliatone/go-router/commit/bbdb40502bd9a64d90ce350cdfb9a8c52717ebb5))  - (goliatone)
 - Simplify code ([a89ca99](https://github.com/goliatone/go-router/commit/a89ca990d3f3e9050772dabd69ec1a519af8ceee))  - (goliatone)
 
 ## <!-- 13 -->📦 Bumps
@@ -13,6 +56,18 @@
 ## <!-- 16 -->➕ Add
 
 - Meta generator ([912f475](https://github.com/goliatone/go-router/commit/912f475d823066ad28f2c4819067e739d1ccf6ca))  - (goliatone)
+- Router interface ([c07fe73](https://github.com/goliatone/go-router/commit/c07fe73dc7df9c7856db67bd43b430551238d803))  - (goliatone)
+- Http websocket implementation ([2e09f3b](https://github.com/goliatone/go-router/commit/2e09f3b8c60e8333b9ccadf42d3d4f4409d61e73))  - (goliatone)
+- Fiber websocket implementation ([7a520c4](https://github.com/goliatone/go-router/commit/7a520c4e1440b7d255baa79503c9ee0c2b95b104))  - (goliatone)
+- Websockeet middleware ([42e57a4](https://github.com/goliatone/go-router/commit/42e57a46403c864aa8a3152a4419e43961cf2b3c))  - (goliatone)
+- Websocket utilities and factory ([c6ffccd](https://github.com/goliatone/go-router/commit/c6ffccdfa79e9240c4c7bd8ee5f6d2e72bf923bd))  - (goliatone)
+- Websocket test ([60f0de2](https://github.com/goliatone/go-router/commit/60f0de2f3811f561e123b164467b72a3e0c6a8fc))  - (goliatone)
+- Websocket implementation ([cba7565](https://github.com/goliatone/go-router/commit/cba7565139d1730196959c33e5ca8c100e0a242d))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Fixing test ([48e851d](https://github.com/goliatone/go-router/commit/48e851dbacad0ba24bb1b9a37a20766f733a095d))  - (goliatone)
+- Add websocket data ([2900cf2](https://github.com/goliatone/go-router/commit/2900cf2bcc568ec19b52bfe6a1a44be10e539a1f))  - (goliatone)
 
 ## <!-- 3 -->📚 Documentation
 
@@ -20,6 +75,7 @@
 
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
 
+- Fmt code ([4e69f6b](https://github.com/goliatone/go-router/commit/4e69f6bb714d75d88ee6c8fa706e1b7f8f6b28e0))  - (goliatone)
 - Flash middlware note in readme ([1f52c7d](https://github.com/goliatone/go-router/commit/1f52c7de532e1bcd89f28d11ee800e28d6f37c59))  - (goliatone)
 - Update readme ([e31057e](https://github.com/goliatone/go-router/commit/e31057e2aff14cb8c543d6bb5ea4c080d65c3c12))  - (goliatone)
 

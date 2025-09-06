@@ -11,10 +11,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ============================================================================
-// Task 5.1: JSON Message Helpers
-// ============================================================================
-
 // JSONMessage represents a standard JSON message structure
 type JSONMessage struct {
 	Type      string          `json:"type"`
@@ -107,10 +103,6 @@ func (r *JSONMessageRouter) Route(ctx WebSocketContext) error {
 
 	return handler(ctx, &msg)
 }
-
-// ============================================================================
-// Task 5.2: Connection Deadline Management
-// ============================================================================
 
 // DeadlineManager manages connection deadlines and health checks
 type DeadlineManager struct {
@@ -226,10 +218,6 @@ func (d *DeadlineManager) HealthCheck() error {
 	return nil
 }
 
-// ============================================================================
-// Task 5.3: Subprotocol Negotiation
-// ============================================================================
-
 // SubprotocolNegotiator handles subprotocol negotiation
 type SubprotocolNegotiator struct {
 	supported map[string]SubprotocolHandler
@@ -340,10 +328,6 @@ func (n *SubprotocolNegotiator) HandleConnection(ctx WebSocketContext) error {
 	return nil
 }
 
-// ============================================================================
-// Task 5.4: Compression Support
-// ============================================================================
-
 // CompressionConfig configures WebSocket compression
 type CompressionConfig struct {
 	Enabled         bool
@@ -407,10 +391,6 @@ func (m *CompressionManager) GetConfig() CompressionConfig {
 	defer m.mu.RUnlock()
 	return m.config
 }
-
-// ============================================================================
-// Task 5.5: Custom Upgrader Support
-// ============================================================================
 
 // CustomUpgraderConfig allows custom upgrader configuration
 type CustomUpgraderConfig struct {

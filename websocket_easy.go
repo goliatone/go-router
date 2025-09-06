@@ -2,8 +2,10 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,13 +30,154 @@ type SimpleWSHandler func(ctx context.Context, client WSClient) error
 // WebSocketMiddleware represents middleware for WebSocket connections
 type WebSocketMiddleware func(next SimpleWSHandler) SimpleWSHandler
 
-// WSAuth returns a WebSocket authentication middleware
-func WSAuth() WebSocketMiddleware {
+// WSTokenValidator interface for WebSocket authentication
+// Mirrors the go-auth TokenService.Validate method signature
+type WSTokenValidator interface {
+	Validate(tokenString string) (WSAuthClaims, error)
+}
+
+// WSAuthClaims interface for structured auth claims
+// Compatible with go-auth AuthClaims interface
+type WSAuthClaims interface {
+	Subject() string
+	UserID() string
+	Role() string
+	CanRead(resource string) bool
+	CanEdit(resource string) bool
+	CanCreate(resource string) bool
+	CanDelete(resource string) bool
+	HasRole(role string) bool
+	IsAtLeast(minRole string) bool
+}
+
+// WSAuthContextKey is used to store auth claims in context
+type WSAuthContextKey struct{}
+
+// WSAuthClaimsFromContext retrieves auth claims from context
+func WSAuthClaimsFromContext(ctx context.Context) (WSAuthClaims, bool) {
+	claims, ok := ctx.Value(WSAuthContextKey{}).(WSAuthClaims)
+	return claims, ok
+}
+
+// WSAuthConfig holds configuration for the WebSocket authentication middleware
+type WSAuthConfig struct {
+	// TokenValidator is required for token validation
+	TokenValidator WSTokenValidator
+	// TokenExtractor defines how to extract tokens from WebSocket context
+	// Supports query parameters and headers
+	TokenExtractor func(ctx context.Context, client WSClient) (string, error)
+	// ContextEnricher enriches the context with auth claims after validation
+	ContextEnricher func(ctx context.Context, claims WSAuthClaims) context.Context
+	// OnAuthFailure handles authentication failures
+	OnAuthFailure func(ctx context.Context, client WSClient, err error) error
+	// Skip allows bypassing auth for certain connections
+	Skip func(ctx context.Context, client WSClient) bool
+	// Logger for auth-related logging
+	Logger Logger
+}
+
+// defaultTokenExtractor checks multiple sources for authentication tokens
+func defaultTokenExtractor(ctx context.Context, client WSClient) (string, error) {
+	// Priority order: query parameter -> header
+
+	// 1. Check query parameter "token" or "auth_token"
+	if token := client.Conn().Query("token"); token != "" {
+		return token, nil
+	}
+	if token := client.Conn().Query("auth_token"); token != "" {
+		return token, nil
+	}
+
+	// 2. Check Authorization header
+	if auth := client.Conn().Header("Authorization"); auth != "" {
+		// Handle "Bearer <token>" format
+		if strings.HasPrefix(auth, "Bearer ") {
+			return strings.TrimSpace(auth[7:]), nil
+		}
+		return auth, nil
+	}
+
+	return "", errors.New("no authentication token found")
+}
+
+// defaultContextEnricher adds auth claims to the context
+func defaultContextEnricher(ctx context.Context, claims WSAuthClaims) context.Context {
+	return context.WithValue(ctx, WSAuthContextKey{}, claims)
+}
+
+// defaultAuthFailureHandler closes the connection with appropriate status
+func defaultAuthFailureHandler(ctx context.Context, client WSClient, err error) error {
+	// Close with 1008 Policy Violation for auth failures
+	client.Close(ClosePolicyViolation, "Authentication failed")
+	return err
+}
+
+// WSAuthConfigDefault provides default configuration for WSAuth middleware
+var WSAuthConfigDefault = WSAuthConfig{
+	TokenExtractor:  defaultTokenExtractor,
+	ContextEnricher: defaultContextEnricher,
+	OnAuthFailure:   defaultAuthFailureHandler,
+	Logger:          &defaultLogger{},
+}
+
+// wsAuthConfigDefault merges user config with defaults
+func wsAuthConfigDefault(config ...WSAuthConfig) WSAuthConfig {
+	if len(config) == 0 {
+		panic("WSAuth: TokenValidator is required")
+	}
+
+	cfg := config[0]
+
+	if cfg.TokenValidator == nil {
+		panic("WSAuth: TokenValidator is required")
+	}
+	if cfg.TokenExtractor == nil {
+		cfg.TokenExtractor = WSAuthConfigDefault.TokenExtractor
+	}
+	if cfg.ContextEnricher == nil {
+		cfg.ContextEnricher = WSAuthConfigDefault.ContextEnricher
+	}
+	if cfg.OnAuthFailure == nil {
+		cfg.OnAuthFailure = WSAuthConfigDefault.OnAuthFailure
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = WSAuthConfigDefault.Logger
+	}
+
+	return cfg
+}
+
+// NewWSAuth creates a new WebSocket authentication middleware
+func NewWSAuth(config ...WSAuthConfig) WebSocketMiddleware {
+	cfg := wsAuthConfigDefault(config...)
+
 	return func(next SimpleWSHandler) SimpleWSHandler {
 		return func(ctx context.Context, client WSClient) error {
-			// TODO: add authentication logic here
-			// For now, just pass through
-			return next(ctx, client)
+			// Skip authentication if configured
+			if cfg.Skip != nil && cfg.Skip(ctx, client) {
+				return next(ctx, client)
+			}
+
+			// Extract token from request
+			token, err := cfg.TokenExtractor(ctx, client)
+			if err != nil {
+				cfg.Logger.Warn("WSAuth: token extraction failed: %v", err)
+				return cfg.OnAuthFailure(ctx, client, err)
+			}
+
+			// Validate token
+			claims, err := cfg.TokenValidator.Validate(token)
+			if err != nil {
+				cfg.Logger.Warn("WSAuth: token validation failed: %v", err)
+				return cfg.OnAuthFailure(ctx, client, err)
+			}
+
+			// Enrich context with claims
+			enrichedCtx := cfg.ContextEnricher(ctx, claims)
+
+			cfg.Logger.Info("WSAuth: authentication successful for user: %s", claims.UserID())
+
+			return next(enrichedCtx, client)
 		}
 	}
 }

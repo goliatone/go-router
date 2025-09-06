@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
+	"time"
 )
 
 const (
@@ -138,6 +139,42 @@ type Context interface {
 	Context() context.Context
 	SetContext(context.Context)
 	Next() error
+}
+
+// WebSocketContext extends Context for WebSocket operations
+type WebSocketContext interface {
+	Context
+
+	// Connection state
+	IsWebSocket() bool
+	WebSocketUpgrade() error
+
+	// Message operations
+	WriteMessage(messageType int, data []byte) error
+	ReadMessage() (messageType int, p []byte, err error)
+	WriteJSON(v any) error
+	ReadJSON(v any) error
+	WritePing(data []byte) error
+	WritePong(data []byte) error
+
+	// Connection management
+	Close() error
+	CloseWithStatus(code int, reason string) error
+	SetReadDeadline(t time.Time) error
+	SetWriteDeadline(t time.Time) error
+	SetPingHandler(handler func(data []byte) error)
+	SetPongHandler(handler func(data []byte) error)
+	SetCloseHandler(handler func(code int, text string) error)
+
+	// WebSocket-specific headers/info
+	Subprotocol() string
+	Extensions() []string
+	RemoteAddr() string
+	LocalAddr() string
+
+	// Connection properties
+	IsConnected() bool
+	ConnectionID() string
 }
 
 // NamedHandler is a handler with a name for debugging/printing

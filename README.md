@@ -366,6 +366,88 @@ func main() {
 
 This approach keeps your configuration clean and separate from your application logic while eliminating boilerplate code.
 
+## Error Handling Policy
+
+This project follows a consistent error handling strategy to ensure reliability and maintainability across the WebSocket and HTTP components.
+
+### Error Classification
+
+#### 1. Recoverable Errors (Return to Caller)
+These errors should be returned to the calling function to allow for graceful handling and recovery:
+
+- **Validation errors**: Invalid input parameters, malformed data
+- **Authentication/Authorization failures**: Token validation, permission checks
+- **Configuration errors**: Missing required configuration, invalid settings
+- **External service failures**: Database connection errors, API call failures
+- **Resource exhaustion**: Rate limiting violations, connection limits reached
+
+**Pattern:**
+```go
+func ProcessRequest(data []byte) error {
+    if len(data) == 0 {
+        return fmt.Errorf("empty data provided")
+    }
+    // ... processing logic
+    return nil
+}
+```
+
+#### 2. System Errors (Log Centrally)
+These errors represent system-level issues that should be logged centrally for monitoring and debugging:
+
+- **Internal server errors**: Unexpected panics, nil pointer dereferences
+- **Infrastructure failures**: Network timeouts, disk I/O errors
+- **Background operation failures**: Cleanup operations, periodic tasks
+- **WebSocket connection errors**: Unexpected disconnections, protocol violations
+- **Hub/Room management errors**: Client registration failures, broadcast errors
+
+**Pattern:**
+```go
+func (h *WSHub) broadcastToAll(message []byte) {
+    h.clientsMu.RLock()
+    defer h.clientsMu.RUnlock()
+    
+    for client := range h.clients {
+        if err := client.WriteMessage(message); err != nil {
+            h.logger.Error("Failed to send message to client",
+                "client_id", client.ID(),
+                "error", err)
+            // Continue with other clients - don't return error
+        }
+    }
+}
+```
+
+### Logger Requirements
+
+All background components and long-running operations must have access to a structured logger:
+
+- **WSHub**: For client management and broadcasting errors
+- **Room**: For room-specific operation failures
+- **WSClient**: For connection-specific errors
+- **Middleware**: For request processing errors
+
+### Error Context
+
+When logging errors, always include relevant context:
+
+```go
+logger.Error("Operation failed",
+    "operation", "client_registration",
+    "client_id", client.ID(),
+    "room_id", roomID,
+    "error", err)
+```
+
+### Testing Error Paths
+
+All error handling paths should be testable:
+
+- Use dependency injection for external services
+- Provide mock implementations for testing
+- Include error scenarios in unit tests
+- Validate error messages and context
+
 ## API Reference
 
 ### Server Interface

@@ -409,7 +409,7 @@ func TestEasyWebSocket(t *testing.T) {
 	return
 	messageReceived := false
 
-	handler := router.EasyWebSocket(func(ctx context.Context, client router.WSClient) error {
+	handler := router.NewWSHandler(func(ctx context.Context, client router.WSClient) error {
 		client.OnMessage(func(msgCtx context.Context, data []byte) error {
 			messageReceived = true
 			// Echo the message back
@@ -421,6 +421,6 @@ func TestEasyWebSocket(t *testing.T) {
 	// This would normally be called by the router
 	// For testing, we just verify the handler is created
 	if handler == nil {
-		t.Error("EasyWebSocket should return a handler")
+		t.Error("NewWSHandler should return a handler")
 	}
 }

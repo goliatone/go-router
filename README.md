@@ -374,13 +374,13 @@ This approach keeps your configuration clean and separate from your application 
 
 ```go
 // Simple WebSocket handler
-app.Router().Get("/ws", router.EasyWebSocket(func(ctx context.Context, client router.WSClient) error {
+app.Router().Get("/ws", router.NewWSHandler(func(ctx context.Context, client router.WSClient) error {
     // Handle messages
     client.OnMessage(func(ctx context.Context, data []byte) error {
         fmt.Printf("Received: %s\n", data)
         return client.Send([]byte("Echo: " + string(data)))
     })
-    
+
     // Wait for disconnection
     <-ctx.Done()
     return nil
@@ -439,7 +439,7 @@ These errors represent system-level issues that should be logged centrally for m
 func (h *WSHub) broadcastToAll(message []byte) {
     h.clientsMu.RLock()
     defer h.clientsMu.RUnlock()
-    
+
     for client := range h.clients {
         if err := client.WriteMessage(message); err != nil {
             h.logger.Error("Failed to send message to client",

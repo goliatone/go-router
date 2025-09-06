@@ -12,8 +12,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// EasyWebSocket creates a simple WebSocket handler with minimal configuration
-func EasyWebSocket(handler func(context.Context, WSClient) error) func(Context) error {
+// NewWSHandler creates a simple WebSocket handler with minimal configuration
+func NewWSHandler(handler func(context.Context, WSClient) error) func(Context) error {
 	hub := NewWSHub()
 
 	// Set up the connection handler
@@ -24,11 +24,11 @@ func EasyWebSocket(handler func(context.Context, WSClient) error) func(Context) 
 	return hub.Handler()
 }
 
-// SimpleWSHandler is a convenience type for simple WebSocket handlers
-type SimpleWSHandler func(ctx context.Context, client WSClient) error
+// WSHandler is a convenience type for simple WebSocket handlers
+type WSHandler func(ctx context.Context, client WSClient) error
 
 // WebSocketMiddleware represents middleware for WebSocket connections
-type WebSocketMiddleware func(next SimpleWSHandler) SimpleWSHandler
+type WebSocketMiddleware func(next WSHandler) WSHandler
 
 // WSTokenValidator interface for WebSocket authentication
 // Mirrors the go-auth TokenService.Validate method signature
@@ -151,7 +151,7 @@ func wsAuthConfigDefault(config ...WSAuthConfig) WSAuthConfig {
 func NewWSAuth(config ...WSAuthConfig) WebSocketMiddleware {
 	cfg := wsAuthConfigDefault(config...)
 
-	return func(next SimpleWSHandler) SimpleWSHandler {
+	return func(next WSHandler) WSHandler {
 		return func(ctx context.Context, client WSClient) error {
 			// Skip authentication if configured
 			if cfg.Skip != nil && cfg.Skip(ctx, client) {
@@ -227,7 +227,7 @@ func wsLoggerConfigDefault(config ...WSLoggerConfig) WSLoggerConfig {
 func NewWSLogger(config ...WSLoggerConfig) WebSocketMiddleware {
 	cfg := wsLoggerConfigDefault(config...)
 
-	return func(next SimpleWSHandler) SimpleWSHandler {
+	return func(next WSHandler) WSHandler {
 		return func(ctx context.Context, client WSClient) error {
 			if cfg.Skip != nil && cfg.Skip(client.Conn()) {
 				return next(ctx, client)
@@ -300,7 +300,7 @@ func wsMetricsConfigDefault(config ...WSMetricsConfig) WSMetricsConfig {
 func NewWSMetrics(config ...WSMetricsConfig) WebSocketMiddleware {
 	cfg := wsMetricsConfigDefault(config...)
 
-	return func(next SimpleWSHandler) SimpleWSHandler {
+	return func(next WSHandler) WSHandler {
 		return func(ctx context.Context, client WSClient) error {
 			if cfg.Skip != nil && cfg.Skip(client.Conn()) {
 				return next(ctx, client)
@@ -373,7 +373,7 @@ func wsRecoverConfigDefault(config ...WSRecoverConfig) WSRecoverConfig {
 func NewWSRecover(config ...WSRecoverConfig) WebSocketMiddleware {
 	cfg := wsRecoverConfigDefault(config...)
 
-	return func(next SimpleWSHandler) SimpleWSHandler {
+	return func(next WSHandler) WSHandler {
 		return func(ctx context.Context, client WSClient) error {
 			defer func() {
 				if r := recover(); r != nil {
@@ -544,7 +544,7 @@ func wsRateLimitConfigDefault(config ...WSRateLimitConfig) WSRateLimitConfig {
 func NewWSRateLimit(config ...WSRateLimitConfig) WebSocketMiddleware {
 	cfg := wsRateLimitConfigDefault(config...)
 
-	return func(next SimpleWSHandler) SimpleWSHandler {
+	return func(next WSHandler) WSHandler {
 		return func(ctx context.Context, client WSClient) error {
 			if cfg.Skip != nil && cfg.Skip(client.Conn()) {
 				return next(ctx, client)
@@ -576,7 +576,7 @@ func NewWSRateLimit(config ...WSRateLimitConfig) WebSocketMiddleware {
 // and last on the way out. For example: ChainWSMiddleware(WSRecover(), WSLogger(), WSAuth(), ...)
 // will execute WSRecover first, then WSLogger, then WSAuth when processing a request.
 func ChainWSMiddleware(middlewares ...WebSocketMiddleware) WebSocketMiddleware {
-	return func(next SimpleWSHandler) SimpleWSHandler {
+	return func(next WSHandler) WSHandler {
 		for i := len(middlewares) - 1; i >= 0; i-- {
 			next = middlewares[i](next)
 		}

@@ -122,54 +122,6 @@ func validateWebSocketKey(key string) bool {
 	return len(decoded) == 16
 }
 
-// parseWebSocketExtensions parses the Sec-WebSocket-Extensions header
-func parseWebSocketExtensions(extensionHeader string) map[string]map[string]string {
-	extensions := make(map[string]map[string]string)
-
-	if extensionHeader == "" {
-		return extensions
-	}
-
-	// Split by comma to get individual extensions
-	extList := strings.Split(extensionHeader, ",")
-	for _, ext := range extList {
-		ext = strings.TrimSpace(ext)
-		if ext == "" {
-			continue
-		}
-
-		// Split by semicolon to get extension name and parameters
-		parts := strings.Split(ext, ";")
-		if len(parts) == 0 {
-			continue
-		}
-
-		extName := strings.TrimSpace(parts[0])
-		params := make(map[string]string)
-
-		// Parse parameters
-		for i := 1; i < len(parts); i++ {
-			param := strings.TrimSpace(parts[i])
-			if param == "" {
-				continue
-			}
-
-			// Check if parameter has a value (name=value) or is just a name
-			if eqIndex := strings.Index(param, "="); eqIndex != -1 {
-				paramName := strings.TrimSpace(param[:eqIndex])
-				paramValue := strings.TrimSpace(param[eqIndex+1:])
-				params[paramName] = paramValue
-			} else {
-				params[param] = ""
-			}
-		}
-
-		extensions[extName] = params
-	}
-
-	return extensions
-}
-
 // isSameOrigin checks if the request is from the same origin as the server
 func isSameOrigin(c Context) bool {
 	origin := c.Header("Origin")

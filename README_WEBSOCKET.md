@@ -40,31 +40,31 @@ import (
     "context"
     "fmt"
     "log"
-    
+
     "github.com/goliatone/go-router"
 )
 
 func main() {
     app := router.NewFiberAdapter()
-    
-    // Simple WebSocket handler using EasyWebSocket
-    app.Router().Get("/ws", router.EasyWebSocket(func(ctx context.Context, client router.WSClient) error {
+
+    // Simple WebSocket handler using NewWSHandler
+    app.Router().Get("/ws", router.NewWSHandler(func(ctx context.Context, client router.WSClient) error {
         // Handle incoming messages
         client.OnMessage(func(ctx context.Context, data []byte) error {
             fmt.Printf("Received: %s\n", data)
             return client.Send([]byte("Echo: " + string(data)))
         })
-        
+
         // Handle JSON events
         client.OnJSON("ping", func(ctx context.Context, data json.RawMessage) error {
             return client.SendJSON(map[string]string{"type": "pong"})
         })
-        
+
         // Wait for disconnection
         <-ctx.Done()
         return nil
     }))
-    
+
     log.Fatal(app.Serve(":8080"))
 }
 ```
@@ -75,38 +75,38 @@ func main() {
 func main() {
     app := router.NewFiberAdapter()
     hub := router.NewWSHub()
-    
+
     // Handle connections
     hub.OnConnect(func(ctx context.Context, client router.WSClient, _ any) error {
         username := client.Query("username", "Guest")
         client.Set("username", username)
-        
+
         // Join the main chat room
         client.Join("main")
-        
+
         // Broadcast join message
         client.Room("main").Emit("user_joined", map[string]string{
             "username": username,
             "message": username + " joined the chat",
         })
-        
+
         return nil
     })
-    
+
     // Handle chat messages
     hub.On("chat_message", func(ctx context.Context, client router.WSClient, data any) error {
         username := client.GetString("username")
-        
+
         // Broadcast to everyone in the room
         client.Room("main").Emit("new_message", map[string]any{
             "username": username,
             "message": data,
             "timestamp": time.Now(),
         })
-        
+
         return nil
     })
-    
+
     app.Router().Get("/ws/chat", hub.Handler())
     log.Fatal(app.Serve(":8080"))
 }
@@ -124,7 +124,7 @@ hub := router.NewWSHub()
 
 // Configure event handlers
 hub.OnConnect(connectHandler)
-hub.OnDisconnect(disconnectHandler) 
+hub.OnDisconnect(disconnectHandler)
 hub.On("custom_event", eventHandler)
 hub.OnError(errorHandler)
 
@@ -160,12 +160,12 @@ value := client.GetString("key")
 client.Close(router.CloseNormalClosure, "goodbye")
 ```
 
-### EasyWebSocket
+### NewWSHandler
 
-For simple use cases, `EasyWebSocket` provides a minimal setup:
+For simple use cases, `NewWSHandler` provides a minimal setup:
 
 ```go
-handler := router.EasyWebSocket(func(ctx context.Context, client router.WSClient) error {
+handler := router.NewWSHandler(func(ctx context.Context, client router.WSClient) error {
     // Your WebSocket logic here
     return nil
 })
@@ -179,7 +179,7 @@ app.Router().Get("/ws", handler)
 
 #### Connection Management
 - `OnConnect(handler EventHandler)` - Register connect handler
-- `OnDisconnect(handler EventHandler)` - Register disconnect handler  
+- `OnDisconnect(handler EventHandler)` - Register disconnect handler
 - `OnError(handler WSErrorHandler)` - Register error handler
 - `Close()` - Shutdown the hub
 
@@ -269,8 +269,8 @@ authMiddleware := router.NewWSAuth(router.WSAuthConfig{
     },
 })
 
-// Use with EasyWebSocket
-handler := router.EasyWebSocket(authMiddleware(func(ctx context.Context, client router.WSClient) error {
+// Use with NewWSHandler
+handler := router.NewWSHandler(authMiddleware(func(ctx context.Context, client router.WSClient) error {
     // Authenticated handler
     claims, _ := router.WSAuthClaimsFromContext(ctx)
     client.Set("user_id", claims.UserID())
@@ -333,7 +333,7 @@ chainedMiddleware := router.ChainWSMiddleware(
     rateLimitMiddleware,
 )
 
-handler := router.EasyWebSocket(chainedMiddleware(func(ctx context.Context, client router.WSClient) error {
+handler := router.NewWSHandler(chainedMiddleware(func(ctx context.Context, client router.WSClient) error {
     // Your handler with all middleware applied
     return nil
 }))
@@ -387,25 +387,25 @@ hub := router.NewWSHub()
 hub.OnConnect(func(ctx context.Context, client router.WSClient, _ any) error {
     // Join default room
     client.Join("general")
-    
+
     // Announce join
     client.Room("general").Except(client).Emit("user_joined", map[string]string{
         "user": client.GetString("username"),
     })
-    
+
     return nil
 })
 
 hub.On("join_room", func(ctx context.Context, client router.WSClient, data any) error {
     roomName := data.(string)
     client.Join(roomName)
-    
+
     // Notify room
     client.Room(roomName).Emit("user_joined_room", map[string]string{
         "user": client.GetString("username"),
         "room": roomName,
     })
-    
+
     return nil
 })
 ```
@@ -422,7 +422,7 @@ hub := router.NewWSHub()
 // Handle custom events
 hub.On("chat_message", func(ctx context.Context, client router.WSClient, data any) error {
     message := data.(map[string]any)
-    
+
     // Process and broadcast
     response := map[string]any{
         "type": "new_message",
@@ -430,7 +430,7 @@ hub.On("chat_message", func(ctx context.Context, client router.WSClient, data an
         "text": message["text"],
         "timestamp": time.Now(),
     }
-    
+
     client.Room("chat").Emit("message", response)
     return nil
 })
@@ -441,13 +441,13 @@ hub.On("game_move", func(ctx context.Context, client router.WSClient, data any) 
     if !ok {
         return errors.New("invalid move data")
     }
-    
+
     // Validate move
     if !isValidMove(move) {
         client.Emit("move_error", "Invalid move")
         return nil
     }
-    
+
     // Broadcast move
     client.Room("game").Except(client).Emit("opponent_move", move)
     return nil
@@ -466,7 +466,7 @@ client.OnJSON("game_invite", func(ctx context.Context, data json.RawMessage) err
     if err := json.Unmarshal(data, &invite); err != nil {
         return err
     }
-    
+
     // Process invite
     return handleGameInvite(ctx, client, invite)
 })
@@ -496,27 +496,27 @@ hub.On("file_upload", func(ctx context.Context, client router.WSClient, data any
     fileData := data.(map[string]any)
     fileName := fileData["name"].(string)
     content := fileData["content"].(string)
-    
+
     // Decode base64 content
     decoded, err := base64.StdEncoding.DecodeString(content)
     if err != nil {
         client.Emit("upload_error", "Invalid file content")
         return nil
     }
-    
+
     // Save file
     err = ioutil.WriteFile("uploads/"+fileName, decoded, 0644)
     if err != nil {
         client.Emit("upload_error", "Save failed")
         return nil
     }
-    
+
     // Notify success
     client.Emit("upload_success", map[string]string{
         "file": fileName,
         "size": fmt.Sprintf("%d bytes", len(decoded)),
     })
-    
+
     return nil
 })
 ```
@@ -535,24 +535,24 @@ hub := router.NewWSHub()
 hub.On("make_move", func(ctx context.Context, client router.WSClient, data any) error {
     move := data.(GameMove)
     gameID := client.GetString("game_id")
-    
+
     // Update game state
     newState, err := game.ProcessMove(gameID, move)
     if err != nil {
         client.Emit("invalid_move", err.Error())
         return nil
     }
-    
+
     // Broadcast new state to game room
     client.Room(gameID).Emit("game_state", newState)
-    
+
     // Check for game end
     if winner := game.CheckWinner(newState); winner != "" {
         client.Room(gameID).Emit("game_over", map[string]string{
             "winner": winner,
         })
     }
-    
+
     return nil
 })
 ```
@@ -566,7 +566,7 @@ hub := router.NewWSHub()
 go func() {
     ticker := time.NewTicker(5 * time.Second)
     defer ticker.Stop()
-    
+
     for {
         select {
         case <-ticker.C:
@@ -580,11 +580,11 @@ hub.OnConnect(func(ctx context.Context, client router.WSClient, _ any) error {
     // Join dashboard room if authorized
     if client.GetString("role") == "admin" {
         client.Join("dashboard")
-        
+
         // Send current metrics
         client.Emit("metrics_update", collectMetrics())
     }
-    
+
     return nil
 })
 ```
@@ -598,26 +598,26 @@ config := router.WebSocketConfig{
     // Buffer sizes
     ReadBufferSize:  4096,
     WriteBufferSize: 4096,
-    
+
     // Timeouts
     HandshakeTimeout: 10 * time.Second,
     ReadTimeout:      60 * time.Second,
     WriteTimeout:     10 * time.Second,
-    
+
     // Keep-alive
     PingPeriod: 54 * time.Second,
     PongWait:   60 * time.Second,
-    
+
     // Message limits
     MaxMessageSize: 1024 * 1024, // 1MB
-    
+
     // Compression
     EnableCompression: true,
     CompressionLevel:  6,
-    
+
     // Origins (CORS)
     Origins: []string{"https://myapp.com", "https://admin.myapp.com"},
-    
+
     // Custom origin checker
     CheckOrigin: func(origin string) bool {
         return strings.HasSuffix(origin, ".myapp.com")
@@ -666,7 +666,7 @@ hub := router.NewWSHub()
 // Global error handler
 hub.OnError(func(ctx context.Context, client router.WSClient, err error) {
     log.Printf("WebSocket error for client %s: %v", client.ID(), err)
-    
+
     // Optional: Send error to client
     client.Emit("error", map[string]string{
         "message": "An error occurred",
@@ -680,7 +680,7 @@ hub.On("risky_operation", func(ctx context.Context, client router.WSClient, data
         // Return error to be handled by error handler
         return fmt.Errorf("validation failed: %w", err)
     }
-    
+
     result, err := performOperation(data)
     if err != nil {
         // Send specific error to client
@@ -690,7 +690,7 @@ hub.On("risky_operation", func(ctx context.Context, client router.WSClient, data
         })
         return nil // Don't trigger global error handler
     }
-    
+
     client.Emit("operation_success", result)
     return nil
 })
@@ -726,14 +726,14 @@ hub.OnConnect(func(ctx context.Context, client router.WSClient, _ any) error {
     // Set up client state
     client.Set("connected_at", time.Now())
     client.Set("user_id", extractUserID(ctx))
-    
+
     // Join appropriate rooms
     userRole := extractUserRole(ctx)
     client.Join("users")
     if userRole == "admin" {
         client.Join("admins")
     }
-    
+
     return nil
 })
 
@@ -741,10 +741,10 @@ hub.OnDisconnect(func(ctx context.Context, client router.WSClient, _ any) error 
     // Clean up resources
     userID := client.GetString("user_id")
     cleanupUserResources(userID)
-    
+
     // Notify other users
     client.Broadcast([]byte(fmt.Sprintf(`{"type":"user_offline","user":"%s"}`, userID)))
-    
+
     return nil
 })
 ```
@@ -762,27 +762,27 @@ type ChatMessage struct {
 // Type-safe event handler
 hub.On("chat_message", func(ctx context.Context, client router.WSClient, data any) error {
     var msg ChatMessage
-    
+
     // Parse and validate
     msgBytes, _ := json.Marshal(data)
     if err := json.Unmarshal(msgBytes, &msg); err != nil {
         return fmt.Errorf("invalid message format: %w", err)
     }
-    
+
     // Add metadata
     msg.UserID = client.GetString("user_id")
     msg.Timestamp = time.Now()
-    
+
     // Validate content
     if len(msg.Text) == 0 || len(msg.Text) > 500 {
         client.Emit("message_error", "Message length must be 1-500 characters")
         return nil
     }
-    
+
     // Broadcast to room
     roomID := client.GetString("room_id")
     client.Room(roomID).Emit("new_message", msg)
-    
+
     return nil
 })
 ```
@@ -834,7 +834,7 @@ client.Join("lobby")              // general lobby
 func assignToRoom(client router.WSClient) {
     userLevel := client.GetInt("level")
     region := client.GetString("region")
-    
+
     roomName := fmt.Sprintf("matchmaking:%s:level_%d", region, userLevel/10*10)
     client.Join(roomName)
 }
@@ -842,7 +842,7 @@ func assignToRoom(client router.WSClient) {
 // Clean room strategy for broadcasts
 func broadcastGameUpdate(client router.WSClient, gameData GameData) {
     gameRoom := fmt.Sprintf("game:%s", gameData.ID)
-    
+
     // Different data for players vs spectators
     client.Room(gameRoom).Emit("game_update", gameData.PlayerView())
     client.Room(gameRoom + ":spectators").Emit("game_update", gameData.SpectatorView())
@@ -856,7 +856,7 @@ func broadcastGameUpdate(client router.WSClient, gameData GameData) {
 hub.On("long_operation", func(ctx context.Context, client router.WSClient, data any) error {
     result := make(chan Result)
     errCh := make(chan error)
-    
+
     go func() {
         res, err := performLongOperation(data)
         if err != nil {
@@ -865,7 +865,7 @@ hub.On("long_operation", func(ctx context.Context, client router.WSClient, data 
         }
         result <- res
     }()
-    
+
     select {
     case res := <-result:
         client.Emit("operation_complete", res)
@@ -874,7 +874,7 @@ hub.On("long_operation", func(ctx context.Context, client router.WSClient, data 
     case <-ctx.Done():
         return ctx.Err() // Client disconnected
     }
-    
+
     return nil
 })
 
@@ -886,13 +886,13 @@ type MessageBatch struct {
 
 hub.On("batch_messages", func(ctx context.Context, client router.WSClient, data any) error {
     batch := data.(MessageBatch)
-    
+
     // Process all messages at once
     processedMessages := processBatch(batch.Messages)
-    
+
     // Single broadcast
     client.Room(batch.RoomID).Emit("message_batch", processedMessages)
-    
+
     return nil
 })
 ```
@@ -906,22 +906,22 @@ hub.On("user_input", func(ctx context.Context, client router.WSClient, data any)
     if !ok {
         return errors.New("invalid input type")
     }
-    
+
     // Sanitize
     sanitized := html.EscapeString(input)
-    
+
     // Validate length
     if len(sanitized) > 1000 {
         client.Emit("input_error", "Input too long")
         return nil
     }
-    
+
     // Check permissions
     if !canPerformAction(client, "send_message") {
         client.Emit("permission_error", "Not authorized")
         return nil
     }
-    
+
     // Process safely
     processUserInput(sanitized)
     return nil

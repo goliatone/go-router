@@ -222,6 +222,9 @@ type Router[T any] interface {
 
 	Static(prefix, root string, config ...Static) Router[T]
 
+	// WebSocket handling
+	WebSocket(path string, config WebSocketConfig, handler func(WebSocketContext) error) RouteInfo
+
 	// TODO: Move to a different interface e.g. MetaRouter
 	Routes() []RouteDefinition
 	// For debugging: Print a table of routes and their middleware chain

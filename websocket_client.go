@@ -379,14 +379,15 @@ func (c *wsClient) IsConnected() bool {
 	}
 }
 
-// Query retrieves a query parameter value
+// Query retrieves a query parameter value from the WebSocket upgrade request
 func (c *wsClient) Query(key string, defaultValue ...string) string {
-	// This would need to be implemented based on the actual connection context
-	// For now, return default value if provided
-	if len(defaultValue) > 0 {
-		return defaultValue[0]
+	if c.conn == nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return ""
 	}
-	return ""
+	return c.conn.Query(key, defaultValue...)
 }
 
 // Emit sends an event with data

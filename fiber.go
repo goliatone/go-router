@@ -259,6 +259,27 @@ func (r *FiberRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFun
 	return r.Handle(HEAD, path, handler, mw...)
 }
 
+func (r *FiberRouter) WebSocket(path string, config WebSocketConfig, handler func(WebSocketContext) error) RouteInfo {
+	fullPath := r.joinPath(r.prefix, path)
+
+	r.logger.Info("registering websocket route", "path", path, "fullPath", fullPath)
+
+	// Use FiberWebSocketHandler internally
+	fiberHandler := FiberWebSocketHandler(config, handler)
+
+	// Add to Fiber's routing
+	r.app.Get(fullPath, fiberHandler)
+
+	// Create route info for consistency
+	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
+	route.onSetName = func(name string) {
+		r.app.Name(name)
+		r.addNamedRoute(name, route)
+	}
+
+	return route
+}
+
 func (r *FiberRouter) PrintRoutes() {
 	r.BaseRouter.PrintRoutes()
 }

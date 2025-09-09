@@ -1,5 +1,38 @@
 # Changelog
 
+# [0.7.0](https://github.com/goliatone/go-router/compare/v0.6.0...v0.7.0) - (2025-09-09)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Make examples work ([dcdc40f](https://github.com/goliatone/go-router/commit/dcdc40f7a7bfa466748afd71df3cbf9c126f2c1e))  - (goliatone)
+- Add websocket method to interface ([9440b7e](https://github.com/goliatone/go-router/commit/9440b7e8d4ed7b2e1db4d7a306148c665ddf77cc))  - (goliatone)
+- Implement Query for ws ([9343b1d](https://github.com/goliatone/go-router/commit/9343b1d8c9025714c73a1957a3624a34c5c62930))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.7.0 ([d8f3b8c](https://github.com/goliatone/go-router/commit/d8f3b8c929885b815bc069cc0c27cf5aefd9847c))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- New websocket example ([73f9ce9](https://github.com/goliatone/go-router/commit/73f9ce97865b886761c7aca5ade9a2f2dcdd2bf5))  - (goliatone)
+- Test for websockets ([8891755](https://github.com/goliatone/go-router/commit/8891755bec08e487691a651e4ea14eb65c5d1c10))  - (goliatone)
+- WebSocket implementation ([aa8ecd5](https://github.com/goliatone/go-router/commit/aa8ecd5cd2b50e735fd9901c8a4c35219a4f2ebf))  - (goliatone)
+- Websocket client test ([6ca4c71](https://github.com/goliatone/go-router/commit/6ca4c7141259ff3fea4a50691cc2a910bed9881d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.6.0 ([19e432d](https://github.com/goliatone/go-router/commit/19e432d67a0a086aa4b9f3140c36819ff3303adb))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#7](https://github.com/goliatone/go-router/pull/7): websockets ([8de2fb2](https://github.com/goliatone/go-router/commit/8de2fb2082dfcd819c18fe49488a33a3f2a3918a))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Move exmaple to new dir ([72da3ec](https://github.com/goliatone/go-router/commit/72da3eca477a657835d7825c16c8ba3b621903c8))  - (goliatone)
+- Add doc strings ([250adcc](https://github.com/goliatone/go-router/commit/250adcc8b3ac20187f5227abf60247e29fb56913))  - (goliatone)
+- Update deps ([c04bdc6](https://github.com/goliatone/go-router/commit/c04bdc6b839c104eb4ec6b39d998f02fb192d8e0))  - (goliatone)
+
 # [0.6.0](https://github.com/goliatone/go-router/compare/v0.5.0...v0.6.0) - (2025-09-06)
 
 ## <!-- 1 -->🐛 Bug Fixes

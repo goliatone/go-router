@@ -53,12 +53,36 @@ type WebSocketConfig struct {
 	ReadBufferSize  int
 	WriteBufferSize int
 
-	// Timeouts
+	// Timeouts and Keep-Alive Configuration
+	//
+	// HandshakeTimeout: Maximum time allowed for the WebSocket handshake to complete.
+	// If the client doesn't complete the handshake within this time, the connection
+	// is rejected. Default: 10 seconds.
 	HandshakeTimeout time.Duration
-	ReadTimeout      time.Duration
-	WriteTimeout     time.Duration
-	PingPeriod       time.Duration
-	PongWait         time.Duration
+
+	// ReadTimeout: Maximum time to wait when reading from the WebSocket connection.
+	// If no data is received within this time, the connection is considered dead
+	// and will be closed. This prevents hanging connections that never send data.
+	// Set to 0 to disable read timeout. Default: 60 seconds.
+	ReadTimeout time.Duration
+
+	// WriteTimeout: Maximum time allowed for write operations to the WebSocket.
+	// If a write operation (like sending a message) takes longer than this,
+	// it will timeout and the connection may be closed. Default: 10 seconds.
+	WriteTimeout time.Duration
+
+	// PingPeriod: How often to send ping frames to the client to check if the
+	// connection is still alive. Must be less than PongWait. The server sends
+	// ping frames at this interval to detect broken connections. Default: 54 seconds.
+	// Set to 0 to disable automatic pings.
+	PingPeriod time.Duration
+
+	// PongWait: Maximum time to wait for a pong response after sending a ping.
+	// If the client doesn't respond with a pong within this time after receiving
+	// a ping, the connection is considered dead and will be closed. This is the
+	// primary mechanism for detecting broken connections. Default: 60 seconds.
+	// Must be greater than PingPeriod.
+	PongWait time.Duration
 
 	// Message limits
 	MaxMessageSize int64
@@ -85,7 +109,20 @@ type WebSocketConfig struct {
 	MetricsPrefix string
 }
 
-// DefaultWebSocketConfig returns a WebSocketConfig with sensible defaults
+// DefaultWebSocketConfig returns a WebSocketConfig with sensible defaults that
+// prevent common WebSocket issues like hanging connections and resource leaks.
+//
+// Key timeout defaults prevent connection issues:
+//   - ReadTimeout (60s): Prevents handlers from blocking indefinitely on dead connections
+//   - WriteTimeout (10s): Ensures write operations don't hang the server
+//   - PingPeriod (54s) + PongWait (60s): Automatic connection health checking
+//   - HandshakeTimeout (10s): Prevents slow handshake attacks
+//
+// These defaults ensure that:
+//  1. Dead connections are detected and cleaned up automatically
+//  2. Server resources (goroutines, memory, locks) are released properly
+//  3. APIs and endpoints don't hang due to zombie WebSocket connections
+//  4. The server remains responsive under load
 func DefaultWebSocketConfig() WebSocketConfig {
 	return WebSocketConfig{
 		Origins:                  []string{"*"},

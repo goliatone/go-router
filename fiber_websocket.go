@@ -448,14 +448,13 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 		}
 	}
 
-	return websocket.New(func(conn *websocket.Conn) {
-		// Create Fiber context wrapper
+	wsHandler := websocket.New(func(conn *websocket.Conn) {
+		// Create Fiber context wrapper using a minimal context
 		logger := &defaultLogger{} // Use default logger if not available
-		fiberCtx := NewFiberContext(conn.Locals("fiber.ctx").(*fiber.Ctx), logger).(*fiberContext)
 
-		// Create WebSocket context
+		// create WebSocket context (we don't need the full HTTP context after upgrade)
 		wsCtx := &fiberWebSocketContext{
-			fiberContext:  fiberCtx,
+			fiberContext:  nil, // we handle this case in the WebSocket context methods
 			config:        config,
 			conn:          conn,
 			isUpgraded:    true,
@@ -463,14 +462,11 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 			closeHandlers: make([]func(code int, text string) error, 0),
 		}
 
-		// Set connection parameters
 		if config.MaxMessageSize > 0 {
 			conn.SetReadLimit(config.MaxMessageSize)
 		}
 
-		// Set up ping/pong handlers
 		conn.SetPingHandler(func(appData string) error {
-			// Send pong response
 			writeTimeout := wsCtx.getWriteTimeout()
 			deadline := time.Now().Add(writeTimeout)
 			if err := conn.SetWriteDeadline(deadline); err != nil {
@@ -479,7 +475,6 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 			if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
 				return err
 			}
-			// Call custom handler if set
 			if wsCtx.pingHandler != nil {
 				return wsCtx.pingHandler([]byte(appData))
 			}
@@ -529,6 +524,8 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 			logger.Info("WebSocket handler error", "error", err)
 		}
 	}, wsConfig)
+
+	return wsHandler
 }
 
 // getWriteTimeout returns the write timeout to use

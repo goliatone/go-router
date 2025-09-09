@@ -270,6 +270,23 @@ func (r *HTTPRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFunc
 	return r.Handle(HEAD, path, handler, mw...)
 }
 
+func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func(WebSocketContext) error) RouteInfo {
+	fullPath := r.joinPath(r.prefix, path)
+
+	r.logger.Info("registering websocket route", "path", path, "fullPath", fullPath)
+
+	// Use HTTPRouterWebSocketHandler internally
+	httpHandler := HTTPRouterWebSocketHandler(config, handler, r.views)
+
+	// Add to HTTPRouter
+	r.router.Handle("GET", fullPath, httpHandler)
+
+	// Create route info for consistency
+	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
+
+	return route
+}
+
 func (r *HTTPRouter) PrintRoutes() {
 	r.BaseRouter.PrintRoutes()
 }

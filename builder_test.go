@@ -441,6 +441,15 @@ func (m *MockRouter) Head(path string, handler router.HandlerFunc, mw ...router.
 	return m.Handle(router.HEAD, path, handler, mw...)
 }
 
+func (m *MockRouter) WebSocket(path string, config router.WebSocketConfig, handler func(router.WebSocketContext) error) router.RouteInfo {
+	// For testing, treat WebSocket as a GET route with special handler
+	wsHandler := func(c router.Context) error {
+		// Mock WebSocket context implementation for testing
+		return handler(nil) // In real test, you'd provide a mock WebSocketContext
+	}
+	return m.Handle(router.GET, path, wsHandler)
+}
+
 func (m *MockRouter) PrintRoutes() {
 	// No-op for testing
 }

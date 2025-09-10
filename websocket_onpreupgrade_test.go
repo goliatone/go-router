@@ -138,3 +138,26 @@ func TestGetUpgradeDataWithDefault(t *testing.T) {
 
 	t.Log("✅ GetUpgradeDataWithDefault test passed")
 }
+
+func TestDirectAdapterUpgradeData(t *testing.T) {
+	// Test that direct adapter contexts return nil, false for UpgradeData
+	// This simulates when developers use adapter contexts directly without middleware
+
+	// Test Fiber adapter context (simulated - we can't create a real one easily)
+	enhanced := &enhancedWebSocketContext{
+		upgradeData: nil, // No upgrade data
+	}
+
+	// Should return nil, false
+	if value, exists := enhanced.UpgradeData("any_key"); exists {
+		t.Errorf("Expected no data, but got %v", value)
+	}
+
+	// Convenience function should return default
+	defaultValue := GetUpgradeDataWithDefault(enhanced, "any_key", "default")
+	if defaultValue != "default" {
+		t.Errorf("Expected 'default', got %v", defaultValue)
+	}
+
+	t.Log("✅ Direct adapter UpgradeData fallback test passed")
+}

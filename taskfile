@@ -307,6 +307,97 @@ function release {
 }
 
 ##########################################
+# Client Release Management
+##########################################
+
+##
+## -----
+##
+## client:release
+##
+## Build and release the WebSocket client library.
+## Updates package.json version, builds production files,
+## and updates Go handler version constant.
+##
+## Arguments:
+## @arg 1 {string} [level=patch] Version bump level (major, minor, patch)
+##
+function client:release {
+    local level=${1:-"patch"}
+
+    lgr I "Starting client release process..."
+
+    # Navigate to client directory
+    cd client || {
+        lgr E "Client directory not found"
+        return 1
+    }
+
+    lgr I "Cleaning previous builds..."
+    npm run clean
+
+    lgr I "Building production files..."
+    npm run build
+    npm run build:prod
+    npm run build:types
+
+    lgr I "Bumping package.json version ($level)..."
+    local new_version
+    new_version=$(npm version "$level" --no-git-tag-version | sed 's/^v//')
+
+    if [ -z "$new_version" ]; then
+        lgr E "Failed to bump version"
+        return 1
+    fi
+
+    lgr I "New version: $new_version"
+
+    # Navigate back to root
+    cd ..
+
+    lgr I "Updating WebSocketClientVersion in Go handler..."
+    sed -i.bak "s/WebSocketClientVersion = \"[^\"]*\"/WebSocketClientVersion = \"$new_version\"/" websocket_client_handlers.go
+    rm -f websocket_client_handlers.go.bak
+
+    lgr I "Committing changes..."
+    git add client/package.json client/package-lock.json client/client.min.js client/client.d.ts websocket_client_handlers.go
+    git commit -m "release: WebSocket client v$new_version"
+
+    lgr I "Creating release tag..."
+    git tag -a "client-v$new_version" -m "WebSocket client release v$new_version"
+
+    lgr OK "Client release completed successfully!"
+    lgr I "Version updated to: $new_version"
+    lgr I "Tagged as: client-v$new_version"
+}
+
+##
+## -----
+##
+## client:clean
+##
+## Clean client build artifacts
+##
+function client:clean {
+    cd client || return 1
+    npm run clean
+    cd ..
+}
+
+##
+## -----
+##
+## client:build
+##
+## Build client for development and production
+##
+function client:build {
+    cd client || return 1
+    npm run build
+    cd ..
+}
+
+##########################################
 # Help and auxiliary functions
 ##########################################
 

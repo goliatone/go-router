@@ -371,6 +371,12 @@ func (c *fiberWebSocketContext) ConnectionID() string {
 	return c.connectionID
 }
 
+// UpgradeData returns pre-upgrade data, if available
+// Direct adapter contexts don't have upgrade data - use the WebSocket middleware for that
+func (c *fiberWebSocketContext) UpgradeData(key string) (any, bool) {
+	return nil, false
+}
+
 // FiberWebSocketFactory implements WebSocketContextFactory for Fiber
 type FiberWebSocketFactory struct {
 	logger Logger
@@ -428,7 +434,53 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 	// Apply defaults to config
 	config.ApplyDefaults()
 
-	// Create websocket upgrader config
+	// Return a wrapper function that handles OnPreUpgrade before delegating to WebSocket
+	return func(c *fiber.Ctx) error {
+		// Execute OnPreUpgrade hook if configured
+		var upgradeData UpgradeData
+		if config.OnPreUpgrade != nil {
+			// Create a router context for the hook
+			fiberCtx := NewFiberContext(c, &defaultLogger{}).(*fiberContext)
+
+			data, err := config.OnPreUpgrade(fiberCtx)
+			if err != nil {
+				// Hook failed - prevent WebSocket upgrade
+				return c.Status(400).SendString(fmt.Sprintf("upgrade validation failed: %v", err))
+			}
+			upgradeData = data
+		}
+
+		// Create websocket upgrader config
+		wsConfig := websocket.Config{
+			ReadBufferSize:  config.ReadBufferSize,
+			WriteBufferSize: config.WriteBufferSize,
+			Subprotocols:    config.Subprotocols,
+			Origins:         config.Origins,
+		}
+
+		// Set origin checker
+		if config.CheckOrigin != nil {
+			wsConfig.Filter = func(c *fiber.Ctx) bool {
+				origin := c.Get("Origin")
+				return config.CheckOrigin(origin)
+			}
+		} else if len(config.Origins) > 0 {
+			wsConfig.Filter = func(c *fiber.Ctx) bool {
+				return validateFiberOrigin(c, config.Origins)
+			}
+		}
+
+		// Create WebSocket handler with access to upgradeData via closure
+		wsHandler := createFiberWSHandler(config, handler, upgradeData)
+
+		// Execute the WebSocket handler
+		return wsHandler(c)
+	}
+}
+
+// createFiberWSHandler creates the actual WebSocket handler function
+func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext) error, upgradeData UpgradeData) fiber.Handler {
+	// Create websocket upgrader config (duplicated from above for clarity)
 	wsConfig := websocket.Config{
 		ReadBufferSize:  config.ReadBufferSize,
 		WriteBufferSize: config.WriteBufferSize,
@@ -436,7 +488,7 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 		Origins:         config.Origins,
 	}
 
-	// Set custom origin checker if needed
+	// Set origin checker
 	if config.CheckOrigin != nil {
 		wsConfig.Filter = func(c *fiber.Ctx) bool {
 			origin := c.Get("Origin")
@@ -452,8 +504,8 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 		// Create Fiber context wrapper using a minimal context
 		logger := &defaultLogger{} // Use default logger if not available
 
-		// create WebSocket context (we don't need the full HTTP context after upgrade)
-		wsCtx := &fiberWebSocketContext{
+		// Create base WebSocket context
+		baseWsCtx := &fiberWebSocketContext{
 			fiberContext:  nil, // we handle this case in the WebSocket context methods
 			config:        config,
 			conn:          conn,
@@ -462,12 +514,18 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 			closeHandlers: make([]func(code int, text string) error, 0),
 		}
 
+		// Create enhanced WebSocket context with upgrade data from closure
+		wsCtx := &enhancedWebSocketContext{
+			WebSocketContext: baseWsCtx,
+			upgradeData:      upgradeData, // This comes from the closure
+		}
+
 		if config.MaxMessageSize > 0 {
 			conn.SetReadLimit(config.MaxMessageSize)
 		}
 
 		conn.SetPingHandler(func(appData string) error {
-			writeTimeout := wsCtx.getWriteTimeout()
+			writeTimeout := baseWsCtx.getWriteTimeout()
 			deadline := time.Now().Add(writeTimeout)
 			if err := conn.SetWriteDeadline(deadline); err != nil {
 				return err
@@ -475,8 +533,8 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 			if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
 				return err
 			}
-			if wsCtx.pingHandler != nil {
-				return wsCtx.pingHandler([]byte(appData))
+			if baseWsCtx.pingHandler != nil {
+				return baseWsCtx.pingHandler([]byte(appData))
 			}
 			return nil
 		})
@@ -490,15 +548,15 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 				}
 			}
 			// Call custom handler if set
-			if wsCtx.pongHandler != nil {
-				return wsCtx.pongHandler([]byte(appData))
+			if baseWsCtx.pongHandler != nil {
+				return baseWsCtx.pongHandler([]byte(appData))
 			}
 			return nil
 		})
 
 		conn.SetCloseHandler(func(code int, text string) error {
 			// Call all registered close handlers
-			for _, closeHandler := range wsCtx.closeHandlers {
+			for _, closeHandler := range baseWsCtx.closeHandlers {
 				if err := closeHandler(code, text); err != nil {
 					// Log error but continue with other handlers
 					logger.Info("Close handler error", "error", err)
@@ -508,7 +566,7 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 		})
 
 		// Store negotiated subprotocol
-		wsCtx.subprotocol = conn.Subprotocol()
+		baseWsCtx.subprotocol = conn.Subprotocol()
 
 		// Call OnConnect handler if configured
 		if config.OnConnect != nil {

@@ -40,6 +40,9 @@ const (
 	WebSocketAccept     = "Sec-WebSocket-Accept"
 )
 
+// UpgradeData stores extracted data from HTTP context before WebSocket upgrade
+type UpgradeData map[string]any
+
 // WebSocketConfig contains configuration options for WebSocket connections
 type WebSocketConfig struct {
 	// Origin validation
@@ -100,6 +103,7 @@ type WebSocketConfig struct {
 	OnDisconnect func(WebSocketContext, error)
 	OnMessage    func(WebSocketContext, int, []byte) error
 	OnError      func(WebSocketContext, error)
+	OnPreUpgrade func(Context) (UpgradeData, error)
 
 	// Custom upgrader (adapter-specific)
 	CustomUpgrader any
@@ -181,6 +185,14 @@ func (c *WebSocketConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// GetUpgradeDataWithDefault is a convenience function for WebSocket contexts
+func GetUpgradeDataWithDefault(ws WebSocketContext, key string, defaultValue any) any {
+	if value, exists := ws.UpgradeData(key); exists {
+		return value
+	}
+	return defaultValue
 }
 
 // ApplyDefaults fills in any zero values with sensible defaults

@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Client Library Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.disconnected { background: #f8d7da; color: #721c24; }
+        .status.connecting { background: #fff3cd; color: #856404; }
+        .status.reconnecting { background: #cce5ff; color: #0056b3; }
+
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            margin-bottom: 15px;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .log-entry.info { color: #28a745; }
+        .log-entry.error { color: #dc3545; }
+        .log-entry.warn { color: #ffc107; }
+        .log-entry.debug { color: #6c757d; }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .input-group input, .input-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .input-group input[type="text"] {
+            flex: 1;
+        }
+
+        .input-group button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .input-group button:hover {
+            background: #0056b3;
+        }
+
+        .input-group button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .metric {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+        }
+
+        .token-display {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin-bottom: 10px;
+        }
+
+        h1 { color: #343a40; margin-bottom: 30px; }
+        h2 { color: #495057; margin-bottom: 15px; }
+        h3 { color: #6c757d; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🔌 GoRouter WebSocket Client Library Test</h1>
+
+    <!-- Connection Status -->
+    <div class="container">
+        <h2>Connection Status</h2>
+        <div id="status" class="status disconnected">Disconnected</div>
+
+        <div class="input-group">
+            <input type="text" id="serverUrl" value="ws://localhost:3000/ws" placeholder="WebSocket URL">
+            <select id="tokenSelect">
+                <option value="">Select Demo Token</option>
+                <option value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWRtaW4tMDAxIiwidXNlcm5hbWUiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc1NzU3MzQ0NCwiaWF0IjoxNzU3NDg3MDQ0fQ.VrkukIvZfJkBYKAEdGwxdTLJMndGGqF4oGYSwBTbdfA">Admin</option>
+                <option value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoidXNlci0wMDEiLCJ1c2VybmFtZSI6ImpvaG5fZG9lIiwicm9sZSI6InVzZXIiLCJleHAiOjE3NTc1NzM0NDQsImlhdCI6MTc1NzQ4NzA0NH0.4bRLMbQ7T9jYCAwqCG-NugWHAo77aQl2kcY2HIL_Y-4">User</option>
+                <option value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoibW9kLTAwMSIsInVzZXJuYW1lIjoiamFuZV9zbWl0aCIsInJvbGUiOiJtb2RlcmF0b3IiLCJleHAiOjE3NTc1NzM0NDQsImlhdCI6MTc1NzQ4NzA0NH0.r5DsawnXUA4zuSVzrOGwk32zr0OqaqZhVlBq7vPYNAE">Moderator</option>
+            </select>
+            <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
+        </div>
+    </div>
+
+    <!-- Connection Metrics -->
+    <div class="container">
+        <h2>Connection Metrics</h2>
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value" id="uptime">0</div>
+                <div class="metric-label">Uptime (s)</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="messagesSent">0</div>
+                <div class="metric-label">Messages Sent</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="messagesReceived">0</div>
+                <div class="metric-label">Messages Received</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="reconnectCount">0</div>
+                <div class="metric-label">Reconnects</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="queuedMessages">0</div>
+                <div class="metric-label">Queued Messages</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Testing -->
+    <div class="container">
+        <h2>Message Testing</h2>
+
+        <!-- Chat Messages -->
+        <h3>Chat Messages</h3>
+        <div class="input-group">
+            <input type="text" id="chatInput" placeholder="Type a message..." onkeypress="handleEnter(event, sendChat)">
+            <button onclick="sendChat()">Send Chat</button>
+        </div>
+
+        <!-- Commands -->
+        <h3>Commands</h3>
+        <div class="input-group">
+            <button onclick="getUsers()">Get Users</button>
+            <button onclick="sendPing()">Send Ping</button>
+            <input type="text" id="adminInput" placeholder="Admin command..." onkeypress="handleEnter(event, sendAdminCommand)">
+            <button onclick="sendAdminCommand()">Admin Command</button>
+        </div>
+
+        <!-- Custom Message -->
+        <h3>Custom Message</h3>
+        <div class="input-group">
+            <input type="text" id="customType" placeholder="Message type..." value="custom">
+            <input type="text" id="customData" placeholder="JSON data..." value='{"test": true}'>
+            <button onclick="sendCustomMessage()">Send Custom</button>
+        </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="container">
+        <h2>Event Log</h2>
+        <div id="log" class="log"></div>
+        <div class="input-group">
+            <button onclick="clearLog()">Clear Log</button>
+            <button onclick="exportLog()">Export Log</button>
+            <label>
+                <input type="checkbox" id="debugMode" onchange="toggleDebug()">
+                Debug Mode
+            </label>
+        </div>
+    </div>
+
+    <!-- Load the WebSocket Client Library -->
+    <script src="client.js"></script>
+
+    <script>
+        let client = null;
+        let logEntries = [];
+        let metricsInterval = null;
+
+        function log(level, message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = { timestamp, level, message, data };
+            logEntries.push(entry);
+
+            const logElement = document.getElementById('log');
+            const entryElement = document.createElement('div');
+            entryElement.className = `log-entry ${level}`;
+
+            let displayText = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
+            if (data) {
+                displayText += ' | ' + JSON.stringify(data, null, 0);
+            }
+
+            entryElement.textContent = displayText;
+            logElement.appendChild(entryElement);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function updateStatus(text, className) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = text;
+            statusElement.className = `status ${className}`;
+        }
+
+        function updateMetrics() {
+            if (!client) return;
+
+            const metrics = client.getMetrics();
+
+            document.getElementById('uptime').textContent = Math.floor(metrics.uptime / 1000);
+            document.getElementById('messagesSent').textContent = metrics.messagessent || 0;
+            document.getElementById('messagesReceived').textContent = metrics.messagesReceived || 0;
+            document.getElementById('reconnectCount').textContent = metrics.reconnectCount || 0;
+            document.getElementById('queuedMessages').textContent = client.getQueuedMessageCount();
+        }
+
+        function connect() {
+            if (client && client.isConnected()) {
+                log('warn', 'Already connected');
+                return;
+            }
+
+            const url = document.getElementById('serverUrl').value;
+            const token = document.getElementById('tokenSelect').value;
+
+            if (!url) {
+                log('error', 'Please enter a WebSocket URL');
+                return;
+            }
+
+            if (!token) {
+                log('error', 'Please select a demo token');
+                return;
+            }
+
+            // Create new client
+            client = new WebSocketClient(url, {
+                token: token,
+                autoReconnect: true,
+                maxReconnectAttempts: 5,
+                reconnectDelay: 1000,
+                heartbeatInterval: 30000,
+                queueMessages: true,
+                debug: document.getElementById('debugMode').checked,
+                logLevel: 'debug'
+            });
+
+            // Connection events
+            client.on('connected', (event) => {
+                log('info', 'Connected to server', event);
+                updateStatus('Connected', 'connected');
+
+                // Start metrics updates
+                if (metricsInterval) clearInterval(metricsInterval);
+                metricsInterval = setInterval(updateMetrics, 1000);
+            });
+
+            client.on('disconnected', (event) => {
+                log('info', 'Disconnected from server', event);
+                updateStatus('Disconnected', 'disconnected');
+
+                // Stop metrics updates
+                if (metricsInterval) {
+                    clearInterval(metricsInterval);
+                    metricsInterval = null;
+                }
+            });
+
+            client.on('reconnecting', (event) => {
+                log('info', `Reconnecting (attempt ${event.attempt}/${event.maxAttempts})`, event);
+                updateStatus(`Reconnecting (${event.attempt}/${event.maxAttempts})`, 'reconnecting');
+            });
+
+            client.on('stateChange', (event) => {
+                log('debug', 'State change', event);
+            });
+
+            client.on('error', (error) => {
+                log('error', 'WebSocket error: ' + error.message, error);
+            });
+
+            // Authentication events
+            client.on('auth_success', (data) => {
+                log('info', 'Authentication successful', data);
+            });
+
+            client.on('auth_failed', (error) => {
+                log('error', 'Authentication failed: ' + error.message, error);
+            });
+
+            // Message events
+            client.on('message', (data) => {
+                log('debug', 'Raw message received', data);
+            });
+
+            client.on('chat_message', (data) => {
+                log('info', `Chat from ${data.username} (${data.role}): ${data.text}`, data);
+            });
+
+            client.on('user_joined', (data) => {
+                log('info', `User joined: ${data.username} (${data.role})`, data);
+            });
+
+            client.on('user_left', (data) => {
+                log('info', `User left: ${data.username}`, data);
+            });
+
+            client.on('users_list', (data) => {
+                log('info', `Users list received: ${data.count} users`, data);
+            });
+
+            client.on('admin_announcement', (data) => {
+                log('info', 'Admin announcement: ' + data.message, data);
+            });
+
+            client.on('pong', (data) => {
+                log('debug', 'Pong received', data);
+            });
+
+            client.on('welcome', (data) => {
+                log('info', 'Welcome message: ' + data.message, data);
+            });
+
+            // Start connection
+            updateStatus('Connecting...', 'connecting');
+            client.connect().then(() => {
+                log('info', 'Connection initiated successfully');
+            }).catch(error => {
+                log('error', 'Failed to initiate connection: ' + error.message, error);
+                updateStatus('Connection failed', 'disconnected');
+            });
+        }
+
+        function disconnect() {
+            if (!client) {
+                log('warn', 'No client to disconnect');
+                return;
+            }
+
+            client.disconnect();
+            updateStatus('Disconnected', 'disconnected');
+
+            if (metricsInterval) {
+                clearInterval(metricsInterval);
+                metricsInterval = null;
+            }
+        }
+
+        function sendChat() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+
+            if (!text) {
+                log('warn', 'Enter a message to send');
+                return;
+            }
+
+            if (!client || !client.isAuthenticated()) {
+                log('error', 'Not connected or authenticated');
+                return;
+            }
+
+            client.send({
+                type: 'chat_message',
+                text: text
+            }).then(() => {
+                log('info', 'Chat message sent: ' + text);
+                input.value = '';
+            }).catch(error => {
+                log('error', 'Failed to send chat message: ' + error.message, error);
+            });
+        }
+
+        function sendAdminCommand() {
+            const input = document.getElementById('adminInput');
+            const command = input.value.trim();
+
+            if (!command) {
+                log('warn', 'Enter a command to send');
+                return;
+            }
+
+            if (!client || !client.isAuthenticated()) {
+                log('error', 'Not connected or authenticated');
+                return;
+            }
+
+            client.send({
+                type: 'admin_command',
+                command: command
+            }).then(() => {
+                log('info', 'Admin command sent: ' + command);
+                input.value = '';
+            }).catch(error => {
+                log('error', 'Failed to send admin command: ' + error.message, error);
+            });
+        }
+
+        function getUsers() {
+            if (!client || !client.isAuthenticated()) {
+                log('error', 'Not connected or authenticated');
+                return;
+            }
+
+            client.sendCommand('get_users', {}, 5000).then(response => {
+                log('info', 'Users command response received', response);
+            }).catch(error => {
+                log('error', 'Failed to get users: ' + error.message, error);
+            });
+        }
+
+        function sendPing() {
+            if (!client || !client.isConnected()) {
+                log('error', 'Not connected');
+                return;
+            }
+
+            client.send({ type: 'ping' }).then(() => {
+                log('info', 'Ping sent');
+            }).catch(error => {
+                log('error', 'Failed to send ping: ' + error.message, error);
+            });
+        }
+
+        function sendCustomMessage() {
+            const typeInput = document.getElementById('customType');
+            const dataInput = document.getElementById('customData');
+
+            const messageType = typeInput.value.trim();
+            let messageData = {};
+
+            if (!messageType) {
+                log('warn', 'Enter a message type');
+                return;
+            }
+
+            if (dataInput.value.trim()) {
+                try {
+                    messageData = JSON.parse(dataInput.value);
+                } catch (error) {
+                    log('error', 'Invalid JSON data: ' + error.message);
+                    return;
+                }
+            }
+
+            if (!client || !client.isConnected()) {
+                log('error', 'Not connected');
+                return;
+            }
+
+            const message = {
+                type: messageType,
+                ...messageData
+            };
+
+            client.send(message).then(() => {
+                log('info', 'Custom message sent', message);
+            }).catch(error => {
+                log('error', 'Failed to send custom message: ' + error.message, error);
+            });
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            logEntries = [];
+        }
+
+        function exportLog() {
+            const dataStr = JSON.stringify(logEntries, null, 2);
+            const dataBlob = new Blob([dataStr], {type:'application/json'});
+
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(dataBlob);
+            link.download = 'websocket-client-log.json';
+            link.click();
+
+            log('info', 'Log exported');
+        }
+
+        function toggleDebug() {
+            const debugMode = document.getElementById('debugMode').checked;
+            log('info', 'Debug mode: ' + (debugMode ? 'enabled' : 'disabled'));
+
+            if (client) {
+                client.options.debug = debugMode;
+            }
+        }
+
+        function handleEnter(event, callback) {
+            if (event.key === 'Enter') {
+                callback();
+            }
+        }
+
+        // Initialize
+        log('info', 'WebSocket Client Test Page loaded');
+        log('info', 'Library version: ' + (WebSocketClient.VERSION || 'unknown'));
+
+        // Update metrics display
+        setInterval(updateMetrics, 1000);
+    </script>
+</body>
+</html>

@@ -12,6 +12,9 @@ import (
 //go:embed client/websocket-client.js
 var websocketClientJS []byte
 
+//go:embed client/websocket-client.js.map
+var websocketClientMinMap []byte
+
 //go:embed client/websocket-client.min.js
 var websocketClientMinJS []byte
 
@@ -32,11 +35,12 @@ const (
 
 // Generate ETags for cache validation
 var (
-	websocketClientETag    = generateETag(websocketClientJS, "js")
-	websocketClientMinETag = generateETag(websocketClientMinJS, "min.js")
-	websocketClientDTSETag = generateETag(websocketClientDTS, "dts")
-	websocketExamplesETag  = generateETag(websocketExamplesJS, "examples.js")
-	websocketTestETag      = generateETag(websocketTestHTML, "test.html")
+	websocketClientETag       = generateETag(websocketClientJS, "js")
+	websocketClientMinETag    = generateETag(websocketClientMinJS, "min.js")
+	websocketClientMinMapEtag = generateETag(websocketClientMinMap, "js.map")
+	websocketClientDTSETag    = generateETag(websocketClientDTS, "dts")
+	websocketExamplesETag     = generateETag(websocketExamplesJS, "examples.js")
+	websocketTestETag         = generateETag(websocketTestHTML, "test.html")
 )
 
 // generateETag creates a simple ETag from content hash and type
@@ -122,6 +126,22 @@ func WebSocketClientTypesHandler() HandlerFunc {
 }
 
 // WebSocketExamplesHandler serves usage examples
+func WebsocketClientMinMapHandler() HandlerFunc {
+	return func(c Context) error {
+		// Check ETag for caching
+		if checkETag(c, websocketClientMinMapEtag) {
+			return c.Status(304).Send(nil)
+		}
+
+		// Set headers (shorter cache for examples)
+		setCommonHeaders(c, "application/javascript; charset=utf-8", websocketClientMinMapEtag, 30*time.Minute)
+		c.SetHeader("Content-Disposition", "inline; filename=websocket-examples.js")
+
+		return c.Status(200).Send(websocketClientMinMap)
+	}
+}
+
+// WebSocketExamplesHandler serves usage examples
 func WebSocketExamplesHandler() HandlerFunc {
 	return func(c Context) error {
 		// Check ETag for caching
@@ -169,8 +189,13 @@ func RegisterWSHandlers[T any](app Router[T], cfgs ...WSClientHandlerConfig) {
 		cfg = cfgs[0]
 	}
 
-	app.Get("/client/client.js", WebSocketClientHandler(cfg.Minified))
-	app.Get("/client/client.min.js", WSClientMinHandler())
+	if cfg.Minified {
+		app.Get("/client/client.min.js", WebSocketClientHandler(true))
+		app.Get("/client/client.js.map", WebsocketClientMinMapHandler())
+	} else {
+		app.Get("/client/client.js", WebSocketClientHandler(false))
+	}
+
 	app.Get("/client/client.d.ts", WSClientTypesHandler())
 
 	if cfg.Debug {

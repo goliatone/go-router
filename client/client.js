@@ -18,14 +18,14 @@ var __WebSocketClientModule = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/websocket-client.ts
-  var websocket_client_exports = {};
-  __export(websocket_client_exports, {
+  // src/client.ts
+  var client_exports = {};
+  __export(client_exports, {
     CONNECTION_STATES: () => CONNECTION_STATES,
     EventEmitter: () => EventEmitter,
     MESSAGE_TYPES: () => MESSAGE_TYPES,
     WebSocketClient: () => WebSocketClient,
-    default: () => websocket_client_default
+    default: () => client_default
   });
   var CONNECTION_STATES = {
     DISCONNECTED: "disconnected",
@@ -582,8 +582,8 @@ var __WebSocketClientModule = (() => {
   WebSocketClient.CONNECTION_STATES = CONNECTION_STATES;
   WebSocketClient.MESSAGE_TYPES = MESSAGE_TYPES;
   WebSocketClient.EventEmitter = EventEmitter;
-  var websocket_client_default = WebSocketClient;
-  return __toCommonJS(websocket_client_exports);
+  var client_default = WebSocketClient;
+  return __toCommonJS(client_exports);
 })();
 /**
  * GoRouter WebSocket Client Library

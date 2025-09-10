@@ -12,10 +12,10 @@
   ],
   "scripts": {
     "build": "npm run build:dev && npm run build:prod && npm run build:types",
-    "build:dev": "esbuild src/websocket-client.ts --bundle --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=client.js --sourcemap --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",
-    "build:prod": "esbuild src/websocket-client.ts --bundle --minify --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=client.min.js --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",
+    "build:dev": "esbuild src/client.ts --bundle --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=client.js --sourcemap --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",
+    "build:prod": "esbuild src/client.ts --bundle --minify --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=client.min.js --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",
     "build:types": "tsc --declaration --emitDeclarationOnly --outDir .",
-    "watch": "esbuild src/websocket-client.ts --bundle --target=es2018 --format=iife --global-name=WebSocketClient --outfile=client.js --sourcemap --watch",
+    "watch": "esbuild src/client.ts --bundle --target=es2018 --format=iife --global-name=WebSocketClient --outfile=client.js --sourcemap --watch",
     "clean": "rm -f client.js client.min.js client.d.ts *.map"
   },
   "keywords": [

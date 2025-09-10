@@ -202,7 +202,7 @@ This library uses **esbuild** for ultra-fast compilation:
 
 ### Development Workflow
 
-1. Edit TypeScript source in `src/websocket-client.ts`
+1. Edit TypeScript source in `src/client.ts`
 2. Run `npm run build` or `npm run watch`
 3. Built files are automatically embedded in Go binary
 4. Test with your WebSocket server
@@ -215,7 +215,7 @@ MIT License - see LICENSE file for details.
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes in `src/websocket-client.ts`
+3. Make your changes in `src/client.ts`
 4. Run `npm run build` to ensure it compiles
 5. Test with the WebSocket server examples
 6. Submit a pull request

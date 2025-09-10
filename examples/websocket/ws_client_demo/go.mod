@@ -7,6 +7,8 @@ require (
 	github.com/goliatone/go-router v0.7.0
 )
 
+replace github.com/goliatone/go-router => ../../..
+
 require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect

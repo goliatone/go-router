@@ -1,6 +1,6 @@
 {
   "name": "@goliatone/websocket-client",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "GoRouter WebSocket Client Library - A comprehensive WebSocket client library with authentication, reconnection, and message queuing",
   "main": "websocket-client.js",
   "types": "websocket-client.d.ts",

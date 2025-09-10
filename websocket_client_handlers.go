@@ -26,7 +26,7 @@ var websocketTestHTML []byte
 
 // Version and build information
 const (
-	WebSocketClientVersion = "1.0.1"
+	WebSocketClientVersion = "1.0.2"
 	WebSocketClientBuild   = "production"
 )
 
@@ -151,7 +151,38 @@ func WebSocketTestHandler() HandlerFunc {
 	}
 }
 
+type WSClientHandlerConfig struct {
+	BaseRoute string
+	Minified  bool
+	Debug     bool
+}
+
 // Convenience handler functions for common patterns
+func RegisterWSHandlers[T any](app Router[T], cfgs ...WSClientHandlerConfig) {
+	cfg := WSClientHandlerConfig{
+		BaseRoute: "/client",
+		Minified:  true,
+		Debug:     false,
+	}
+
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
+	}
+
+	app.Get("/client/client.js", WebSocketClientHandler(cfg.Minified))
+	app.Get("/client/client.min.js", WSClientMinHandler())
+	app.Get("/client/client.d.ts", WSClientTypesHandler())
+
+	if cfg.Debug {
+		app.Get("/client/examples.js", WSExamplesHandler())
+		app.Get("/client/test", WSTestHandler())
+		app.Get("/client/info", WebSocketClientInfoHandler())
+	}
+
+	app.Get("/client/", func(c Context) error {
+		return c.Redirect("/client/test", 302)
+	})
+}
 
 // WSClientHandler serves the regular (non-minified) WebSocket client
 func WSClientHandler() HandlerFunc {

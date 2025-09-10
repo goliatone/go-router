@@ -1,5 +1,78 @@
 # Changelog
 
+# [0.8.0](https://github.com/goliatone/go-router/compare/client-v1.0.4...v0.8.0) - (2025-09-10)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.8.0 ([f65f234](https://github.com/goliatone/go-router/commit/f65f234c3331b24e2f6e22864cda5a63125bc71e))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Rename websocket to client ([600706e](https://github.com/goliatone/go-router/commit/600706e787d0fdb5f165ae75e2295879210ac21b))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#8](https://github.com/goliatone/go-router/pull/8): ws client ([51b5683](https://github.com/goliatone/go-router/commit/51b5683c6dae4fae080cbbe058d346bc9cfc7d2f))  - (goliatone)
+
+# [client-v1.0.4](https://github.com/goliatone/go-router/compare/client-v1.0.3...client-v1.0.4) - (2025-09-10)
+
+## <!-- 12 -->🔖 Releases
+
+- WebSocket client v1.0.4 ([28935c7](https://github.com/goliatone/go-router/commit/28935c7669211d353a9d5c7365e88fdc055096b8))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Rename websocket to client ([524bfe5](https://github.com/goliatone/go-router/commit/524bfe5a5e806d3f20b36ba456a10ac5189e800d))  - (goliatone)
+
+# [client-v1.0.3](https://github.com/goliatone/go-router/compare/client-v1.0.2...client-v1.0.3) - (2025-09-10)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Serve map info for debug mode ([8ae2f10](https://github.com/goliatone/go-router/commit/8ae2f103530727a789d464ac28d0ac854bb4fb30))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- WebSocket client v1.0.3 ([07c05b9](https://github.com/goliatone/go-router/commit/07c05b99183f1e8445e96c2e1a751101ee6738ff))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Handle upgrade data so we can access query info ([5098af7](https://github.com/goliatone/go-router/commit/5098af767c5b363b903872f7948290ec130e420d))  - (goliatone)
+- Git ignore node sutff ([3e47b4d](https://github.com/goliatone/go-router/commit/3e47b4d833ced515264e2b99b831fd5abb057a31))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Rename websocket to client ([22d863a](https://github.com/goliatone/go-router/commit/22d863aa33d1bf11591059824a6709038fafeaf7))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update client build process ([6a668b4](https://github.com/goliatone/go-router/commit/6a668b4e154443ecfc748a16a98b0633e0188094))  - (goliatone)
+
+# [client-v1.0.2](https://github.com/goliatone/go-router/compare/client-v1.0.1...client-v1.0.2) - (2025-09-10)
+
+## <!-- 12 -->🔖 Releases
+
+- WebSocket client v1.0.2 ([c6942b2](https://github.com/goliatone/go-router/commit/c6942b2fd4573271768abae3b6874ce1e6441384))  - (goliatone)
+
+# [client-v1.0.1](https://github.com/goliatone/go-router/compare/v0.7.0...client-v1.0.1) - (2025-09-10)
+
+## <!-- 12 -->🔖 Releases
+
+- WebSocket client v1.0.1 ([f08cd95](https://github.com/goliatone/go-router/commit/f08cd956c697f5f68dca350fd47286106a034c40))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Client TS setup ([1e2e7ec](https://github.com/goliatone/go-router/commit/1e2e7ec6a215bb8706d154196c6d374e25f56b6d))  - (goliatone)
+- Ws auth example ([b2a38a0](https://github.com/goliatone/go-router/commit/b2a38a0f2dcb8a288b9685d9378d8558bfdfffbe))  - (goliatone)
+- Ws client handler ([4bbe3fa](https://github.com/goliatone/go-router/commit/4bbe3fa562fda4e4567bf88dc3a0dbdbca8d6ba9))  - (goliatone)
+- Ws client ([bdcf916](https://github.com/goliatone/go-router/commit/bdcf916875dc71e9ad74231f7348423d1ae456ec))  - (goliatone)
+- OnUpgrade websocket demo ([e086a26](https://github.com/goliatone/go-router/commit/e086a26814dd13a13b8aa3984bf9a7e3a3d6aa33))  - (goliatone)
+- WS Auth demo ([d0cd5d1](https://github.com/goliatone/go-router/commit/d0cd5d115a877b5a130934b151964763a6e9fd9b))  - (goliatone)
+- Test onupgrade ([acb7b0c](https://github.com/goliatone/go-router/commit/acb7b0c6603168e299d2aac8e25f99a9235068c0))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.7.0 ([d38119a](https://github.com/goliatone/go-router/commit/d38119a75b2faf79e5267e1d1ff16a1a931f0103))  - (goliatone)
+
 # [0.7.0](https://github.com/goliatone/go-router/compare/v0.6.0...v0.7.0) - (2025-09-09)
 
 ## <!-- 1 -->🐛 Bug Fixes

@@ -47,7 +47,7 @@ type DemoAuthenticator struct {
 }
 
 func (a *DemoAuthenticator) ValidateToken(tokenString string) (*DemoJWTClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &DemoJWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &DemoJWTClaims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -111,7 +111,7 @@ func (s *WebSocketServer) addClient(client *AuthenticatedClient) {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
 	s.clients[client.ID] = client
-	
+
 	s.logger.Info("Client authenticated and added",
 		"client_id", client.ID,
 		"user_id", client.UserID,
@@ -123,7 +123,7 @@ func (s *WebSocketServer) addClient(client *AuthenticatedClient) {
 func (s *WebSocketServer) removeClient(clientID string) {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
-	
+
 	if client, exists := s.clients[clientID]; exists {
 		delete(s.clients, clientID)
 		s.logger.Info("Client disconnected and removed",
@@ -144,7 +144,7 @@ func (s *WebSocketServer) getClient(clientID string) (*AuthenticatedClient, bool
 func (s *WebSocketServer) getAllClients() []*AuthenticatedClient {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
-	
+
 	clients := make([]*AuthenticatedClient, 0, len(s.clients))
 	for _, client := range s.clients {
 		clients = append(clients, client)
@@ -201,7 +201,7 @@ func (s *WebSocketServer) CreateWebSocketHandler() func(router.WebSocketContext)
 				if client, exists := s.getClient(clientID); exists {
 					// Client just authenticated, send welcome and broadcast join
 					ws.WriteJSON(map[string]any{
-						"type":     "welcome", 
+						"type":     "welcome",
 						"message":  fmt.Sprintf("Welcome %s! You are connected as %s", client.Username, client.Role),
 						"user_id":  client.UserID,
 						"username": client.Username,
@@ -228,7 +228,7 @@ func (s *WebSocketServer) CreateWebSocketHandler() func(router.WebSocketContext)
 		// Clean up on disconnect
 		if client, exists := s.getClient(clientID); exists {
 			s.removeClient(clientID)
-			
+
 			// Broadcast user left
 			s.broadcastToAll(map[string]any{
 				"type":      "user_left",
@@ -294,14 +294,14 @@ func (s *WebSocketServer) handleUnauthenticatedMessage(ws router.WebSocketContex
 		})
 	}
 
-	s.logger.Info("Processing authentication message", 
-		"client_id", ws.ConnectionID(), 
+	s.logger.Info("Processing authentication message",
+		"client_id", ws.ConnectionID(),
 		"token_length", len(token))
 
 	// Validate token
 	claims, err := s.authenticator.ValidateToken(token)
 	if err != nil {
-		s.logger.Error("Token validation failed", 
+		s.logger.Error("Token validation failed",
 			"client_id", ws.ConnectionID(),
 			"error", err)
 		return ws.WriteJSON(map[string]any{
@@ -359,7 +359,7 @@ func (s *WebSocketServer) handleChatMessage(client *AuthenticatedClient, msg map
 	}
 
 	s.broadcastToAll(response)
-	s.logger.Info("Chat message broadcasted", 
+	s.logger.Info("Chat message broadcasted",
 		"from_user", client.Username,
 		"message_length", len(text))
 
@@ -383,7 +383,7 @@ func (s *WebSocketServer) handleAdminCommand(client *AuthenticatedClient, msg ma
 	}
 
 	// Execute admin command (demo purposes)
-	s.logger.Info("Admin command executed", 
+	s.logger.Info("Admin command executed",
 		"admin", client.Username,
 		"command", command)
 
@@ -401,7 +401,7 @@ func (s *WebSocketServer) handleAdminCommand(client *AuthenticatedClient, msg ma
 func (s *WebSocketServer) handleGetUsers(client *AuthenticatedClient) error {
 	clients := s.getAllClients()
 	users := make([]map[string]any, len(clients))
-	
+
 	for i, c := range clients {
 		users[i] = map[string]any{
 			"user_id":   c.UserID,
@@ -429,11 +429,11 @@ func (s *WebSocketServer) CreateOnConnectHandler() func(router.WebSocketContext)
 	return func(ws router.WebSocketContext) error {
 		clientID := ws.ConnectionID()
 		s.logger.Info("WebSocket OnConnect called", "client_id", clientID)
-		
+
 		// For Fiber WebSocket, query parameters need to be extracted differently
 		// The token should be passed via the WebSocket URL when connecting
 		// We'll implement a message-based authentication instead since query access is limited
-		
+
 		// Send authentication request
 		ws.WriteJSON(map[string]any{
 			"type":    "auth_required",
@@ -447,7 +447,7 @@ func (s *WebSocketServer) CreateOnConnectHandler() func(router.WebSocketContext)
 
 func main() {
 	fmt.Println("🚀 Starting WebSocket Authentication Demo")
-	
+
 	// Determine adapter type
 	adapterType := "fiber" // default
 	if len(os.Args) > 1 {
@@ -471,20 +471,20 @@ func main() {
 		app := router.NewFiberAdapter()
 		setupWebSocketRoutes(app, wsServer)
 		setupHTTPRoutes(app, wsServer, adminToken, userToken, moderatorToken)
-		
+
 		fmt.Println("\n🌐 Fiber server starting on http://localhost:3000")
 		fmt.Println("WebSocket endpoint: ws://localhost:3000/ws?token=<your-token>")
 		log.Fatal(app.Serve(":3000"))
-		
+
 	case "httprouter", "http":
 		app := router.NewHTTPServer()
 		setupWebSocketRoutes(app, wsServer)
 		setupHTTPRoutes(app, wsServer, adminToken, userToken, moderatorToken)
-		
+
 		fmt.Println("\n🌐 HTTPRouter server starting on http://localhost:8080")
 		fmt.Println("WebSocket endpoint: ws://localhost:8080/ws?token=<your-token>")
 		log.Fatal(app.Serve(":8080"))
-		
+
 	default:
 		fmt.Printf("Unknown adapter: %s\n", adapterType)
 		fmt.Println("Usage: go run main.go [fiber|httprouter]")
@@ -508,28 +508,28 @@ func setupWebSocketRoutes[T any](app router.Server[T], wsServer *WebSocketServer
 	// WebSocket configuration using OnPreUpgrade hook
 	config := router.WebSocketConfig{
 		Origins: []string{"*"},
-		
+
 		// OnPreUpgrade: Clean extraction and validation BEFORE WebSocket upgrade
 		OnPreUpgrade: func(c router.Context) (router.UpgradeData, error) {
 			wsServer.logger.Info("OnPreUpgrade: extracting and validating token with guaranteed HTTP context")
-			
+
 			// Extract token with guaranteed HTTP context access
 			token := c.Query("token")
 			if token == "" {
 				wsServer.logger.Error("No token parameter provided")
 				return nil, fmt.Errorf("token parameter required")
 			}
-			
+
 			// Pre-validate token before upgrade
 			claims, err := wsServer.authenticator.ValidateToken(token)
 			if err != nil {
 				wsServer.logger.Error("Invalid token in query parameter", "error", err)
 				return nil, fmt.Errorf("invalid token: %w", err)
 			}
-			
-			wsServer.logger.Info("Token validated successfully in OnPreUpgrade", 
+
+			wsServer.logger.Info("Token validated successfully in OnPreUpgrade",
 				"user", claims.Username, "role", claims.Role)
-			
+
 			// Return structured data for WebSocket context
 			return router.UpgradeData{
 				"token":     token,
@@ -539,21 +539,21 @@ func setupWebSocketRoutes[T any](app router.Server[T], wsServer *WebSocketServer
 				"auth_time": time.Now(),
 			}, nil
 		},
-		
+
 		// OnConnect: Clean access to pre-validated data
 		OnConnect: func(ws router.WebSocketContext) error {
 			wsServer.logger.Info("OnConnect: accessing pre-validated upgrade data")
-			
+
 			// Get pre-validated auth data using the new UpgradeData method
 			userID := router.GetUpgradeDataWithDefault(ws, "user_id", "").(string)
 			username := router.GetUpgradeDataWithDefault(ws, "username", "").(string)
 			role := router.GetUpgradeDataWithDefault(ws, "role", "").(string)
-			
+
 			if userID == "" || username == "" || role == "" {
 				wsServer.logger.Error("Upgrade data not available")
 				return fmt.Errorf("authentication data missing")
 			}
-			
+
 			// Create authenticated client directly
 			client := &AuthenticatedClient{
 				ID:       ws.ConnectionID(),
@@ -563,14 +563,14 @@ func setupWebSocketRoutes[T any](app router.Server[T], wsServer *WebSocketServer
 				WS:       ws,
 				JoinedAt: time.Now(),
 			}
-			
+
 			wsServer.addClient(client)
-			
+
 			wsServer.logger.Info("Client authenticated via OnPreUpgrade hook",
 				"client_id", ws.ConnectionID(),
 				"user", username,
 				"role", role)
-			
+
 			return ws.WriteJSON(map[string]any{
 				"type":     "auth_success",
 				"message":  fmt.Sprintf("Authenticated via OnPreUpgrade as %s (%s)", username, role),
@@ -586,9 +586,9 @@ func setupWebSocketRoutes[T any](app router.Server[T], wsServer *WebSocketServer
 		},
 	}
 
-	// Register WebSocket endpoint 
+	// Register WebSocket endpoint
 	app.Router().WebSocket("/ws", config, wsServer.CreateWebSocketHandler())
-	
+
 	wsServer.logger.Info("WebSocket routes configured with OnPreUpgrade hook authentication")
 }
 
@@ -604,7 +604,7 @@ func setupHTTPRoutes[T any](app router.Server[T], wsServer *WebSocketServer, adm
 	app.Router().Get("/api/users", func(c router.Context) error {
 		clients := wsServer.getAllClients()
 		users := make([]map[string]any, len(clients))
-		
+
 		for i, client := range clients {
 			users[i] = map[string]any{
 				"user_id":   client.UserID,
@@ -658,7 +658,7 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
         <div class="section">
             <h3>Connection Status</h3>
             <div id="status" class="status disconnected">Disconnected</div>
-            
+
             <div class="token-section">
                 <label for="tokenSelect">Select Demo User:</label>
                 <select id="tokenSelect">
@@ -669,7 +669,7 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
                 <button onclick="connect()">Connect</button>
                 <button onclick="disconnect()">Disconnect</button>
             </div>
-            
+
             <div class="token-section">
                 <h4>Demo Tokens:</h4>
                 <div><strong>Admin:</strong> <div class="token">%s</div></div>
@@ -718,6 +718,7 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
 
     <script>
         let ws = null;
+        let pingInterval = null;
         let currentToken = '';
         let currentUser = null;
 
@@ -744,7 +745,7 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
 
             const tokenSelect = document.getElementById('tokenSelect');
             currentToken = tokenSelect.value;
-            
+
             if (!currentToken) {
                 addMessage('Please select a demo user', 'error');
                 return;
@@ -759,11 +760,27 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
                 updateStatus('Connected', true);
                 addMessage('✅ WebSocket connected successfully', 'system');
                 addMessage('🔐 Authentication handled via OnPreUpgrade hook', 'system');
+
+                // Start sending pings every 30 seconds to keep connection alive
+                pingInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        sendMessage({ type: 'ping' });
+                    }
+                }, 30000);
+                addMessage('🔄 Started automatic keepalive pings (every 30s)', 'system');
             };
 
             ws.onclose = function(event) {
                 updateStatus('Disconnected', false);
                 addMessage('❌ WebSocket disconnected (code: ' + event.code + ')', 'system');
+
+                // Clear ping interval
+                if (pingInterval) {
+                    clearInterval(pingInterval);
+                    pingInterval = null;
+                    addMessage('⏹ Stopped automatic keepalive pings', 'system');
+                }
+
                 ws = null;
                 currentUser = null;
             };
@@ -799,7 +816,7 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
                     addMessage('✅ OnPreUpgrade authentication successful: ' + data.message, 'system');
                     updateUserInfo();
                     break;
-                    
+
                 case 'welcome':
                     addMessage('🎉 ' + data.message, 'system');
                     break;
@@ -832,7 +849,7 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
                     break;
 
                 case 'pong':
-                    addMessage('🏓 Pong received', 'system');
+                    addMessage('🏓 Pong received (keepalive)', 'system');
                     break;
 
                 case 'error':

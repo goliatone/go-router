@@ -1,5 +1,5 @@
 "use strict";
-var WebSocketClient = (() => {
+var __WebSocketClientModule = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -577,13 +577,10 @@ var WebSocketClient = (() => {
       }
     }
   };
-  var websocket_client_default = WebSocketClient;
   WebSocketClient.CONNECTION_STATES = CONNECTION_STATES;
   WebSocketClient.MESSAGE_TYPES = MESSAGE_TYPES;
   WebSocketClient.EventEmitter = EventEmitter;
-  if (typeof globalThis !== "undefined") {
-    globalThis.WebSocketClient = WebSocketClient;
-  }
+  var websocket_client_default = WebSocketClient;
   return __toCommonJS(websocket_client_exports);
 })();
 /**
@@ -594,4 +591,5 @@ var WebSocketClient = (() => {
  * @author GoRouter Team
  * @license MIT
  */
+var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;
 //# sourceMappingURL=websocket-client.js.map

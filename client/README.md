@@ -23,7 +23,7 @@ npm install @goliatone/websocket-client
 
 ### CDN Usage
 ```html
-<script src="/client/websocket-client.min.js"></script>
+<script src="/client/client.min.js"></script>
 ```
 
 ### Local Development
@@ -100,19 +100,19 @@ interface WebSocketClientOptions {
     reconnectDelay?: number;        // Default: 1000ms
     maxReconnectDelay?: number;     // Default: 30000ms
     reconnectDecay?: number;        // Default: 1.5
-    
+
     // Authentication
     token?: string | null;          // JWT token
     tokenRefreshCallback?: () => Promise<string>; // Token refresh function
-    
+
     // Heartbeat/keepalive
     heartbeatInterval?: number;     // Default: 30000ms
     heartbeatTimeout?: number;      // Default: 5000ms
-    
+
     // Message handling
     queueMessages?: boolean;        // Default: true
     maxQueueSize?: number;          // Default: 100
-    
+
     // Debugging
     debug?: boolean;                // Default: false
     logLevel?: 'debug' | 'info' | 'warn' | 'error'; // Default: 'info'
@@ -196,7 +196,7 @@ This library uses **esbuild** for ultra-fast compilation:
 ### Build Outputs
 
 - `websocket-client.js` - Development build with source maps (18.3KB)
-- `websocket-client.min.js` - Production build, minified (10.4KB) 
+- `websocket-client.min.js` - Production build, minified (10.4KB)
 - `websocket-client.d.ts` - TypeScript definitions
 - `websocket-client.js.map` - Source map for debugging
 

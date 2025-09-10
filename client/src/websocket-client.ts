@@ -214,6 +214,11 @@ export interface WebSocketClientEventMap {
  * WebSocket Client with comprehensive features and full TypeScript support
  */
 export class WebSocketClient extends EventEmitter<WebSocketClientEventMap> {
+    // Static properties for constants
+    static CONNECTION_STATES: typeof CONNECTION_STATES;
+    static MESSAGE_TYPES: typeof MESSAGE_TYPES;
+    static EventEmitter: typeof EventEmitter;
+    
     public readonly url: string;
     public readonly options: Required<WebSocketClientOptions>;
     
@@ -763,15 +768,10 @@ export class WebSocketClient extends EventEmitter<WebSocketClientEventMap> {
     }
 }
 
-// Export as default and add static properties for backward compatibility
+// Add static properties to the constructor
+WebSocketClient.CONNECTION_STATES = CONNECTION_STATES;
+WebSocketClient.MESSAGE_TYPES = MESSAGE_TYPES;
+WebSocketClient.EventEmitter = EventEmitter;
+
+// Export the constructor as default for IIFE format
 export default WebSocketClient;
-
-// Add static properties
-(WebSocketClient as any).CONNECTION_STATES = CONNECTION_STATES;
-(WebSocketClient as any).MESSAGE_TYPES = MESSAGE_TYPES;
-(WebSocketClient as any).EventEmitter = EventEmitter;
-
-// For UMD/IIFE global export
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).WebSocketClient = WebSocketClient;
-}

@@ -12,8 +12,8 @@
   ],
   "scripts": {
     "build": "npm run build:dev && npm run build:prod && npm run build:types",
-    "build:dev": "esbuild src/websocket-client.ts --bundle --target=es2018 --format=iife --global-name=WebSocketClient --outfile=websocket-client.js --sourcemap",
-    "build:prod": "esbuild src/websocket-client.ts --bundle --minify --target=es2018 --format=iife --global-name=WebSocketClient --outfile=websocket-client.min.js",
+    "build:dev": "esbuild src/websocket-client.ts --bundle --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=websocket-client.js --sourcemap --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",
+    "build:prod": "esbuild src/websocket-client.ts --bundle --minify --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=websocket-client.min.js --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",
     "build:types": "tsc --declaration --emitDeclarationOnly --outDir .",
     "watch": "esbuild src/websocket-client.ts --bundle --target=es2018 --format=iife --global-name=WebSocketClient --outfile=websocket-client.js --sourcemap --watch",
     "clean": "rm -f websocket-client.js websocket-client.min.js websocket-client.d.ts *.map"

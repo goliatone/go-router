@@ -12,7 +12,7 @@
             padding: 20px;
             background-color: #f5f5f5;
         }
-        
+
         .container {
             background: white;
             border-radius: 8px;
@@ -20,19 +20,19 @@
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        
+
         .status {
             padding: 10px;
             border-radius: 4px;
             font-weight: bold;
             margin-bottom: 15px;
         }
-        
+
         .status.connected { background: #d4edda; color: #155724; }
         .status.disconnected { background: #f8d7da; color: #721c24; }
         .status.connecting { background: #fff3cd; color: #856404; }
         .status.reconnecting { background: #cce5ff; color: #0056b3; }
-        
+
         .log {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
@@ -45,35 +45,35 @@
             line-height: 1.4;
             margin-bottom: 15px;
         }
-        
+
         .log-entry {
             margin-bottom: 5px;
             padding: 2px 0;
         }
-        
+
         .log-entry.info { color: #28a745; }
         .log-entry.error { color: #dc3545; }
         .log-entry.warn { color: #ffc107; }
         .log-entry.debug { color: #6c757d; }
-        
+
         .input-group {
             display: flex;
             gap: 10px;
             margin-bottom: 15px;
             align-items: center;
         }
-        
+
         .input-group input, .input-group select {
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
         }
-        
+
         .input-group input[type="text"] {
             flex: 1;
         }
-        
+
         .input-group button {
             padding: 8px 16px;
             background: #007bff;
@@ -83,23 +83,23 @@
             cursor: pointer;
             font-size: 14px;
         }
-        
+
         .input-group button:hover {
             background: #0056b3;
         }
-        
+
         .input-group button:disabled {
             background: #6c757d;
             cursor: not-allowed;
         }
-        
+
         .metrics {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 15px;
             margin-bottom: 15px;
         }
-        
+
         .metric {
             text-align: center;
             padding: 15px;
@@ -107,19 +107,19 @@
             border-radius: 4px;
             border: 1px solid #e9ecef;
         }
-        
+
         .metric-value {
             font-size: 24px;
             font-weight: bold;
             color: #007bff;
         }
-        
+
         .metric-label {
             font-size: 12px;
             color: #6c757d;
             text-transform: uppercase;
         }
-        
+
         .token-display {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
@@ -130,7 +130,7 @@
             word-break: break-all;
             margin-bottom: 10px;
         }
-        
+
         h1 { color: #343a40; margin-bottom: 30px; }
         h2 { color: #495057; margin-bottom: 15px; }
         h3 { color: #6c757d; margin-bottom: 10px; }
@@ -138,12 +138,12 @@
 </head>
 <body>
     <h1>🔌 GoRouter WebSocket Client Library Test</h1>
-    
+
     <!-- Connection Status -->
     <div class="container">
         <h2>Connection Status</h2>
         <div id="status" class="status disconnected">Disconnected</div>
-        
+
         <div class="input-group">
             <input type="text" id="serverUrl" value="ws://localhost:3000/ws" placeholder="WebSocket URL">
             <select id="tokenSelect">
@@ -156,7 +156,7 @@
             <button onclick="disconnect()">Disconnect</button>
         </div>
     </div>
-    
+
     <!-- Connection Metrics -->
     <div class="container">
         <h2>Connection Metrics</h2>
@@ -183,18 +183,18 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Message Testing -->
     <div class="container">
         <h2>Message Testing</h2>
-        
+
         <!-- Chat Messages -->
         <h3>Chat Messages</h3>
         <div class="input-group">
             <input type="text" id="chatInput" placeholder="Type a message..." onkeypress="handleEnter(event, sendChat)">
             <button onclick="sendChat()">Send Chat</button>
         </div>
-        
+
         <!-- Commands -->
         <h3>Commands</h3>
         <div class="input-group">
@@ -203,7 +203,7 @@
             <input type="text" id="adminInput" placeholder="Admin command..." onkeypress="handleEnter(event, sendAdminCommand)">
             <button onclick="sendAdminCommand()">Admin Command</button>
         </div>
-        
+
         <!-- Custom Message -->
         <h3>Custom Message</h3>
         <div class="input-group">
@@ -212,7 +212,7 @@
             <button onclick="sendCustomMessage()">Send Custom</button>
         </div>
     </div>
-    
+
     <!-- Event Log -->
     <div class="container">
         <h2>Event Log</h2>
@@ -228,8 +228,8 @@
     </div>
 
     <!-- Load the WebSocket Client Library -->
-    <script src="websocket-client.js"></script>
-    
+    <script src="client.js"></script>
+
     <script>
         let client = null;
         let logEntries = [];
@@ -239,16 +239,16 @@
             const timestamp = new Date().toLocaleTimeString();
             const entry = { timestamp, level, message, data };
             logEntries.push(entry);
-            
+
             const logElement = document.getElementById('log');
             const entryElement = document.createElement('div');
             entryElement.className = `log-entry ${level}`;
-            
+
             let displayText = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
             if (data) {
                 displayText += ' | ' + JSON.stringify(data, null, 0);
             }
-            
+
             entryElement.textContent = displayText;
             logElement.appendChild(entryElement);
             logElement.scrollTop = logElement.scrollHeight;
@@ -262,9 +262,9 @@
 
         function updateMetrics() {
             if (!client) return;
-            
+
             const metrics = client.getMetrics();
-            
+
             document.getElementById('uptime').textContent = Math.floor(metrics.uptime / 1000);
             document.getElementById('messagesSent').textContent = metrics.messagessent || 0;
             document.getElementById('messagesReceived').textContent = metrics.messagesReceived || 0;
@@ -280,7 +280,7 @@
 
             const url = document.getElementById('serverUrl').value;
             const token = document.getElementById('tokenSelect').value;
-            
+
             if (!url) {
                 log('error', 'Please enter a WebSocket URL');
                 return;
@@ -307,7 +307,7 @@
             client.on('connected', (event) => {
                 log('info', 'Connected to server', event);
                 updateStatus('Connected', 'connected');
-                
+
                 // Start metrics updates
                 if (metricsInterval) clearInterval(metricsInterval);
                 metricsInterval = setInterval(updateMetrics, 1000);
@@ -316,7 +316,7 @@
             client.on('disconnected', (event) => {
                 log('info', 'Disconnected from server', event);
                 updateStatus('Disconnected', 'disconnected');
-                
+
                 // Stop metrics updates
                 if (metricsInterval) {
                     clearInterval(metricsInterval);
@@ -397,7 +397,7 @@
 
             client.disconnect();
             updateStatus('Disconnected', 'disconnected');
-            
+
             if (metricsInterval) {
                 clearInterval(metricsInterval);
                 metricsInterval = null;
@@ -407,7 +407,7 @@
         function sendChat() {
             const input = document.getElementById('chatInput');
             const text = input.value.trim();
-            
+
             if (!text) {
                 log('warn', 'Enter a message to send');
                 return;
@@ -432,7 +432,7 @@
         function sendAdminCommand() {
             const input = document.getElementById('adminInput');
             const command = input.value.trim();
-            
+
             if (!command) {
                 log('warn', 'Enter a command to send');
                 return;
@@ -483,10 +483,10 @@
         function sendCustomMessage() {
             const typeInput = document.getElementById('customType');
             const dataInput = document.getElementById('customData');
-            
+
             const messageType = typeInput.value.trim();
             let messageData = {};
-            
+
             if (!messageType) {
                 log('warn', 'Enter a message type');
                 return;
@@ -526,19 +526,19 @@
         function exportLog() {
             const dataStr = JSON.stringify(logEntries, null, 2);
             const dataBlob = new Blob([dataStr], {type:'application/json'});
-            
+
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(dataBlob);
             link.download = 'websocket-client-log.json';
             link.click();
-            
+
             log('info', 'Log exported');
         }
 
         function toggleDebug() {
             const debugMode = document.getElementById('debugMode').checked;
             log('info', 'Debug mode: ' + (debugMode ? 'enabled' : 'disabled'));
-            
+
             if (client) {
                 client.options.debug = debugMode;
             }
@@ -553,7 +553,7 @@
         // Initialize
         log('info', 'WebSocket Client Test Page loaded');
         log('info', 'Library version: ' + (WebSocketClient.VERSION || 'unknown'));
-        
+
         // Update metrics display
         setInterval(updateMetrics, 1000);
     </script>

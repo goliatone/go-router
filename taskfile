@@ -360,7 +360,7 @@ function client:release {
     rm -f websocket_client_handlers.go.bak
 
     lgr I "Committing changes..."
-    git add client/package.json client/package-lock.json client/websocket-client.min.js client/websocket-client.d.ts websocket_client_handlers.go
+    git add client/package.json client/package-lock.json client/client.min.js client/client.d.ts websocket_client_handlers.go
     git commit -m "release: WebSocket client v$new_version"
 
     lgr I "Creating release tag..."

@@ -39,31 +39,41 @@ func WebSocketUpgrade(config WebSocketConfig) MiddlewareFunc {
 				return c.Status(400).SendString("Unsupported subprotocol")
 			}
 
-			// 4. Validate WebSocket key
+			// 4. Execute OnPreUpgrade hook if configured
+			var upgradeData UpgradeData
+			if config.OnPreUpgrade != nil {
+				data, err := config.OnPreUpgrade(c)
+				if err != nil {
+					return c.Status(400).SendString("upgrade validation failed")
+				}
+				upgradeData = data
+			}
+
+			// 5. Validate WebSocket key
 			wsKey := c.Header(WebSocketKey)
 			if !validateWebSocketKey(wsKey) {
 				return c.Status(400).SendString("Invalid WebSocket key")
 			}
 
-			// 5. Create adapter-specific WebSocket context
-			wsCtx, err := createWebSocketContext(c, config, selectedProtocol)
+			// 6. Create adapter-specific WebSocket context
+			wsCtx, err := createWebSocketContext(c, config, selectedProtocol, upgradeData)
 			if err != nil {
 				return fmt.Errorf("failed to create websocket context: %w", err)
 			}
 
-			// 6. Set up WebSocket response headers
+			// 7. Set up WebSocket response headers
 			if err := setupWebSocketHeaders(c, wsKey, selectedProtocol); err != nil {
 				return fmt.Errorf("failed to setup websocket headers: %w", err)
 			}
 
-			// 7. Call event handler if configured
+			// 8. Call event handler if configured
 			if config.OnConnect != nil {
 				if err := config.OnConnect(wsCtx); err != nil {
 					return fmt.Errorf("websocket connect handler failed: %w", err)
 				}
 			}
 
-			// 8. Continue with WebSocket context
+			// 9. Continue with WebSocket context
 			return next(wsCtx)
 		}
 	}
@@ -88,7 +98,7 @@ func setupWebSocketHeaders(c Context, wsKey, protocol string) error {
 }
 
 // createWebSocketContext creates an adapter-specific WebSocket context
-func createWebSocketContext(c Context, config WebSocketConfig, protocol string) (WebSocketContext, error) {
+func createWebSocketContext(c Context, config WebSocketConfig, protocol string, upgradeData UpgradeData) (WebSocketContext, error) {
 	// Get the adapter-specific factory
 	factory := getWebSocketFactory(c)
 	if factory == nil {
@@ -101,11 +111,16 @@ func createWebSocketContext(c Context, config WebSocketConfig, protocol string) 
 		return nil, err
 	}
 
+	// Wrap with enhanced context that includes upgrade data
+	enhancedWsCtx := &enhancedWebSocketContext{
+		WebSocketContext: wsCtx,
+		upgradeData:      upgradeData,
+	}
+
 	// Note: protocol parameter will be used by adapter-specific implementations
-	// in Phase 3 and 4 to set the negotiated subprotocol
 	_ = protocol // Suppress unused parameter warning for now
 
-	return wsCtx, nil
+	return enhancedWsCtx, nil
 }
 
 // getWebSocketFactory returns the appropriate WebSocket factory for the context type
@@ -180,4 +195,19 @@ func WebSocketMiddlewareWithSubprotocols(protocols ...string) MiddlewareFunc {
 	config := DefaultWebSocketConfig()
 	config.Subprotocols = protocols
 	return WebSocketUpgrade(config)
+}
+
+// enhancedWebSocketContext wraps a WebSocket context to provide upgrade data access
+type enhancedWebSocketContext struct {
+	WebSocketContext
+	upgradeData UpgradeData
+}
+
+// UpgradeData implements the UpgradeData method to provide access to pre-upgrade data
+func (e *enhancedWebSocketContext) UpgradeData(key string) (any, bool) {
+	if e.upgradeData == nil {
+		return nil, false
+	}
+	value, exists := e.upgradeData[key]
+	return value, exists
 }

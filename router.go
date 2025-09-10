@@ -175,6 +175,9 @@ type WebSocketContext interface {
 	// Connection properties
 	IsConnected() bool
 	ConnectionID() string
+
+	// Pre-upgrade data access
+	UpgradeData(key string) (any, bool)
 }
 
 // NamedHandler is a handler with a name for debugging/printing

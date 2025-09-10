@@ -110,7 +110,10 @@ export const MESSAGE_TYPES = {
     // Notifications
     ADMIN_ANNOUNCEMENT: 'admin_announcement',
     WELCOME: 'welcome',
-    ERROR: 'error'
+    ERROR: 'error',
+    
+    // Custom message types
+    CUSTOM: 'custom'
 } as const;
 
 const DEFAULT_OPTIONS: Required<WebSocketClientOptions> = {

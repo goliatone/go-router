@@ -461,6 +461,12 @@ func (c *httpRouterWebSocketContext) ConnectionID() string {
 	return c.connectionID
 }
 
+// UpgradeData returns pre-upgrade data, if available
+// Direct adapter contexts don't have upgrade data - use the WebSocket middleware for that
+func (c *httpRouterWebSocketContext) UpgradeData(key string) (any, bool) {
+	return nil, false
+}
+
 // Helper function to validate origin for HTTP requests
 func validateHTTPOrigin(r *http.Request, allowedOrigins []string) bool {
 	origin := r.Header.Get("Origin")

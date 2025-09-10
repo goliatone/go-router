@@ -21,7 +21,25 @@ go run examples/websocket/advanced/main.go
 - **Interactive Dashboard**: Tabbed interface with real time stats
 - **Connection Management**: Advanced WebSocket lifecycle handling
 
-### 2. 🏠 Advanced Room System (`advanced_rooms/`)
+### 2. 🔐 WebSocket Authentication (`ws_auth/`)
+**JWT Authentication Example** - Demonstrates proper WebSocket authentication patterns with role-based authorization.
+
+```bash
+go run examples/websocket/ws_auth/main.go
+# Visit http://localhost:3000 (Fiber) or http://localhost:8080 (HTTPRouter)
+```
+
+**Features:**
+- **JWT Token Authentication**: Proper query parameter authentication flow
+- **Role-Based Authorization**: Admin, moderator, and user roles with different permissions  
+- **Unified Interface Demo**: Same code works with both Fiber and HTTPRouter adapters
+- **Query Parameter Access**: Shows correct way to access query params in WebSocket OnConnect
+- **Real-time Chat**: Role-based chat with user presence tracking
+- **Admin Commands**: Admin-only features with broadcast announcements
+- **Interactive Demo**: Complete web interface with pre-generated demo tokens
+- **Connection Management**: Proper client lifecycle and state management
+
+### 3. 🏠 Advanced Room System (`advanced_rooms/`)
 Sophisticated room based messaging with advanced client management and statistics.
 
 ```bash
@@ -37,7 +55,7 @@ go run examples/websocket/advanced_rooms/main.go
 - Room based message history
 - Client join/leave notifications
 
-### 3. 💬 Simple Chat (`simple_chat/`)
+### 4. 💬 Simple Chat (`simple_chat/`)
 A complete multiuser chat room demonstrating basic real time messaging patterns.
 
 ```bash
@@ -295,6 +313,59 @@ go run examples/websocket/advanced/main.go
    - Test ping/echo → Note "Binary: 1, JSON: 0" counters
    - Switch to "MessagePack" → Note counter changes
 4. **Reset stats**: Click "Reset Stats" to clear all counters
+
+### WebSocket Authentication Testing
+
+Complete authentication flow testing with JWT tokens and role-based features:
+
+```bash
+go run examples/websocket/ws_auth/main.go
+# Visit http://localhost:3000 (Fiber) or http://localhost:8080 (HTTPRouter)
+```
+
+#### 1. **Connection & Authentication Test**
+1. **Valid Authentication**: Select "Admin User" and click "Connect"
+   - Should show "✅ WebSocket connected successfully"  
+   - Status should display "Connected as 👑 admin (admin)"
+   - Should receive welcome message in chat
+
+2. **Invalid Authentication**: Modify the URL to use an invalid token
+   - Should show "🔒 Authentication failed: Invalid token"
+   - Connection should fail gracefully
+
+3. **No Token Test**: Try connecting without selecting a user
+   - Should show authentication error message
+   - Demonstrates proper validation
+
+#### 2. **Role-Based Feature Testing**  
+1. **Admin Features** (Connect as Admin User):
+   - Send admin command in "Admin Commands" section
+   - Should broadcast announcement to all connected users
+   - Other users should see "📢 ADMIN: Admin executed: ..." message
+
+2. **Regular User Limitations** (Connect as Regular User):  
+   - Try to execute admin command → Should show "❌ Error: Admin privileges required"
+   - Can send chat messages and use basic features
+
+3. **Multi-Role Chat** (Open multiple tabs):
+   - Connect as different roles (Admin 👑, User 👤, Moderator 🛡️)  
+   - Send messages from each → All should see role indicators
+   - Each message shows appropriate emoji and role
+
+#### 3. **Real-time Features Test**
+1. **User Presence**:  
+   - Open multiple tabs with different users
+   - Watch join notifications: "➕ 👤 john_doe joined the chat"
+   - Close tabs → Watch leave notifications: "➖ admin left the chat"
+
+2. **Connected Users List**:
+   - Click "Get Connected Users" → Should show all active users with roles
+   - Click "Refresh Users" → Updates via HTTP API
+   - Each user shows join time and role badge
+
+3. **Ping/Pong Test**:
+   - Click "Send Ping" → Should get "🏓 Pong received" response
+   - Tests basic connectivity
 
 ### Room Management (Advanced Rooms)
 ```bash

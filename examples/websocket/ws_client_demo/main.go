@@ -561,22 +561,20 @@ func setupWebSocketRoutes[T any](app router.Server[T], wsServer *WebSocketServer
 }
 
 func setupClientRoutes[T any](app router.Server[T], wsServer *WebSocketServer, adminToken, userToken, moderatorToken string) {
-	// Register all WebSocket client routes manually
-	app.Router().Get("/client/client.js", router.WSClientHandler())
-	app.Router().Get("/client/client.min.js", router.WSClientMinHandler())
-	app.Router().Get("/client/client.d.ts", router.WSClientTypesHandler())
-	app.Router().Get("/client/examples.js", router.WSExamplesHandler())
-	app.Router().Get("/client/test", router.WSTestHandler())
-	app.Router().Get("/client/info", router.WebSocketClientInfoHandler())
-	app.Router().Get("/client/", func(c router.Context) error {
-		return c.Redirect("/client/test", 302)
+	router.RegisterWSHandlers(app.Router(), router.WSClientHandlerConfig{
+		Debug: true,
 	})
-	
-	// Additional routes using original filenames
-	app.Router().Get("/client/websocket-client.js", router.WSClientHandler())
-	app.Router().Get("/client/websocket-client.min.js", router.WSClientMinHandler())
-	app.Router().Get("/client/websocket-client.d.ts", router.WSClientTypesHandler())
-	app.Router().Get("/client/test-client.html", router.WSTestHandler())
+
+	// If you want to register all WebSocket client routes manually:
+	// app.Router().Get("/client/client.js", router.WSClientHandler())
+	// app.Router().Get("/client/client.min.js", router.WSClientMinHandler())
+	// app.Router().Get("/client/client.d.ts", router.WSClientTypesHandler())
+	// app.Router().Get("/client/examples.js", router.WSExamplesHandler())
+	// app.Router().Get("/client/test", router.WSTestHandler())
+	// app.Router().Get("/client/info", router.WebSocketClientInfoHandler())
+	// app.Router().Get("/client/", func(c router.Context) error {
+	// 	return c.Redirect("/client/test", 302)
+	// })
 
 	// Home page with information about available endpoints
 	app.Router().Get("/", func(c router.Context) error {

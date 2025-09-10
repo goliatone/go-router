@@ -9,16 +9,16 @@ import (
 
 // Embed WebSocket client files at compile time
 //
-//go:embed client/websocket-client.js
+//go:embed client/client.js
 var websocketClientJS []byte
 
-//go:embed client/websocket-client.js.map
+//go:embed client/client.js.map
 var websocketClientMinMap []byte
 
-//go:embed client/websocket-client.min.js
+//go:embed client/client.min.js
 var websocketClientMinJS []byte
 
-//go:embed client/websocket-client.d.ts
+//go:embed client/client.d.ts
 var websocketClientDTS []byte
 
 //go:embed client/examples.js
@@ -29,7 +29,7 @@ var websocketTestHTML []byte
 
 // Version and build information
 const (
-	WebSocketClientVersion = "1.0.2"
+	WebSocketClientVersion = "1.0.3"
 	WebSocketClientBuild   = "production"
 )
 
@@ -76,11 +76,11 @@ func WebSocketClientHandler(minified bool) HandlerFunc {
 		if minified {
 			content = websocketClientMinJS
 			etag = websocketClientMinETag
-			filename = "websocket-client.min.js"
+			filename = "client.min.js"
 		} else {
 			content = websocketClientJS
 			etag = websocketClientETag
-			filename = "websocket-client.js"
+			filename = "client.js"
 		}
 
 		// Check ETag for caching
@@ -113,7 +113,7 @@ func WebSocketClientTypesHandler() HandlerFunc {
 
 		// Set headers
 		setCommonHeaders(c, "text/plain; charset=utf-8", websocketClientDTSETag, time.Hour)
-		c.SetHeader("Content-Disposition", "inline; filename=websocket-client.d.ts")
+		c.SetHeader("Content-Disposition", "inline; filename=client.d.ts")
 
 		// Enable CORS for CDN usage if requested
 		if c.Query("cors") == "true" {
@@ -134,8 +134,8 @@ func WebsocketClientMinMapHandler() HandlerFunc {
 		}
 
 		// Set headers (shorter cache for examples)
-		setCommonHeaders(c, "application/javascript; charset=utf-8", websocketClientMinMapEtag, 30*time.Minute)
-		c.SetHeader("Content-Disposition", "inline; filename=websocket-examples.js")
+		setCommonHeaders(c, "application/json; charset=utf-8", websocketClientMinMapEtag, 30*time.Minute)
+		c.SetHeader("Content-Disposition", "inline; filename=client.js.map")
 
 		return c.Status(200).Send(websocketClientMinMap)
 	}
@@ -301,9 +301,6 @@ func RegisterWebSocketClientRoutesManual() map[string]HandlerFunc {
 		"test":          WSTestHandler(),
 		"info":          WebSocketClientInfoHandler(),
 		"":              func(c Context) error { return c.Redirect("/client/test", 302) },
-		// Legacy aliases
-		"ws-client.js":     WSClientHandler(),
-		"ws-client.min.js": WSClientMinHandler(),
 	}
 }
 

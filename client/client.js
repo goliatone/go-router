@@ -57,7 +57,9 @@ var __WebSocketClientModule = (() => {
     // Notifications
     ADMIN_ANNOUNCEMENT: "admin_announcement",
     WELCOME: "welcome",
-    ERROR: "error"
+    ERROR: "error",
+    // Custom message types
+    CUSTOM: "custom"
   };
   var DEFAULT_OPTIONS = {
     // Connection settings

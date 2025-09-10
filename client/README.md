@@ -195,10 +195,10 @@ This library uses **esbuild** for ultra-fast compilation:
 
 ### Build Outputs
 
-- `websocket-client.js` - Development build with source maps (18.3KB)
-- `websocket-client.min.js` - Production build, minified (10.4KB)
-- `websocket-client.d.ts` - TypeScript definitions
-- `websocket-client.js.map` - Source map for debugging
+- `client.js` - Development build with source maps (18.3KB)
+- `client.min.js` - Production build, minified (10.4KB)
+- `client.d.ts` - TypeScript definitions
+- `client.js.map` - Source map for debugging
 
 ### Development Workflow
 

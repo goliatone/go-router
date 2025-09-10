@@ -592,4 +592,4 @@ var __WebSocketClientModule = (() => {
  * @license MIT
  */
 var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;
-//# sourceMappingURL=websocket-client.js.map
+//# sourceMappingURL=client.js.map

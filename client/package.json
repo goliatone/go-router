@@ -1,0 +1,44 @@
+{
+  "name": "@goliatone/websocket-client",
+  "version": "1.0.0",
+  "description": "GoRouter WebSocket Client Library - A comprehensive WebSocket client library with authentication, reconnection, and message queuing",
+  "main": "websocket-client.js",
+  "types": "websocket-client.d.ts",
+  "files": [
+    "websocket-client.js",
+    "websocket-client.min.js",
+    "websocket-client.d.ts",
+    "src/"
+  ],
+  "scripts": {
+    "build": "npm run build:dev && npm run build:prod && npm run build:types",
+    "build:dev": "esbuild src/websocket-client.ts --bundle --target=es2018 --format=iife --global-name=WebSocketClient --outfile=websocket-client.js --sourcemap",
+    "build:prod": "esbuild src/websocket-client.ts --bundle --minify --target=es2018 --format=iife --global-name=WebSocketClient --outfile=websocket-client.min.js",
+    "build:types": "tsc --declaration --emitDeclarationOnly --outDir .",
+    "watch": "esbuild src/websocket-client.ts --bundle --target=es2018 --format=iife --global-name=WebSocketClient --outfile=websocket-client.js --sourcemap --watch",
+    "clean": "rm -f websocket-client.js websocket-client.min.js websocket-client.d.ts *.map"
+  },
+  "keywords": [
+    "websocket",
+    "client",
+    "gorouter",
+    "real-time",
+    "authentication",
+    "reconnection",
+    "typescript"
+  ],
+  "author": "GoRouter Team",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.19.12",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/goliatone/go-router"
+  },
+  "bugs": {
+    "url": "https://github.com/goliatone/go-router/issues"
+  },
+  "homepage": "https://github.com/goliatone/go-router#readme"
+}

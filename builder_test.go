@@ -583,3 +583,11 @@ func (m *mockContext) GetBool(k string, def bool) bool {
 	}
 	return def
 }
+
+func (m *mockContext) RouteName() string {
+	return ""
+}
+
+func (m *mockContext) RouteParams() map[string]string {
+	return make(map[string]string)
+}

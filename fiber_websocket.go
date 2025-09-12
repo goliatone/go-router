@@ -594,6 +594,22 @@ func (c *fiberWebSocketContext) getWriteTimeout() time.Duration {
 	return 10 * time.Second // Default
 }
 
+// RouteName returns the route name from context
+func (c *fiberWebSocketContext) RouteName() string {
+	if name, ok := RouteNameFromContext(c.Context()); ok {
+		return name
+	}
+	return ""
+}
+
+// RouteParams returns all route parameters as a map
+func (c *fiberWebSocketContext) RouteParams() map[string]string {
+	if params, ok := RouteParamsFromContext(c.Context()); ok {
+		return params
+	}
+	return make(map[string]string)
+}
+
 // validateFiberOrigin validates the origin for Fiber WebSocket requests
 func validateFiberOrigin(c *fiber.Ctx, allowedOrigins []string) bool {
 	origin := c.Get("Origin")

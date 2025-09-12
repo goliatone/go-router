@@ -174,6 +174,17 @@ func (br *BaseRouter) GetRoute(name string) *RouteDefinition {
 	return br.root.namedRoutes[name]
 }
 
+func (br *BaseRouter) RouteNameFromPath(method string, pathPattern string) (string, bool) {
+	for _, route := range br.root.routes {
+		if route.Method == HTTPMethod(method) && route.Path == pathPattern {
+			if route.Name != "" {
+				return route.Name, true
+			}
+		}
+	}
+	return "", false
+}
+
 func (br *BaseRouter) joinPath(prefix, path string) string {
 	// Trim excess slashes
 	prefix = strings.TrimRight(prefix, "/")

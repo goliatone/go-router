@@ -15,6 +15,14 @@ const (
 	HeaderContentType   = "Content-Type"
 )
 
+// Context keys for route information
+type contextKey int
+
+const (
+	contextKeyRouteName contextKey = iota
+	contextKeyRouteParams
+)
+
 // HTTPMethod represents HTTP request methods
 type HTTPMethod string
 
@@ -139,6 +147,10 @@ type Context interface {
 	Context() context.Context
 	SetContext(context.Context)
 	Next() error
+
+	// Route context methods
+	RouteName() string
+	RouteParams() map[string]string
 }
 
 // WebSocketContext extends Context for WebSocket operations
@@ -301,4 +313,23 @@ func MiddlewareFromHTTP(mw func(next http.Handler) http.Handler) MiddlewareFunc 
 			return nil
 		}
 	}
+}
+
+// Helper functions for type-safe context operations
+func WithRouteName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, contextKeyRouteName, name)
+}
+
+func WithRouteParams(ctx context.Context, params map[string]string) context.Context {
+	return context.WithValue(ctx, contextKeyRouteParams, params)
+}
+
+func RouteNameFromContext(ctx context.Context) (string, bool) {
+	name, ok := ctx.Value(contextKeyRouteName).(string)
+	return name, ok
+}
+
+func RouteParamsFromContext(ctx context.Context) (map[string]string, bool) {
+	params, ok := ctx.Value(contextKeyRouteParams).(map[string]string)
+	return params, ok
 }

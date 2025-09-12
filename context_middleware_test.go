@@ -426,6 +426,225 @@ func TestParameterExtractionEdgeCases(t *testing.T) {
 	}
 }
 
+// TestContextIntegration_ValueInjection tests context value injection during WrapHandler
+func TestContextIntegration_ValueInjection(t *testing.T) {
+	tests := []struct {
+		name        string
+		routeName   string
+		routeParams map[string]string
+		description string
+	}{
+		{
+			name:        "Basic route context injection",
+			routeName:   "users.show",
+			routeParams: map[string]string{"id": "123"},
+			description: "Basic route name and single parameter injection",
+		},
+		{
+			name:      "Multiple parameters injection",
+			routeName: "api.v1.users.posts.show",
+			routeParams: map[string]string{
+				"userId":  "456",
+				"postId":  "789",
+				"version": "v1",
+			},
+			description: "Complex route with multiple parameters",
+		},
+		{
+			name:        "Empty parameters injection",
+			routeName:   "health.check",
+			routeParams: map[string]string{},
+			description: "Route with name but no parameters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test context value injection and retrieval
+			ctx := context.Background()
+
+			// Inject route context values
+			ctx = WithRouteName(ctx, tt.routeName)
+			ctx = WithRouteParams(ctx, tt.routeParams)
+
+			// Test route name retrieval
+			retrievedName, nameFound := RouteNameFromContext(ctx)
+			if !nameFound {
+				t.Fatal("Expected to find route name in context")
+			}
+			if retrievedName != tt.routeName {
+				t.Errorf("Expected route name %s, got %s", tt.routeName, retrievedName)
+			}
+
+			// Test route params retrieval
+			retrievedParams, paramsFound := RouteParamsFromContext(ctx)
+			if !paramsFound {
+				t.Fatal("Expected to find route params in context")
+			}
+
+			if len(retrievedParams) != len(tt.routeParams) {
+				t.Errorf("Expected %d params, got %d", len(tt.routeParams), len(retrievedParams))
+			}
+
+			for key, expectedValue := range tt.routeParams {
+				actualValue, exists := retrievedParams[key]
+				if !exists {
+					t.Errorf("Expected param key %s not found", key)
+				}
+				if actualValue != expectedValue {
+					t.Errorf("Expected param %s=%s, got %s", key, expectedValue, actualValue)
+				}
+			}
+		})
+	}
+}
+
+// TestContextIntegration_Persistence tests context persistence across middleware chain
+func TestContextIntegration_Persistence(t *testing.T) {
+	originalCtx := context.Background()
+	routeName := "test.route"
+	routeParams := map[string]string{
+		"id":     "123",
+		"action": "edit",
+	}
+
+	// Create context with route information
+	ctx := WithRouteName(originalCtx, routeName)
+	ctx = WithRouteParams(ctx, routeParams)
+
+	// Simulate middleware chain by creating child contexts
+	middleware1Ctx := context.WithValue(ctx, "middleware1", "executed")
+	middleware2Ctx := context.WithValue(middleware1Ctx, "middleware2", "executed")
+	handlerCtx := context.WithValue(middleware2Ctx, "handler", "executed")
+
+	// Test that route information persists through the chain
+	retrievedName, nameFound := RouteNameFromContext(handlerCtx)
+	if !nameFound {
+		t.Fatal("Route name should persist through middleware chain")
+	}
+	if retrievedName != routeName {
+		t.Errorf("Expected route name %s, got %s after middleware chain", routeName, retrievedName)
+	}
+
+	retrievedParams, paramsFound := RouteParamsFromContext(handlerCtx)
+	if !paramsFound {
+		t.Fatal("Route params should persist through middleware chain")
+	}
+	if len(retrievedParams) != len(routeParams) {
+		t.Errorf("Expected %d params, got %d after middleware chain", len(routeParams), len(retrievedParams))
+	}
+
+	for key, expectedValue := range routeParams {
+		actualValue, exists := retrievedParams[key]
+		if !exists {
+			t.Errorf("Expected param key %s not found after middleware chain", key)
+		}
+		if actualValue != expectedValue {
+			t.Errorf("Expected param %s=%s after middleware chain, got %s", key, expectedValue, actualValue)
+		}
+	}
+
+	// Verify middleware values also persisted
+	if handlerCtx.Value("middleware1") != "executed" {
+		t.Error("Middleware1 value should persist")
+	}
+	if handlerCtx.Value("middleware2") != "executed" {
+		t.Error("Middleware2 value should persist")
+	}
+	if handlerCtx.Value("handler") != "executed" {
+		t.Error("Handler value should persist")
+	}
+}
+
+// TestContextIntegration_Isolation tests context isolation between requests
+func TestContextIntegration_Isolation(t *testing.T) {
+	// Simulate two concurrent requests with different route contexts
+	request1Ctx := context.Background()
+	request1Ctx = WithRouteName(request1Ctx, "users.show")
+	request1Ctx = WithRouteParams(request1Ctx, map[string]string{"id": "123"})
+
+	request2Ctx := context.Background()
+	request2Ctx = WithRouteName(request2Ctx, "posts.edit")
+	request2Ctx = WithRouteParams(request2Ctx, map[string]string{"postId": "456", "userId": "789"})
+
+	// Verify request1 context
+	name1, found1 := RouteNameFromContext(request1Ctx)
+	if !found1 || name1 != "users.show" {
+		t.Errorf("Request1 expected route name 'users.show', got %s (found: %v)", name1, found1)
+	}
+
+	params1, paramsFound1 := RouteParamsFromContext(request1Ctx)
+	if !paramsFound1 || len(params1) != 1 || params1["id"] != "123" {
+		t.Errorf("Request1 expected params map[id:123], got %v (found: %v)", params1, paramsFound1)
+	}
+
+	// Verify request2 context
+	name2, found2 := RouteNameFromContext(request2Ctx)
+	if !found2 || name2 != "posts.edit" {
+		t.Errorf("Request2 expected route name 'posts.edit', got %s (found: %v)", name2, found2)
+	}
+
+	params2, paramsFound2 := RouteParamsFromContext(request2Ctx)
+	if !paramsFound2 || len(params2) != 2 || params2["postId"] != "456" || params2["userId"] != "789" {
+		t.Errorf("Request2 expected params map[postId:456 userId:789], got %v (found: %v)", params2, paramsFound2)
+	}
+
+	// Cross-verify isolation: request1 shouldn't see request2's data
+	if name1 == name2 {
+		t.Error("Route names should be isolated between requests")
+	}
+
+	if len(params1) == len(params2) && params1["id"] == params2["postId"] {
+		t.Error("Route params should be isolated between requests")
+	}
+}
+
+// TestContextIntegration_MemoryManagement tests for memory management
+func TestContextIntegration_MemoryManagement(t *testing.T) {
+	// Test that context values don't leak between different context instances
+	baseCtx := context.Background()
+
+	// Create multiple contexts with different route information
+	contexts := make([]context.Context, 10)
+	for i := 0; i < 10; i++ {
+		ctx := WithRouteName(baseCtx, fmt.Sprintf("route.%d", i))
+		ctx = WithRouteParams(ctx, map[string]string{
+			"id":    fmt.Sprintf("%d", i),
+			"index": fmt.Sprintf("idx-%d", i),
+		})
+		contexts[i] = ctx
+	}
+
+	// Verify each context has its own isolated data
+	for i, ctx := range contexts {
+		name, found := RouteNameFromContext(ctx)
+		if !found {
+			t.Errorf("Context %d should have route name", i)
+			continue
+		}
+		expectedName := fmt.Sprintf("route.%d", i)
+		if name != expectedName {
+			t.Errorf("Context %d expected name %s, got %s", i, expectedName, name)
+		}
+
+		params, paramsFound := RouteParamsFromContext(ctx)
+		if !paramsFound {
+			t.Errorf("Context %d should have route params", i)
+			continue
+		}
+
+		expectedId := fmt.Sprintf("%d", i)
+		expectedIndex := fmt.Sprintf("idx-%d", i)
+
+		if params["id"] != expectedId {
+			t.Errorf("Context %d expected id %s, got %s", i, expectedId, params["id"])
+		}
+		if params["index"] != expectedIndex {
+			t.Errorf("Context %d expected index %s, got %s", i, expectedIndex, params["index"])
+		}
+	}
+}
+
 // TestContextImplementations tests that our context implementations have the new methods
 func TestContextImplementations(t *testing.T) {
 	t.Run("MockContext", func(t *testing.T) {

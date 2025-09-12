@@ -210,24 +210,24 @@ type routeNameTest struct {
 // TestParameterExtraction_Comprehensive tests parameter extraction functionality
 func TestParameterExtraction_Comprehensive(t *testing.T) {
 	tests := []struct {
-		name        string
-		description string
-		contextSetup func(context.Context) context.Context
+		name           string
+		description    string
+		contextSetup   func(context.Context) context.Context
 		expectedParams map[string]string
-		shouldFind   bool
+		shouldFind     bool
 	}{
 		{
-			name: "Single parameter route",
+			name:        "Single parameter route",
 			description: "Route with single parameter should extract correctly",
 			contextSetup: func(ctx context.Context) context.Context {
 				params := map[string]string{"id": "123"}
 				return WithRouteParams(ctx, params)
 			},
 			expectedParams: map[string]string{"id": "123"},
-			shouldFind: true,
+			shouldFind:     true,
 		},
 		{
-			name: "Multiple parameters route",
+			name:        "Multiple parameters route",
 			description: "Route with multiple parameters should extract all",
 			contextSetup: func(ctx context.Context) context.Context {
 				params := map[string]string{
@@ -238,66 +238,66 @@ func TestParameterExtraction_Comprehensive(t *testing.T) {
 				return WithRouteParams(ctx, params)
 			},
 			expectedParams: map[string]string{
-				"userId": "456", 
+				"userId": "456",
 				"postId": "789",
 				"format": "json",
 			},
 			shouldFind: true,
 		},
 		{
-			name: "Empty parameters",
+			name:        "Empty parameters",
 			description: "Route without parameters should return empty map",
 			contextSetup: func(ctx context.Context) context.Context {
 				params := map[string]string{}
 				return WithRouteParams(ctx, params)
 			},
 			expectedParams: map[string]string{},
-			shouldFind: true,
+			shouldFind:     true,
 		},
 		{
-			name: "Special characters in parameters",
+			name:        "Special characters in parameters",
 			description: "Parameters with special characters should be preserved",
 			contextSetup: func(ctx context.Context) context.Context {
 				params := map[string]string{
-					"slug": "hello-world_123",
+					"slug":     "hello-world_123",
 					"category": "news&events",
-					"version": "v1.2.3",
+					"version":  "v1.2.3",
 				}
 				return WithRouteParams(ctx, params)
 			},
 			expectedParams: map[string]string{
-				"slug": "hello-world_123",
-				"category": "news&events", 
-				"version": "v1.2.3",
+				"slug":     "hello-world_123",
+				"category": "news&events",
+				"version":  "v1.2.3",
 			},
 			shouldFind: true,
 		},
 		{
-			name: "Unicode parameters",
+			name:        "Unicode parameters",
 			description: "Parameters with Unicode characters should be handled",
 			contextSetup: func(ctx context.Context) context.Context {
 				params := map[string]string{
-					"name": "José",
-					"city": "São Paulo",
+					"name":  "José",
+					"city":  "São Paulo",
 					"emoji": "🚀",
 				}
 				return WithRouteParams(ctx, params)
 			},
 			expectedParams: map[string]string{
-				"name": "José",
-				"city": "São Paulo",
+				"name":  "José",
+				"city":  "São Paulo",
 				"emoji": "🚀",
 			},
 			shouldFind: true,
 		},
 		{
-			name: "No context parameters",
+			name:        "No context parameters",
 			description: "Context without parameters should return not found",
 			contextSetup: func(ctx context.Context) context.Context {
 				return ctx // No parameters set
 			},
 			expectedParams: nil,
-			shouldFind: false,
+			shouldFind:     false,
 		},
 	}
 
@@ -305,24 +305,24 @@ func TestParameterExtraction_Comprehensive(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx = tt.contextSetup(ctx)
-			
+
 			params, found := RouteParamsFromContext(ctx)
-			
+
 			if found != tt.shouldFind {
 				t.Errorf("Expected found=%v, got %v", tt.shouldFind, found)
 			}
-			
+
 			if tt.shouldFind {
 				if params == nil && tt.expectedParams != nil {
 					t.Error("Expected non-nil params map but got nil")
 					return
 				}
-				
+
 				if len(params) != len(tt.expectedParams) {
 					t.Errorf("Expected %d params, got %d", len(tt.expectedParams), len(params))
 					return
 				}
-				
+
 				for key, expectedValue := range tt.expectedParams {
 					actualValue, exists := params[key]
 					if !exists {
@@ -333,7 +333,7 @@ func TestParameterExtraction_Comprehensive(t *testing.T) {
 						t.Errorf("Expected param %s=%s, got %s", key, expectedValue, actualValue)
 					}
 				}
-				
+
 				// Check for unexpected keys
 				for key := range params {
 					if _, expected := tt.expectedParams[key]; !expected {
@@ -356,11 +356,11 @@ func TestParameterExtractionEdgeCases(t *testing.T) {
 		{
 			name: "Empty string values",
 			params: map[string]string{
-				"empty": "",
-				"space": " ",
+				"empty":  "",
+				"space":  " ",
 				"normal": "value",
 			},
-			description: "Empty and space-only values should be preserved",
+			description:    "Empty and space-only values should be preserved",
 			expectedLength: 3,
 		},
 		{
@@ -370,16 +370,16 @@ func TestParameterExtractionEdgeCases(t *testing.T) {
 				"ID": "456", // Different case
 				"Id": "789", // Mixed case
 			},
-			description: "Keys with different cases are different parameters",
+			description:    "Keys with different cases are different parameters",
 			expectedLength: 3,
 		},
 		{
 			name: "Long parameter values",
 			params: map[string]string{
-				"long": strings.Repeat("a", 1000),
+				"long":   strings.Repeat("a", 1000),
 				"normal": "short",
 			},
-			description: "Long parameter values should be handled",
+			description:    "Long parameter values should be handled",
 			expectedLength: 2,
 		},
 		{
@@ -391,7 +391,7 @@ func TestParameterExtractionEdgeCases(t *testing.T) {
 				}
 				return params
 			}(),
-			description: "Many parameters should be handled efficiently",
+			description:    "Many parameters should be handled efficiently",
 			expectedLength: 50,
 		},
 	}
@@ -400,17 +400,17 @@ func TestParameterExtractionEdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx = WithRouteParams(ctx, tt.params)
-			
+
 			retrievedParams, found := RouteParamsFromContext(ctx)
-			
+
 			if !found {
 				t.Fatal("Expected to find route params in context")
 			}
-			
+
 			if len(retrievedParams) != tt.expectedLength {
 				t.Errorf("Expected %d params, got %d", tt.expectedLength, len(retrievedParams))
 			}
-			
+
 			// Verify all parameters match exactly
 			for key, expectedValue := range tt.params {
 				actualValue, exists := retrievedParams[key]

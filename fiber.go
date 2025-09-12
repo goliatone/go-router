@@ -72,6 +72,20 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 	// Wrap a HandlerFunc into a fiber handler
 	return func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c, a.router.logger)
+
+		// Get path pattern from Fiber and inject route context
+		if c.Route() != nil {
+			pathPattern := c.Route().Path
+
+			// Look up route name from go-router's namedRoutes
+			if routeName, ok := a.router.RouteNameFromPath(c.Method(), pathPattern); ok {
+				goCtx := ctx.Context()
+				goCtx = WithRouteName(goCtx, routeName)
+				goCtx = WithRouteParams(goCtx, c.AllParams())
+				ctx.SetContext(goCtx)
+			}
+		}
+
 		// c.Next() will work if c.handlers is set up at request time.
 		return h(ctx)
 	}
@@ -219,7 +233,18 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 		ctx := NewFiberContext(c, r.logger)
 		if fc, ok := ctx.(*fiberContext); ok {
 			fc.setHandlers(route.Handlers)
-			fc.index = -1    // reset index to ensure proper chain execution
+			fc.index = -1 // reset index to ensure proper chain execution
+
+			// Inject route context
+			goCtx := fc.Context()
+
+			// Always inject route name (empty string for unnamed routes)
+			goCtx = WithRouteName(goCtx, route.Name)
+
+			// Always inject route parameters from Fiber
+			goCtx = WithRouteParams(goCtx, c.AllParams())
+			fc.SetContext(goCtx)
+
 			return fc.Next() // execute the our chain completely before returning
 		}
 		return fmt.Errorf("context cast failed")
@@ -497,4 +522,20 @@ func (c *fiberContext) Next() error {
 	}
 
 	return c.handlers[c.index].Handler(c)
+}
+
+// RouteName returns the route name from context
+func (c *fiberContext) RouteName() string {
+	if name, ok := RouteNameFromContext(c.Context()); ok {
+		return name
+	}
+	return ""
+}
+
+// RouteParams returns all route parameters as a map
+func (c *fiberContext) RouteParams() map[string]string {
+	if params, ok := RouteParamsFromContext(c.Context()); ok {
+		return params
+	}
+	return make(map[string]string)
 }

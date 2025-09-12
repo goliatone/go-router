@@ -74,6 +74,23 @@ func (a *HTTPServer) WrapHandler(h HandlerFunc) any {
 		c := newHTTPRouterContext(w, r, ps, a.views)
 		c.router = a.router
 		c.passLocalsToViews = a.passLocalsToViews
+
+		// Get path pattern from request and inject route context
+		if pathPattern := a.getRoutePattern(r.Method, r.URL.Path); pathPattern != "" {
+			if routeName, ok := a.router.RouteNameFromPath(r.Method, pathPattern); ok {
+				goCtx := c.Context()
+				goCtx = WithRouteName(goCtx, routeName)
+
+				// Convert httprouter.Params to map[string]string
+				params := make(map[string]string, len(ps))
+				for _, p := range ps {
+					params[p.Key] = p.Value
+				}
+				goCtx = WithRouteParams(goCtx, params)
+				c.SetContext(goCtx)
+			}
+		}
+
 		if err := h(c); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -82,6 +99,88 @@ func (a *HTTPServer) WrapHandler(h HandlerFunc) any {
 
 func (a *HTTPServer) WrappedRouter() *httprouter.Router {
 	return a.httpRouter
+}
+
+// getRoutePattern tries to find the route pattern for a given method and path
+// by looking up the registered routes in the BaseRouter
+func (a *HTTPServer) getRoutePattern(method, path string) string {
+	// Try to find matching route pattern by iterating through registered routes
+	for _, route := range a.router.root.routes {
+		if string(route.Method) == method {
+			// For exact matches (static routes)
+			if route.Path == path {
+				return route.Path
+			}
+
+			// For parameterized routes, we need to check if the pattern would match
+			// This is a simple heuristic - we can improve it if needed
+			if strings.Contains(route.Path, ":") || strings.Contains(route.Path, "*") {
+				// Use httprouter's lookup to see if this path would match
+				if handler, _, _ := a.httpRouter.Lookup(method, path); handler != nil {
+					// If httprouter found a match, check if our route pattern segments match
+					if pathMatchesPattern(route.Path, path) {
+						return route.Path
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// pathMatchesPattern checks if a request path could match a route pattern
+func pathMatchesPattern(pattern, path string) bool {
+	patternParts := strings.Split(strings.Trim(pattern, "/"), "/")
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+
+	// Handle wildcard case - wildcard can match remaining path segments
+	hasWildcard := false
+	wildcardIndex := -1
+	for i, part := range patternParts {
+		if strings.Contains(part, "*") {
+			hasWildcard = true
+			wildcardIndex = i
+			break
+		}
+	}
+
+	if hasWildcard {
+		// For wildcard patterns, we need at least as many path parts as non-wildcard pattern parts
+		if len(pathParts) < wildcardIndex {
+			return false
+		}
+
+		// Check parts before wildcard
+		for i := 0; i < wildcardIndex; i++ {
+			patternPart := patternParts[i]
+			if strings.HasPrefix(patternPart, ":") {
+				// Parameter - matches anything
+				continue
+			}
+			if patternPart != pathParts[i] {
+				return false
+			}
+		}
+
+		return true // Wildcard matches remaining path
+	}
+
+	// For non-wildcard patterns, parts count must match exactly
+	if len(patternParts) != len(pathParts) {
+		return false
+	}
+
+	for i, patternPart := range patternParts {
+		if strings.HasPrefix(patternPart, ":") {
+			// Parameter - matches anything
+			continue
+		}
+		if patternPart != pathParts[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (a *HTTPServer) Init() {
@@ -236,6 +335,20 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 		ctx.router = r
 		ctx.passLocalsToViews = r.passLocalsToViews
 		ctx.setHandlers(route.Handlers)
+
+		// Inject route context
+		goCtx := ctx.Context()
+
+		// Always inject route name (empty string for unnamed routes)
+		goCtx = WithRouteName(goCtx, route.Name)
+
+		// Always inject route parameters
+		paramMap := make(map[string]string, len(params))
+		for _, p := range params {
+			paramMap[p.Key] = p.Value
+		}
+		goCtx = WithRouteParams(goCtx, paramMap)
+		ctx.SetContext(goCtx)
 
 		if err := ctx.Next(); err != nil {
 			r.logger.Error("handler chain error: %v", err)
@@ -746,4 +859,20 @@ func (c *httpRouterContext) Next() error {
 		return nil
 	}
 	return c.handlers[c.index].Handler(c)
+}
+
+// RouteName returns the route name from context
+func (c *httpRouterContext) RouteName() string {
+	if name, ok := RouteNameFromContext(c.Context()); ok {
+		return name
+	}
+	return ""
+}
+
+// RouteParams returns all route parameters as a map
+func (c *httpRouterContext) RouteParams() map[string]string {
+	if params, ok := RouteParamsFromContext(c.Context()); ok {
+		return params
+	}
+	return make(map[string]string)
 }

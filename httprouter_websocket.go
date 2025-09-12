@@ -467,6 +467,22 @@ func (c *httpRouterWebSocketContext) UpgradeData(key string) (any, bool) {
 	return nil, false
 }
 
+// RouteName returns the route name from context
+func (c *httpRouterWebSocketContext) RouteName() string {
+	if name, ok := RouteNameFromContext(c.Context()); ok {
+		return name
+	}
+	return ""
+}
+
+// RouteParams returns all route parameters as a map
+func (c *httpRouterWebSocketContext) RouteParams() map[string]string {
+	if params, ok := RouteParamsFromContext(c.Context()); ok {
+		return params
+	}
+	return make(map[string]string)
+}
+
 // Helper function to validate origin for HTTP requests
 func validateHTTPOrigin(r *http.Request, allowedOrigins []string) bool {
 	origin := r.Header.Get("Origin")

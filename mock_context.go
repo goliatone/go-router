@@ -297,3 +297,16 @@ func (m *MockContext) Referer() string {
 	args := m.Called()
 	return args.String(0)
 }
+
+func (m *MockContext) RouteName() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func (m *MockContext) RouteParams() map[string]string {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return make(map[string]string)
+	}
+	return args.Get(0).(map[string]string)
+}

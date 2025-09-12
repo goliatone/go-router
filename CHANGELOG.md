@@ -1,5 +1,30 @@
 # Changelog
 
+# [0.9.0](https://github.com/goliatone/go-router/compare/v0.8.0...v0.9.0) - (2025-09-12)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.9.0 ([624064d](https://github.com/goliatone/go-router/commit/624064dcf8217f639eef439502a05a2f6db5fca5))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Tests for context ([1eab6d9](https://github.com/goliatone/go-router/commit/1eab6d9a6534b4ded31e9a26500dd81339fc7b5c))  - (goliatone)
+- Updated texts ([0de6ba4](https://github.com/goliatone/go-router/commit/0de6ba4da455feeadaac456a4ae945d802d18049))  - (goliatone)
+- Mock implement methods ([716da45](https://github.com/goliatone/go-router/commit/716da4594aaf953a652e51029203034c3bfa8021))  - (goliatone)
+- Implement new methods in websocket ([ec82a02](https://github.com/goliatone/go-router/commit/ec82a0287c007722bb06d6e4a39cf9f169f36110))  - (goliatone)
+- Implement new methods in fiber ([6d5216c](https://github.com/goliatone/go-router/commit/6d5216c1e4414c1500ce9c5682c9873e380458dd))  - (goliatone)
+- Implement new methods in httprouter ([072ec39](https://github.com/goliatone/go-router/commit/072ec3908e78a7630171aaf36f5665816c0bc904))  - (goliatone)
+- Helper method to retrieve methods ([3556824](https://github.com/goliatone/go-router/commit/3556824c292409db31069c876b8b5cf8de9fd939))  - (goliatone)
+- New methods to Context to expose route info ([8a62a7c](https://github.com/goliatone/go-router/commit/8a62a7c9d915478ff953d4c1803b2527e3b80576))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.8.0 ([1dbf957](https://github.com/goliatone/go-router/commit/1dbf957a393069d73d16cfab5f608847dd81e246))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#9](https://github.com/goliatone/go-router/pull/9): middleware context ([77a9fe1](https://github.com/goliatone/go-router/commit/77a9fe1e331fbc2f5de0f79870b6beb480580f1e))  - (goliatone)
+
 # [0.8.0](https://github.com/goliatone/go-router/compare/client-v1.0.4...v0.8.0) - (2025-09-10)
 
 ## <!-- 13 -->📦 Bumps

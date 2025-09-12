@@ -27,7 +27,7 @@ func TestCrossAdapterConsistency_RouteName(t *testing.T) {
 			value:     "123",
 		},
 		{
-			name:      "Complex nested route", 
+			name:      "Complex nested route",
 			method:    "POST",
 			path:      "/api/v1/users/:userId/posts/:postId",
 			routeName: "api.v1.users.posts.update",
@@ -64,11 +64,11 @@ func TestCrossAdapterConsistency_RouteName(t *testing.T) {
 				route.SetName(tt.routeName)
 
 				app := adapter.WrappedRouter()
-				
+
 				// Build test URL
 				testPath := strings.ReplaceAll(tt.path, ":"+tt.param, tt.value)
 				req := httptest.NewRequest(tt.method, testPath, nil)
-				
+
 				resp, err := app.Test(req)
 				if err != nil {
 					t.Fatalf("Fiber test failed: %v", err)
@@ -170,7 +170,7 @@ func TestCrossAdapterConsistency_RouteParams(t *testing.T) {
 		},
 		{
 			name:      "Multiple parameters",
-			method:    "GET", 
+			method:    "GET",
 			path:      "/users/:userId/posts/:postId",
 			routeName: "users.posts.show",
 			testPath:  "/users/456/posts/789",
@@ -218,7 +218,7 @@ func TestCrossAdapterConsistency_RouteParams(t *testing.T) {
 
 				app := adapter.WrappedRouter()
 				req := httptest.NewRequest(tt.method, tt.testPath, nil)
-				
+
 				_, err := app.Test(req)
 				if err != nil {
 					t.Fatalf("Fiber test failed: %v", err)
@@ -284,7 +284,7 @@ func TestCrossAdapterConsistency_RouteParams(t *testing.T) {
 			// Compare results between adapters
 			t.Run("CrossAdapterComparison", func(t *testing.T) {
 				if len(fiberParams) != len(httpRouterParams) {
-					t.Errorf("Adapter params length mismatch: Fiber=%d, HTTPRouter=%d", 
+					t.Errorf("Adapter params length mismatch: Fiber=%d, HTTPRouter=%d",
 						len(fiberParams), len(httpRouterParams))
 				}
 
@@ -294,7 +294,7 @@ func TestCrossAdapterConsistency_RouteParams(t *testing.T) {
 					if !exists {
 						t.Errorf("Parameter %s exists in Fiber but not in HTTPRouter", key)
 					} else if fiberValue != httpRouterValue {
-						t.Errorf("Parameter %s value mismatch: Fiber=%s, HTTPRouter=%s", 
+						t.Errorf("Parameter %s value mismatch: Fiber=%s, HTTPRouter=%s",
 							key, fiberValue, httpRouterValue)
 					}
 				}
@@ -352,7 +352,7 @@ func TestCrossAdapterConsistency_MiddlewareIntegration(t *testing.T) {
 
 		app := adapter.WrappedRouter()
 		req := httptest.NewRequest("GET", testPath, nil)
-		
+
 		resp, err := app.Test(req)
 		if err != nil {
 			return err

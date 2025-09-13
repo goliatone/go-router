@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.11.1](https://github.com/goliatone/go-router/compare/v0.11.0...v0.11.1) - (2025-09-13)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Use LocalsMerge in routecontext ([a56fbd2](https://github.com/goliatone/go-router/commit/a56fbd21a249866259d7502ffe4272a6a2d2446f))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.11.1 ([cdacf07](https://github.com/goliatone/go-router/commit/cdacf0728ce8d48168d3a78d40b984936d24aa9a))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.11.0 ([b793ac4](https://github.com/goliatone/go-router/commit/b793ac49b5b81c47a348dc74bc94c679cf13dd59))  - (goliatone)
+
 # [0.11.0](https://github.com/goliatone/go-router/compare/v0.10.0...v0.11.0) - (2025-09-13)
 
 ## <!-- 1 -->🐛 Bug Fixes

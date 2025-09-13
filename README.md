@@ -146,12 +146,21 @@ Injects route information into the request context for template rendering and ha
 ```go
 import "github.com/goliatone/go-router/middleware/routecontext"
 
-// Using default configuration
+// Using default configuration (ExportAsMap: true)
 app.Use(routecontext.New())
 
-// Custom configuration
+// Custom configuration with consolidated map export
 app.Use(routecontext.New(routecontext.Config{
+    ExportAsMap:         true,  // Default: exports as single map
     TemplateContextKey:  "route_info",
+    CurrentRouteNameKey: "route_name",
+    CurrentParamsKey:    "params",
+    CurrentQueryKey:     "query",
+}))
+
+// Configuration with individual key exports
+app.Use(routecontext.New(routecontext.Config{
+    ExportAsMap:         false, // Exports each key individually
     CurrentRouteNameKey: "route_name",
     CurrentParamsKey:    "params",
     CurrentQueryKey:     "query",
@@ -160,17 +169,47 @@ app.Use(routecontext.New(routecontext.Config{
 
 **Features:**
 - Extracts current route name, parameters, and query strings
-- Stores data in a consolidated map under configurable context key
-- Default storage under `"template_context"` key
+- **Two export modes** controlled by `ExportAsMap` field:
+  - **Map mode** (`ExportAsMap: true`, default): Stores data in a consolidated map under `TemplateContextKey`
+  - **Individual mode** (`ExportAsMap: false`): Stores each key separately in context
+- Default storage under `"template_context"` key in map mode
 - Perfect for template rendering with route aware content
-- Access via `ctx.Locals("template_context")` in handlers
+- Flexible access patterns for different use cases
 
-**Template Usage:**
+**Template Usage (Map Mode - Default):**
 ```html
-<!-- Access route information in templates -->
+<!-- Access route information via consolidated map -->
 {{ template_context.current_route_name }}
 {{ template_context.current_params.user_id }}
 {{ template_context.current_query.page }}
+```
+
+**Template Usage (Individual Mode):**
+```html
+<!-- Access route information via individual keys -->
+{{ route_name }}
+{{ params.user_id }}
+{{ query.page }}
+```
+
+**Handler Access (Map Mode):**
+```go
+app.Get("/users/:id", func(c router.Context) error {
+    routeData := c.Locals("template_context").(map[string]any)
+    routeName := routeData["current_route_name"].(string)
+    params := routeData["current_params"].(map[string]string)
+    return c.JSON(200, fiber.Map{"route": routeName, "params": params})
+})
+```
+
+**Handler Access (Individual Mode):**
+```go
+app.Get("/users/:id", func(c router.Context) error {
+    routeName := c.Locals("route_name").(string)
+    params := c.Locals("params").(map[string]string)
+    query := c.Locals("query").(map[string]string)
+    return c.JSON(200, fiber.Map{"route": routeName, "params": params, "query": query})
+})
 ```
 
 ### Flash Middleware

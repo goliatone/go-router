@@ -519,28 +519,29 @@ func (m *mockContext) RedirectToRoute(routeName string, params router.ViewContex
 }
 func (m *mockContext) RedirectBack(fallback string, status ...int) error { return nil }
 
-func (m *mockContext) SendString(body string) error                          { return nil }
-func (m *mockContext) Referer() string                                       { return "" }
-func (m *mockContext) OriginalURL() string                                   { return "" }
-func (m *mockContext) Cookie(cookie *router.Cookie)                          {}
-func (m *mockContext) Cookies(key string, defaultValue ...string) string     { return "" }
-func (m *mockContext) CookieParser(out any) error                            { return nil }
-func (m *mockContext) Locals(key any, val ...any) any                        { return val }
-func (m *mockContext) Render(name string, bind any, layouts ...string) error { return nil }
-func (m *mockContext) Method() string                                        { return "GET" }
-func (m *mockContext) Path() string                                          { return "/test" }
-func (m *mockContext) Param(name string, def ...string) string               { return "" }
-func (m *mockContext) ParamsInt(name string, def int) int                    { return 0 }
-func (m *mockContext) Query(name string, def ...string) string               { return "" }
-func (m *mockContext) QueryInt(name string, def int) int                     { return 0 }
-func (m *mockContext) Queries() map[string]string                            { return map[string]string{} }
-func (m *mockContext) Status(code int) router.Context                        { return m }
-func (m *mockContext) Send(body []byte) error                                { return nil }
-func (m *mockContext) JSON(code int, v any) error                            { return nil }
-func (m *mockContext) NoContent(code int) error                              { return nil }
-func (m *mockContext) Bind(v any) error                                      { return nil }
-func (m *mockContext) Body() []byte                                          { return nil }
-func (m *mockContext) SendStatus(s int) error                                { return nil }
+func (m *mockContext) SendString(body string) error                             { return nil }
+func (m *mockContext) Referer() string                                          { return "" }
+func (m *mockContext) OriginalURL() string                                      { return "" }
+func (m *mockContext) Cookie(cookie *router.Cookie)                             {}
+func (m *mockContext) Cookies(key string, defaultValue ...string) string        { return "" }
+func (m *mockContext) CookieParser(out any) error                               { return nil }
+func (m *mockContext) Locals(key any, val ...any) any                           { return val }
+func (m *mockContext) LocalsMerge(key any, value map[string]any) map[string]any { return value }
+func (m *mockContext) Render(name string, bind any, layouts ...string) error    { return nil }
+func (m *mockContext) Method() string                                           { return "GET" }
+func (m *mockContext) Path() string                                             { return "/test" }
+func (m *mockContext) Param(name string, def ...string) string                  { return "" }
+func (m *mockContext) ParamsInt(name string, def int) int                       { return 0 }
+func (m *mockContext) Query(name string, def ...string) string                  { return "" }
+func (m *mockContext) QueryInt(name string, def int) int                        { return 0 }
+func (m *mockContext) Queries() map[string]string                               { return map[string]string{} }
+func (m *mockContext) Status(code int) router.Context                           { return m }
+func (m *mockContext) Send(body []byte) error                                   { return nil }
+func (m *mockContext) JSON(code int, v any) error                               { return nil }
+func (m *mockContext) NoContent(code int) error                                 { return nil }
+func (m *mockContext) Bind(v any) error                                         { return nil }
+func (m *mockContext) Body() []byte                                             { return nil }
+func (m *mockContext) SendStatus(s int) error                                   { return nil }
 func (m *mockContext) Context() context.Context {
 	// Return a non-nil context. You can return context.Background() or context.TODO() for tests.
 	return context.Background()

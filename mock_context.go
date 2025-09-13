@@ -284,6 +284,35 @@ func (m *MockContext) Locals(key any, value ...any) any {
 	return m.LocalsMock[key]
 }
 
+func (m *MockContext) LocalsMerge(key any, value map[string]any) map[string]any {
+	m.Called(key, value)
+
+	existing, exists := m.LocalsMock[key]
+	if !exists {
+		// No existing value, just store the new map
+		m.LocalsMock[key] = value
+		return value
+	}
+
+	// Try to convert existing value to map[string]any
+	if existingMap, ok := existing.(map[string]any); ok {
+		// Merge maps - new values override existing ones
+		merged := make(map[string]any)
+		for k, v := range existingMap {
+			merged[k] = v
+		}
+		for k, v := range value {
+			merged[k] = v
+		}
+		m.LocalsMock[key] = merged
+		return merged
+	}
+
+	// If existing value is not a map, replace it entirely
+	m.LocalsMock[key] = value
+	return value
+}
+
 func (m *MockContext) OriginalURL() string {
 	args := m.Called()
 	return args.String(0)

@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"slices"
@@ -334,6 +335,28 @@ func (c *fiberContext) setHandlers(h []NamedHandler) {
 
 func (c *fiberContext) Locals(key any, value ...any) any {
 	return c.ctx.Locals(key, value...)
+}
+
+func (c *fiberContext) LocalsMerge(key any, value map[string]any) map[string]any {
+	existing := c.ctx.Locals(key)
+
+	if existing == nil {
+		c.ctx.Locals(key, value)
+		return value
+	}
+
+	if existingMap, ok := existing.(map[string]any); ok {
+		// merge maps (new values override existing ones)
+		merged := make(map[string]any)
+		maps.Copy(merged, existingMap)
+		maps.Copy(merged, value)
+		c.ctx.Locals(key, merged)
+		return merged
+	}
+
+	// existing value is not a map -> replace
+	c.ctx.Locals(key, value)
+	return value
 }
 
 func (c *fiberContext) Render(name string, bind any, layouts ...string) error {

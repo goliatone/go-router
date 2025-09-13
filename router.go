@@ -74,6 +74,7 @@ type RequestContext interface {
 	// BodyRaw() []byte
 
 	Locals(key any, value ...any) any
+	LocalsMerge(key any, value map[string]any) map[string]any
 	Render(name string, bind any, layouts ...string) error
 
 	Cookie(cookie *Cookie)

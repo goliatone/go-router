@@ -110,9 +110,74 @@ users := builder.Group("/users")
 }
 ```
 
-## Flash Middleware
+## Middleware
 
-### Template
+go-router includes several built in middleware components that provide common functionality for HTTP request processing.
+
+### Request ID Middleware
+
+Generates and manages unique request identifiers for tracing and logging purposes.
+
+```go
+import "github.com/goliatone/go-router/middleware/requestid"
+
+// Use default configuration
+app.Use(requestid.New())
+
+// Custom configuration
+app.Use(requestid.New(requestid.Config{
+    Header:     "X-Custom-Request-ID",
+    Generator:  func() string { return "custom-" + uuid.NewString() },
+    ContextKey: "req_id",
+}))
+```
+
+**Features:**
+- Generates UUID-based request IDs by default
+- Configurable header name (default: `X-Request-ID`)
+- Custom ID generator function support
+- Stores ID in context for handler access
+- Skippable with custom skip function
+
+### Route Context Middleware
+
+Injects route information into the request context for template rendering and handler access.
+
+```go
+import "github.com/goliatone/go-router/middleware/routecontext"
+
+// Using default configuration
+app.Use(routecontext.New())
+
+// Custom configuration
+app.Use(routecontext.New(routecontext.Config{
+    TemplateContextKey:  "route_info",
+    CurrentRouteNameKey: "route_name",
+    CurrentParamsKey:    "params",
+    CurrentQueryKey:     "query",
+}))
+```
+
+**Features:**
+- Extracts current route name, parameters, and query strings
+- Stores data in a consolidated map under configurable context key
+- Default storage under `"template_context"` key
+- Perfect for template rendering with route-aware content
+- Access via `ctx.Locals("template_context")` in handlers
+
+**Template Usage:**
+```html
+<!-- Access route information in templates -->
+{{ template_context.current_route_name }}
+{{ template_context.current_params.user_id }}
+{{ template_context.current_query.page }}
+```
+
+### Flash Middleware
+
+Provides flash message functionality for displaying temporary messages across redirects.
+
+#### Template Usage
 
 ```html
 {% if flash.error %}
@@ -131,7 +196,7 @@ users := builder.Group("/users")
 
 ### View Engine Initialization
 
-`go-router` includes a powerful and flexible view engine initializer that works seamlessly with frameworks that support `fiber.Views` (like Fiber itself). It's built on `pongo2`, offering a Django-like template syntax, and handles both live-reloading for development and high-performance embedded assets for production.
+`go-router` includes a powerful and flexible view engine initializer that works seamlessly with frameworks that support `fiber.Views` (like Fiber itself). It's built on `pongo2`, offering a Django like template syntax, and handles both live-reloading for development and high-performance embedded assets for production.
 
 The core function is `router.InitializeViewEngine(config)`. It takes a configuration object that implements the `ViewConfigProvider` interface.
 
@@ -368,7 +433,7 @@ This approach keeps your configuration clean and separate from your application 
 
 ## WebSocket Support
 
-`go-router` provides comprehensive WebSocket support with an event-driven architecture, room management, and extensive middleware capabilities. The WebSocket implementation works seamlessly with existing HTTP routers and provides both simple and advanced usage patterns.
+`go-router` provides comprehensive WebSocket support with an event driven architecture, room management, and extensive middleware capabilities. The WebSocket implementation works seamlessly with existing HTTP routers and provides both simple and advanced usage patterns.
 
 ### Quick Start
 
@@ -392,7 +457,7 @@ app.Router().Get("/ws", router.NewWSHandler(func(ctx context.Context, client rou
 - **Event-driven architecture** with connect/disconnect/message handlers
 - **Room management** with join/leave and targeted broadcasting
 - **Middleware system** including authentication, logging, metrics, rate limiting, and panic recovery
-- **Context support** throughout the API for cancellation and request-scoped data
+- **Context support** throughout the API for cancellation and request scoped data
 - **JSON message handling** with structured event routing
 - **Client state management** with get/set operations
 - **Automatic connection lifecycle** management with ping/pong handling
@@ -453,7 +518,7 @@ func (h *WSHub) broadcastToAll(message []byte) {
 
 ### Logger Requirements
 
-All background components and long-running operations must have access to a structured logger:
+All background components and long running operations must have access to a structured logger:
 
 - **WSHub**: For client management and broadcasting errors
 - **Room**: For room-specific operation failures

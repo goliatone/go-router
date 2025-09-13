@@ -1,6 +1,6 @@
 # go-router
 
-A lightweight, generic HTTP router interface for Go that enables framework-agnostic HTTP handling with built-in adapters. This package provides an abstraction for routing, making it easy to switch between different HTTP router implementations.
+A lightweight, generic HTTP router interface for Go that enables framework agnostic HTTP handling with built in adapters. This package provides an abstraction for routing, making it easy to switch between different HTTP router implementations.
 
 ## Installation
 
@@ -112,7 +112,7 @@ users := builder.Group("/users")
 
 ## Middleware
 
-go-router includes several built in middleware components that provide common functionality for HTTP request processing.
+`go-router` includes several built in middleware components that provide common functionality for HTTP request processing.
 
 ### Request ID Middleware
 
@@ -133,7 +133,7 @@ app.Use(requestid.New(requestid.Config{
 ```
 
 **Features:**
-- Generates UUID-based request IDs by default
+- Generates UUID based request IDs by default
 - Configurable header name (default: `X-Request-ID`)
 - Custom ID generator function support
 - Stores ID in context for handler access
@@ -162,7 +162,7 @@ app.Use(routecontext.New(routecontext.Config{
 - Extracts current route name, parameters, and query strings
 - Stores data in a consolidated map under configurable context key
 - Default storage under `"template_context"` key
-- Perfect for template rendering with route-aware content
+- Perfect for template rendering with route aware content
 - Access via `ctx.Locals("template_context")` in handlers
 
 **Template Usage:**
@@ -175,10 +175,38 @@ app.Use(routecontext.New(routecontext.Config{
 
 ### Flash Middleware
 
-Provides flash message functionality for displaying temporary messages across redirects.
+Provides flash message functionality for displaying temporary messages across redirects using cookie based storage.
 
-#### Template Usage
+```go
+import "github.com/goliatone/go-router/middleware/flash"
 
+// Use default configuration
+app.Use(flash.New())
+
+// Custom configuration
+app.Use(flash.New(flash.Config{
+    ContextKey: "flash_data",
+    Flash:      customFlashInstance,
+}))
+```
+
+**Features:**
+- Cookie based flash message storage that survives redirects
+- Automatic injection of flash data into request context
+- Integration with existing flash utility for setting messages
+- Configurable context key for accessing flash data
+- Skippable with custom skip function
+
+**Handler Usage:**
+```go
+// Access flash data in handlers
+app.Get("/", func(c router.Context) error {
+    flashData := c.Locals("flash").(router.ViewContext)
+    return c.Render("index", flashData)
+})
+```
+
+**Template Usage:**
 ```html
 {% if flash.error %}
 <div class="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 border border-red-400" role="alert">
@@ -196,13 +224,13 @@ Provides flash message functionality for displaying temporary messages across re
 
 ### View Engine Initialization
 
-`go-router` includes a powerful and flexible view engine initializer that works seamlessly with frameworks that support `fiber.Views` (like Fiber itself). It's built on `pongo2`, offering a Django like template syntax, and handles both live-reloading for development and high-performance embedded assets for production.
+`go-router` includes a powerful and flexible view engine initializer that works seamlessly with frameworks that support `fiber.Views` (like Fiber itself). It's built on `pongo2`, offering a Django like template syntax, and handles both live reloading for development and high performance embedded assets for production.
 
 The core function is `router.InitializeViewEngine(config)`. It takes a configuration object that implements the `ViewConfigProvider` interface.
 
 #### Key Features
 
-*   **Embedded & Live Modes**: Use `go:embed` for single-binary production builds, or load templates directly from the OS for rapid development.
+*   **Embedded & Live Modes**: Use `go:embed` for single binary production builds, or load templates directly from the OS for rapid development.
 *   **Composite Filesystems**: In embedded mode, you can layer multiple filesystems. This is perfect for theme overriding, where a theme's templates can transparently override a base set of templates.
 *   **Automatic Asset Handling**: Template functions `css(glob)` and `js(glob)` automatically find your versioned assets (e.g., `main-*.css`) and generate the correct HTML tags.
 *   **Intelligent Pathing**: The engine automatically handles subdirectories in embedded filesystems, so your paths are always clean and relative to your declared asset/template roots.
@@ -236,7 +264,7 @@ Your configuration struct must provide getters for the following options:
 
 #### Example 1: Embedded Mode for Production
 
-This setup is ideal for creating a self-contained, single-binary application.
+This setup is ideal for creating a self contained, single binary application.
 
 **Directory Structure:**
 ```
@@ -491,7 +519,7 @@ func ProcessRequest(data []byte) error {
 ```
 
 #### 2. System Errors (Log Centrally)
-These errors represent system-level issues that should be logged centrally for monitoring and debugging:
+These errors represent system level issues that should be logged centrally for monitoring and debugging:
 
 - **Internal server errors**: Unexpected panics, nil pointer dereferences
 - **Infrastructure failures**: Network timeouts, disk I/O errors
@@ -521,8 +549,8 @@ func (h *WSHub) broadcastToAll(message []byte) {
 All background components and long running operations must have access to a structured logger:
 
 - **WSHub**: For client management and broadcasting errors
-- **Room**: For room-specific operation failures
-- **WSClient**: For connection-specific errors
+- **Room**: For room specific operation failures
+- **WSClient**: For connection specific errors
 - **Middleware**: For request processing errors
 
 ### Error Context

@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.11.2](https://github.com/goliatone/go-router/compare/v0.11.1...v0.11.2) - (2025-09-13)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.11.2 ([d9506fd](https://github.com/goliatone/go-router/commit/d9506fd70b189807a27d09d13320aaa8b948ad75))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Support routecontext to export to keys vs map ([b7654cf](https://github.com/goliatone/go-router/commit/b7654cfe48fc7d54e977af67ab16048b2883ca99))  - (goliatone)
+- Middleware tests ([a4f652f](https://github.com/goliatone/go-router/commit/a4f652f20cbbacb2223da1eeb6af79cf7d739c54))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.11.1 ([0d4127f](https://github.com/goliatone/go-router/commit/0d4127fbce4978304a43e8f1b4c7be2c38c639ad))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([405f2ae](https://github.com/goliatone/go-router/commit/405f2ae3ef55e21e077b4076cfdc05b23c5afaf9))  - (goliatone)
+
 # [0.11.1](https://github.com/goliatone/go-router/compare/v0.11.0...v0.11.1) - (2025-09-13)
 
 ## <!-- 1 -->🐛 Bug Fixes

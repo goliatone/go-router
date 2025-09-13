@@ -29,13 +29,7 @@ type Config struct {
 }
 
 func ToMiddleware(f *Flash, key string) router.MiddlewareFunc {
-	return func(next router.HandlerFunc) router.HandlerFunc {
-		return func(c router.Context) error {
-			values := f.Get(c)
-			c.Locals(key, values)
-			return c.Next()
-		}
-	}
+	panic("deprecated: use new middleware")
 }
 
 var DefaultFlash *Flash

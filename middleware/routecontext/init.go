@@ -10,6 +10,7 @@ type Config struct {
 	CurrentRouteNameKey string
 	CurrentParamsKey    string
 	CurrentQueryKey     string
+	ExportAsMap         bool
 }
 
 var ConfigDefault = Config{
@@ -18,6 +19,7 @@ var ConfigDefault = Config{
 	CurrentRouteNameKey: "current_route_name",
 	CurrentParamsKey:    "current_params",
 	CurrentQueryKey:     "current_query",
+	ExportAsMap:         true,
 }
 
 func New(config ...Config) router.MiddlewareFunc {
@@ -33,11 +35,17 @@ func New(config ...Config) router.MiddlewareFunc {
 			currentParams := ctx.RouteParams()
 			currentQuery := ctx.Queries()
 
-			ctx.LocalsMerge(cfg.TemplateContextKey, map[string]any{
-				cfg.CurrentRouteNameKey: currentRoute,
-				cfg.CurrentParamsKey:    currentParams,
-				cfg.CurrentQueryKey:     currentQuery,
-			})
+			if cfg.ExportAsMap {
+				ctx.LocalsMerge(cfg.TemplateContextKey, map[string]any{
+					cfg.CurrentRouteNameKey: currentRoute,
+					cfg.CurrentParamsKey:    currentParams,
+					cfg.CurrentQueryKey:     currentQuery,
+				})
+			} else {
+				ctx.Locals(cfg.CurrentRouteNameKey, currentRoute)
+				ctx.Locals(cfg.CurrentParamsKey, currentParams)
+				ctx.Locals(cfg.CurrentQueryKey, currentQuery)
+			}
 
 			return ctx.Next()
 		}

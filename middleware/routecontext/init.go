@@ -33,7 +33,7 @@ func New(config ...Config) router.MiddlewareFunc {
 			currentParams := ctx.RouteParams()
 			currentQuery := ctx.Queries()
 
-			ctx.Locals(cfg.TemplateContextKey, map[string]any{
+			ctx.LocalsMerge(cfg.TemplateContextKey, map[string]any{
 				cfg.CurrentRouteNameKey: currentRoute,
 				cfg.CurrentParamsKey:    currentParams,
 				cfg.CurrentQueryKey:     currentQuery,

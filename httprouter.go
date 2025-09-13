@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -446,6 +447,28 @@ func (c *httpRouterContext) Locals(key any, value ...any) any {
 
 	c.locals[fmt.Sprint(key)] = value[0]
 	return value[0]
+}
+
+func (c *httpRouterContext) LocalsMerge(key any, value map[string]any) map[string]any {
+	keyStr := fmt.Sprint(key)
+	existing, exists := c.locals[keyStr]
+
+	if !exists {
+		c.locals[keyStr] = value
+		return value
+	}
+
+	if existingMap, ok := existing.(map[string]any); ok {
+		// merge overriding existing vals
+		merged := make(map[string]any)
+		maps.Copy(merged, existingMap)
+		maps.Copy(merged, value)
+		c.locals[keyStr] = merged
+		return merged
+	}
+
+	c.locals[keyStr] = value
+	return value
 }
 
 func (c *httpRouterContext) Body() []byte {

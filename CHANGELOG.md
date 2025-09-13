@@ -1,5 +1,29 @@
 # Changelog
 
+# [0.10.0](https://github.com/goliatone/go-router/compare/v0.9.0...v0.10.0) - (2025-09-13)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.10.0 ([68be754](https://github.com/goliatone/go-router/commit/68be754c100fbf61555aa2d06b8dba5ed93a4194))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Deprecation for flash ToMiddlware ([a2da36c](https://github.com/goliatone/go-router/commit/a2da36cf3950664d0cc9cab87d49c191b48f4704))  - (goliatone)
+- Flash middleware ([3d73e32](https://github.com/goliatone/go-router/commit/3d73e3292e9c6d60e636e1d2a26501a7cac0707f))  - (goliatone)
+- Routecontext middleware ([e9a3d68](https://github.com/goliatone/go-router/commit/e9a3d68ea56a36e942a5b1f86fe86dcaa524eb4b))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.9.0 ([3702c9e](https://github.com/goliatone/go-router/commit/3702c9eec69cf671f5a18494e666e4c959ef8962))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#10](https://github.com/goliatone/go-router/pull/10): routecontext middlware ([fb94188](https://github.com/goliatone/go-router/commit/fb941881abb92414057a1d798a7d3b4f675ee9bc))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([bdefb6b](https://github.com/goliatone/go-router/commit/bdefb6b9f21157fc6a6309fa1cda0a62104504c5))  - (goliatone)
+
 # [0.9.0](https://github.com/goliatone/go-router/compare/v0.8.0...v0.9.0) - (2025-09-12)
 
 ## <!-- 13 -->📦 Bumps

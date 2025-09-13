@@ -1102,3 +1102,54 @@ func TestFiberContext_Redirects(t *testing.T) {
 		})
 	}
 }
+
+func TestFiberContext_LocalsMerge(t *testing.T) {
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			EnablePrintRoutes: true,
+		})
+	})
+	r := adapter.Router()
+
+	handler := func(ctx router.Context) error {
+		// Test LocalsMerge with no existing value
+		result1 := ctx.LocalsMerge("session", map[string]any{
+			"user_id": 456,
+			"email":   "test@example.com",
+		})
+
+		if len(result1) != 2 || result1["user_id"] != 456 || result1["email"] != "test@example.com" {
+			t.Errorf("Expected map with user_id=456 and email=test@example.com, got %v", result1)
+		}
+
+		// Test LocalsMerge with existing map - should merge
+		result2 := ctx.LocalsMerge("session", map[string]any{
+			"preferences": map[string]any{"theme": "dark"},
+			"user_id":     789, // Should override
+		})
+
+		if len(result2) != 3 || result2["user_id"] != 789 || result2["email"] != "test@example.com" {
+			t.Errorf("Expected merged map with user_id=789, email=test@example.com and preferences, got %v", result2)
+		}
+
+		// Verify preferences was added
+		if prefs, ok := result2["preferences"].(map[string]any); !ok || prefs["theme"] != "dark" {
+			t.Errorf("Expected preferences.theme=dark, got %v", result2["preferences"])
+		}
+
+		return ctx.JSON(200, map[string]any{"status": "ok"})
+	}
+
+	r.Get("/fiber-locals-merge", handler)
+	app := adapter.WrappedRouter()
+
+	req := httptest.NewRequest("GET", "/fiber-locals-merge", nil)
+	resp, err := app.Test(req, -1)
+	if err != nil {
+		t.Fatalf("Error making request: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status code 200, got %d", resp.StatusCode)
+	}
+}

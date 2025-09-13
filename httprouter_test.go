@@ -547,3 +547,85 @@ func TestContext_GetSet(t *testing.T) {
 		t.Fatalf("Error making GET request: %v", err)
 	}
 }
+
+func TestHTTPRouter_LocalsMerge(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	handler := func(ctx router.Context) error {
+		// Test LocalsMerge with no existing value
+		result1 := ctx.LocalsMerge("session", map[string]any{
+			"user_id": 123,
+			"role":    "admin",
+		})
+
+		expected1 := map[string]any{
+			"user_id": 123,
+			"role":    "admin",
+		}
+
+		if len(result1) != 2 || result1["user_id"] != 123 || result1["role"] != "admin" {
+			t.Errorf("Expected %v, got %v", expected1, result1)
+		}
+
+		// Test LocalsMerge with existing map - should merge
+		result2 := ctx.LocalsMerge("session", map[string]any{
+			"last_login": "2023-01-01",
+			"role":       "superuser", // Should override
+		})
+
+		expected2 := map[string]any{
+			"user_id":    123,
+			"role":       "superuser", // Overridden value
+			"last_login": "2023-01-01",
+		}
+
+		if len(result2) != 3 || result2["user_id"] != 123 || result2["role"] != "superuser" || result2["last_login"] != "2023-01-01" {
+			t.Errorf("Expected %v, got %v", expected2, result2)
+		}
+
+		// Verify the stored value is also merged
+		stored := ctx.Locals("session")
+		storedMap, ok := stored.(map[string]any)
+		if !ok {
+			t.Errorf("Expected stored value to be map[string]any, got %T", stored)
+		}
+
+		if len(storedMap) != 3 || storedMap["user_id"] != 123 || storedMap["role"] != "superuser" || storedMap["last_login"] != "2023-01-01" {
+			t.Errorf("Expected stored value %v, got %v", expected2, storedMap)
+		}
+
+		// Test LocalsMerge with non-map existing value - should replace
+		ctx.Locals("config", "some string value")
+		result3 := ctx.LocalsMerge("config", map[string]any{
+			"debug":   true,
+			"timeout": 30,
+		})
+
+		expected3 := map[string]any{
+			"debug":   true,
+			"timeout": 30,
+		}
+
+		if len(result3) != 2 || result3["debug"] != true || result3["timeout"] != 30 {
+			t.Errorf("Expected %v, got %v", expected3, result3)
+		}
+
+		return ctx.JSON(200, map[string]any{"status": "ok"})
+	}
+
+	r.Get("/locals-merge", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/locals-merge")
+	if err != nil {
+		t.Fatalf("Error making GET request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+}

@@ -53,9 +53,6 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		// get bun tags with additional metadata
 		bunTag := field.Tag.Get(TAG_BUN)
 		isRequired := strings.Contains(bunTag, "notnull")
-		if isRequired {
-			required = append(required, jsonName)
-		}
 
 		if idx := strings.Index(bunTag, "m2m:"); idx != -1 {
 			pivotStr := bunTag[idx+len("m2m:"):]
@@ -124,6 +121,11 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 			prop.Required = false
 		}
 
+		// Add to required slice only after final determination
+		if prop.Required {
+			required = append(required, jsonName)
+		}
+
 		properties[jsonName] = prop
 	}
 
@@ -137,11 +139,10 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 }
 
 func splitByComa(s string) (before, after string) {
-	idx := strings.Index(s, ",")
-	if idx == -1 {
-		return "", ""
+	if idx := strings.Index(s, ","); idx != -1 {
+		return s[:idx], s[idx+1:]
 	}
-	return s[:idx], s[idx+1:]
+	return s, ""
 }
 
 func extractSubAfter(s, prefix string) string {

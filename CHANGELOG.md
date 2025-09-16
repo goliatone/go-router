@@ -1,5 +1,37 @@
 # Changelog
 
+# [0.12.0](https://github.com/goliatone/go-router/compare/v0.11.2...v0.12.0) - (2025-09-16)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Test meta ([a8bb079](https://github.com/goliatone/go-router/commit/a8bb079d9c752c7b302806dd6c13c817abc59804))  - (goliatone)
+- M2m would drop pivot table info ([f4ab0fb](https://github.com/goliatone/go-router/commit/f4ab0fb62685bcb326499006f1d33f056d8a60b4))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.12.0 ([2e966e8](https://github.com/goliatone/go-router/commit/2e966e8c38d0f4a60a392a76fba889a27bd4e026))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Tests for meta ([bfcd1aa](https://github.com/goliatone/go-router/commit/bfcd1aa456d5b1542674df00457dada4f312b42b))  - (goliatone)
+- Update meta extract ([624ebd3](https://github.com/goliatone/go-router/commit/624ebd3616c2675319a879b9dc67a4307707e746))  - (goliatone)
+- Update metadata ([3218b89](https://github.com/goliatone/go-router/commit/3218b89591c8c0b49c28f17752690109d1e0b518))  - (goliatone)
+- Extend meta extract with new fields ([07030dc](https://github.com/goliatone/go-router/commit/07030dc46501b377f155d37a6a2a73d732da3d48))  - (goliatone)
+- Test for meta ([c39883c](https://github.com/goliatone/go-router/commit/c39883c9d6b3ba01ad2e4b52a954381ec6609522))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.11.2 ([5301f7c](https://github.com/goliatone/go-router/commit/5301f7c761fa560bf397e288d90d110f0beff9f6))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#12](https://github.com/goliatone/go-router/pull/12): meta extractor ([bff7e9f](https://github.com/goliatone/go-router/commit/bff7e9f2591aa4b0c930a960f1d72021ce1111b7))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Clean up code ([fbbdde1](https://github.com/goliatone/go-router/commit/fbbdde1c27aa2e05978d87a9d25579e332b2b4d6))  - (goliatone)
+- Update deps ([e7f426a](https://github.com/goliatone/go-router/commit/e7f426a442265ba7a2b7199a0f09eaf2a7d46ee6))  - (goliatone)
+
 # [0.11.2](https://github.com/goliatone/go-router/compare/v0.11.1...v0.11.2) - (2025-09-13)
 
 ## <!-- 13 -->📦 Bumps

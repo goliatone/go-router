@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -76,6 +77,7 @@ type SchemaMetadata struct {
 }
 
 type PropertyInfo struct {
+	// Existing fields
 	Type         string                  `json:"type"`
 	Format       string                  `json:"format,omitempty"`
 	Description  string                  `json:"description,omitempty"`
@@ -87,6 +89,14 @@ type PropertyInfo struct {
 	Example      any                     `json:"example,omitempty"`
 	Properties   map[string]PropertyInfo `json:"properties,omitempty"` // For nested objects
 	Items        *PropertyInfo           `json:"items,omitempty"`      // For arrays
+
+	// New metadata fields
+	OriginalType  string            `json:"originalType,omitempty"`  // Go type string
+	OriginalKind  reflect.Kind      `json:"originalKind,omitempty"`  // Go kind
+	AllTags       map[string]string `json:"allTags,omitempty"`       // All struct tags
+	TransformPath []string          `json:"transformPath,omitempty"` // Transformation steps
+	GoPackage     string            `json:"goPackage,omitempty"`     // Package path
+	CustomTagData map[string]any    `json:"customTagData,omitempty"` // Custom tag handler results
 }
 
 type RelationshipInfo struct {

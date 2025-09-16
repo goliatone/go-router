@@ -664,6 +664,257 @@ type Context interface {
 }
 ```
 
+## Metadata Generation
+
+`go-router` provides a powerful schema metadata extraction facility that analyzes Go structs using reflection to generate rich metadata about types, fields, relationships, and tags. This is particularly useful for generating OpenAPI schemas, database migrations, and API documentation.
+
+### Overview
+
+The core function `ExtractSchemaFromType()` takes a Go type and returns comprehensive metadata including:
+
+- **Field information**: types, validation rules, JSON schemas
+- **Relationship mapping**: has-one, has-many, belongs-to, many-to-many relationships
+- **Tag metadata**: struct tags from json, bun, validation, and custom tags
+- **Type hierarchy**: transformation paths for complex nested types
+- **Original Go type information**: field names, types, and package paths
+
+### Basic Usage
+
+```go
+package main
+
+import (
+    "fmt"
+    "reflect"
+    "github.com/goliatone/go-router"
+)
+
+type User struct {
+    ID       int64     `json:"id" bun:"id,pk,notnull" validate:"required"`
+    Name     string    `json:"name" bun:"name,notnull" validate:"min=1"`
+    Email    *string   `json:"email,omitempty" bun:"email" validate:"email"`
+    Age      int       `json:"age" bun:"age"`
+    Posts    []Post    `bun:"rel:has-many,join:id=user_id" json:"posts,omitempty"`
+}
+
+type Post struct {
+    ID     int64  `json:"id" bun:"id,pk"`
+    Title  string `json:"title" bun:"title,notnull"`
+    UserID int64  `json:"user_id" bun:"user_id"`
+}
+
+func main() {
+    // Extract basic metadata
+    metadata := router.ExtractSchemaFromType(reflect.TypeOf(User{}))
+
+    fmt.Printf("Schema: %s\n", metadata.Name)
+    fmt.Printf("Properties: %d\n", len(metadata.Properties))
+    fmt.Printf("Relationships: %d\n", len(metadata.Relationships))
+}
+```
+
+### Advanced Configuration
+
+The metadata extraction supports extensive customization through `ExtractSchemaFromTypeOptions`:
+
+```go
+type ExtractSchemaFromTypeOptions struct {
+    // Table naming functions
+    GetTableName      func(t reflect.Type) string
+    ToSnakeCasePlural func(s string) string
+    ToSingular        func(s string) string
+
+    // Metadata inclusion options
+    IncludeOriginalNames bool // Include original Go field names
+    IncludeOriginalTypes bool // Include original Go types
+    IncludeTagMetadata   bool // Include all struct tags
+    IncludeTypeMetadata  bool // Include type hierarchy info
+
+    // Tag processing
+    CustomTagHandlers map[string]func(tag string) any // Handle custom tags
+    TagPriority       []string                        // Order of tag precedence
+
+    // Field filtering and transformation
+    SkipUnexportedFields *bool                                // Control unexported field inclusion
+    SkipAnonymousFields  *bool                                // Control anonymous field inclusion
+    CustomFieldFilter    func(field reflect.StructField) bool // Custom field inclusion logic
+    FieldNameTransformer func(fieldName string) string        // Custom field name transformation
+    PropertyTypeMapper   func(t reflect.Type) PropertyInfo    // Custom type mapping
+}
+```
+
+### Enhanced Metadata Example
+
+```go
+// Enable all metadata features
+opts := router.ExtractSchemaFromTypeOptions{
+    IncludeOriginalNames: true,
+    IncludeOriginalTypes: true,
+    IncludeTagMetadata:   true,
+    IncludeTypeMetadata:  true,
+    TagPriority:          []string{"json", "bun", "validate"},
+    CustomTagHandlers: map[string]func(tag string) any{
+        "validate": parseValidationRules,
+    },
+}
+
+metadata := router.ExtractSchemaFromType(reflect.TypeOf(User{}), opts)
+
+// Access enhanced property information
+for name, prop := range metadata.Properties {
+    fmt.Printf("Field: %s\n", name)
+    fmt.Printf("  Original Name: %s\n", prop.OriginalName)
+    fmt.Printf("  Original Type: %s\n", prop.OriginalType)
+    fmt.Printf("  All Tags: %v\n", prop.AllTags)
+    fmt.Printf("  Transform Path: %v\n", prop.TransformPath)
+    fmt.Printf("  Package: %s\n", prop.GoPackage)
+}
+```
+
+### Relationship Support
+
+The metadata extractor automatically detects and maps relationships from struct tags:
+
+#### Has-One Relationships
+```go
+type User struct {
+    Profile Profile `bun:"rel:has-one,join:id=user_id" json:"profile"`
+}
+```
+
+#### Has-Many Relationships
+```go
+type User struct {
+    Posts []Post `bun:"rel:has-many,join:id=user_id" json:"posts"`
+}
+```
+
+#### Belongs-To Relationships
+```go
+type Post struct {
+    UserID int64 `bun:"user_id" json:"user_id"`
+    User   *User `bun:"rel:belongs-to,join:user_id=id" json:"user"`
+}
+```
+
+#### Many-to-Many Relationships
+```go
+type Order struct {
+    Items []Item `bun:"m2m:order_to_items,join:Order=Item" json:"items"`
+}
+```
+
+### Custom Tag Handlers
+
+Process custom validation or business logic tags:
+
+```go
+func parseValidationRules(tag string) any {
+    rules := make(map[string]any)
+    parts := strings.Split(tag, ",")
+    for _, part := range parts {
+        if strings.HasPrefix(part, "min=") {
+            rules["minimum"] = parseMinValue(part)
+        }
+        if strings.HasPrefix(part, "max=") {
+            rules["maximum"] = parseMaxValue(part)
+        }
+        if part == "required" {
+            rules["required"] = true
+        }
+    }
+    return rules
+}
+
+opts := router.ExtractSchemaFromTypeOptions{
+    CustomTagHandlers: map[string]func(tag string) any{
+        "validate": parseValidationRules,
+    },
+}
+```
+
+### Field Filtering and Transformation
+
+```go
+// Helper function to create bool pointers
+func boolPtr(b bool) *bool {
+    return &b
+}
+
+opts := router.ExtractSchemaFromTypeOptions{
+    // Include unexported fields
+    SkipUnexportedFields: boolPtr(false),
+
+    // Custom field filtering
+    CustomFieldFilter: func(field reflect.StructField) bool {
+        return !strings.HasPrefix(field.Name, "internal")
+    },
+
+    // Transform field names
+    FieldNameTransformer: func(fieldName string) string {
+        return "api_" + strings.ToLower(fieldName)
+    },
+}
+```
+
+### Property Information
+
+Each field generates a `PropertyInfo` struct containing:
+
+```go
+type PropertyInfo struct {
+    // OpenAPI schema fields
+    Type         string                  `json:"type"`
+    Format       string                  `json:"format,omitempty"`
+    Description  string                  `json:"description,omitempty"`
+    Required     bool                    `json:"required"`
+    Nullable     bool                    `json:"nullable"`
+    ReadOnly     bool                    `json:"read_only"`
+    WriteOnly    bool                    `json:"write_only"`
+    Items        *PropertyInfo           `json:"items,omitempty"`
+
+    // Enhanced metadata (when enabled)
+    OriginalName  string            `json:"originalName,omitempty"`  // Go field name
+    OriginalType  string            `json:"originalType,omitempty"`  // Go type string
+    OriginalKind  reflect.Kind      `json:"originalKind,omitempty"`  // Go kind
+    AllTags       map[string]string `json:"allTags,omitempty"`       // All struct tags
+    TransformPath []string          `json:"transformPath,omitempty"` // Type transformation steps
+    GoPackage     string            `json:"goPackage,omitempty"`     // Package path
+    CustomTagData map[string]any    `json:"customTagData,omitempty"` // Custom tag results
+}
+```
+
+### Performance Considerations
+
+- **Default configuration** has minimal overhead and maintains backward compatibility
+- **Enhanced metadata** options increase processing time but provide richer information
+- **Custom handlers** are only called when relevant tags are present
+- **Field filtering** can improve performance by skipping unnecessary fields
+
+### Common Use Cases
+
+1. **OpenAPI Schema Generation**: Extract field types, validation rules, and relationships for API documentation
+2. **Database Migration Tools**: Analyze struct relationships and generate database schemas
+3. **Form Generation**: Create web forms based on struct validation tags
+4. **Code Documentation**: Auto-generate documentation from struct comments and tags
+5. **Data Validation**: Extract validation rules for runtime validation
+6. **API Client Generation**: Generate client SDKs based on struct definitions
+
+### Supported Tags
+
+The metadata extractor recognizes and processes the following struct tag types:
+
+- `json`: Field naming and serialization options
+- `bun`: Database ORM tags for relationships and constraints
+- `validate`: Validation rules and constraints
+- `crud`: Custom CRUD operation metadata
+- `xml`, `yaml`: Alternative serialization formats
+- `form`, `query`, `param`, `header`: HTTP parameter binding
+- `db`, `gorm`: Alternative database ORM tags
+- Custom tags via `CustomTagHandlers`
+
+For complete examples and advanced usage patterns, see the test files in the repository.
+
 ## License
 
 MIT

@@ -57,24 +57,66 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 		if idx := strings.Index(bunTag, "m2m:"); idx != -1 {
 			pivotStr := bunTag[idx+len("m2m:"):]
 			pname, remain := splitByComa(pivotStr)
+
+			// Get source and target table names
+			sourceTable := getTableName(t)          // Current struct type
+			targetTable := getTableName(field.Type) // Related struct type
+
 			relInfo := RelationshipInfo{
 				RelationType:    "many-to-many",
 				RelatedTypeName: getBaseTypeName(field.Type),
 				IsSlice:         (field.Type.Kind() == reflect.Slice),
 				PivotTable:      pname,
+				SourceTable:     sourceTable,
+				TargetTable:     targetTable,
 			}
 
 			if strings.HasPrefix(remain, "join:") {
 				joinClause := remain[len("join:"):]
 				relInfo.JoinClause = joinClause
 				relInfo.PivotJoin = joinClause
+
+				// Parse pivot columns from join clause
+				sourceCol, targetCol := parseM2MJoinClause(joinClause)
+				relInfo.SourcePivotColumn = sourceCol
+				relInfo.TargetPivotColumn = targetCol
+			} else {
+				// Default M2M column names when no explicit join clause
+				relInfo.SourcePivotColumn = toSingular(sourceTable) + "_id"
+				relInfo.TargetPivotColumn = toSingular(targetTable) + "_id"
 			}
+
+			// Check for supplemental crud tag overrides
+			if crudTag := field.Tag.Get(TAG_CRUD); crudTag != "" && crudTag != "-" {
+				parts := strings.Split(crudTag, ",")
+				for _, part := range parts {
+					part = strings.TrimSpace(part)
+					if strings.HasPrefix(part, "source_table=") {
+						relInfo.SourceTable = strings.TrimPrefix(part, "source_table=")
+					} else if strings.HasPrefix(part, "target_table=") {
+						relInfo.TargetTable = strings.TrimPrefix(part, "target_table=")
+					} else if strings.HasPrefix(part, "source_pivot_column=") {
+						relInfo.SourcePivotColumn = strings.TrimPrefix(part, "source_pivot_column=")
+					} else if strings.HasPrefix(part, "target_pivot_column=") {
+						relInfo.TargetPivotColumn = strings.TrimPrefix(part, "target_pivot_column=")
+					}
+				}
+			}
+
 			relationships[jsonName] = relInfo
 			continue
 		}
 
 		if strings.Contains(bunTag, "rel:") {
-			relInfo := RelationshipInfo{}
+			// Get source and target table names
+			sourceTable := getTableName(t)          // Current struct type
+			targetTable := getTableName(field.Type) // Related struct type
+
+			relInfo := RelationshipInfo{
+				SourceTable: sourceTable,
+				TargetTable: targetTable,
+			}
+
 			switch {
 			case strings.Contains(bunTag, "has-one"):
 				relInfo.RelationType = "has-one"
@@ -92,13 +134,59 @@ func ExtractSchemaFromType(t reflect.Type) SchemaMetadata {
 				joinPart := extractSubAfter(bunTag, "join:")
 				relInfo.JoinClause = joinPart
 
-				parts := strings.Split(joinPart, "=")
-				if len(parts) == 2 {
-					relInfo.JoinKey = parts[0]
-					relInfo.PrimaryKey = parts[1]
+				sourceCol, targetCol := parseJoinClause(joinPart)
+				relInfo.JoinKey = sourceCol    // Keep for backward compatibility
+				relInfo.PrimaryKey = targetCol // Keep for backward compatibility
+
+				// Populate new fields based on relationship type
+				switch relInfo.RelationType {
+				case "belongs-to":
+					// For belongs-to: source has FK pointing to target's PK
+					relInfo.SourceColumn = sourceCol
+					relInfo.TargetColumn = targetCol
+				case "has-one", "has-many":
+					// For has-one/has-many: source's PK is referenced by target's FK
+					relInfo.SourceColumn = sourceCol // Source PK
+					relInfo.TargetColumn = targetCol // Target FK
+				}
+			} else {
+				// Default column names when no explicit join clause
+				switch relInfo.RelationType {
+				case "belongs-to":
+					// Default: source has "{target_singular}_id" pointing to target's "id"
+					relInfo.SourceColumn = toSingular(targetTable) + "_id"
+					relInfo.TargetColumn = "id"
+				case "has-one", "has-many":
+					// Default: target has "{source_singular}_id" pointing to source's "id"
+					relInfo.SourceColumn = "id"
+					relInfo.TargetColumn = toSingular(sourceTable) + "_id"
+				}
+				relInfo.JoinKey = relInfo.SourceColumn    // For backward compatibility
+				relInfo.PrimaryKey = relInfo.TargetColumn // For backward compatibility
+			}
+
+			relInfo.RelatedTypeName = getBaseTypeName(field.Type)
+
+			// Check for supplemental crud tag overrides
+			if crudTag := field.Tag.Get(TAG_CRUD); crudTag != "" && crudTag != "-" {
+				parts := strings.Split(crudTag, ",")
+				for _, part := range parts {
+					part = strings.TrimSpace(part)
+					if strings.HasPrefix(part, "source_table=") {
+						relInfo.SourceTable = strings.TrimPrefix(part, "source_table=")
+					} else if strings.HasPrefix(part, "target_table=") {
+						relInfo.TargetTable = strings.TrimPrefix(part, "target_table=")
+					} else if strings.HasPrefix(part, "source_column=") {
+						relInfo.SourceColumn = strings.TrimPrefix(part, "source_column=")
+					} else if strings.HasPrefix(part, "target_column=") {
+						relInfo.TargetColumn = strings.TrimPrefix(part, "target_column=")
+					} else if strings.HasPrefix(part, "source_pivot_column=") {
+						relInfo.SourcePivotColumn = strings.TrimPrefix(part, "source_pivot_column=")
+					} else if strings.HasPrefix(part, "target_pivot_column=") {
+						relInfo.TargetPivotColumn = strings.TrimPrefix(part, "target_pivot_column=")
+					}
 				}
 			}
-			relInfo.RelatedTypeName = getBaseTypeName(field.Type)
 
 			relationships[jsonName] = relInfo
 
@@ -251,4 +339,116 @@ func isReadOnly(field reflect.StructField) bool {
 
 func isWriteOnly(field reflect.StructField) bool {
 	return strings.Contains(field.Tag.Get(TAG_CRUD), "writeonly")
+}
+
+// getTableName derives table name from struct type following Bun conventions
+func getTableName(t reflect.Type) string {
+	// Handle pointer and slice types
+	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		t = t.Elem()
+	}
+
+	// Check for bun.BaseModel embedded struct with table tag
+	if t.Kind() == reflect.Struct {
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			if field.Anonymous && field.Type.Name() == "BaseModel" {
+				if tableTag := field.Tag.Get("bun"); tableTag != "" {
+					parts := strings.Split(tableTag, ",")
+					for _, part := range parts {
+						if strings.HasPrefix(part, "table:") {
+							return strings.TrimPrefix(part, "table:")
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fall back to snake_case plural of struct name
+	return toSnakeCasePlural(t.Name())
+}
+
+// toSnakeCasePlural converts CamelCase to snake_case and pluralizes
+func toSnakeCasePlural(s string) string {
+	// Convert CamelCase to snake_case
+	var result strings.Builder
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result.WriteByte('_')
+		}
+		result.WriteRune(r)
+	}
+	snakeCase := strings.ToLower(result.String())
+
+	// Simple pluralization rules
+	if strings.HasSuffix(snakeCase, "y") && len(snakeCase) > 1 {
+		// Check if the character before 'y' is a consonant
+		prevChar := snakeCase[len(snakeCase)-2]
+		if prevChar != 'a' && prevChar != 'e' && prevChar != 'i' && prevChar != 'o' && prevChar != 'u' {
+			return snakeCase[:len(snakeCase)-1] + "ies"
+		}
+	}
+	if strings.HasSuffix(snakeCase, "s") || strings.HasSuffix(snakeCase, "x") || strings.HasSuffix(snakeCase, "z") {
+		return snakeCase + "es"
+	}
+	return snakeCase + "s"
+}
+
+// parseJoinClause parses join clauses like "user_id=id" or "id=order_id"
+func parseJoinClause(joinClause string) (sourceCol, targetCol string) {
+	parts := strings.Split(joinClause, "=")
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	return "", ""
+}
+
+// parseM2MJoinClause parses M2M join clauses like "order=id,item=item_id"
+func parseM2MJoinClause(joinClause string) (sourceCol, targetCol string) {
+	// Handle formats like "order=id,item=item_id" or just "order_id,item_id"
+	parts := strings.Split(joinClause, ",")
+	if len(parts) >= 2 {
+		// Parse first part (source)
+		if strings.Contains(parts[0], "=") {
+			sourceParts := strings.Split(parts[0], "=")
+			if len(sourceParts) == 2 {
+				sourceCol = strings.TrimSpace(sourceParts[1])
+			}
+		} else {
+			sourceCol = strings.TrimSpace(parts[0])
+		}
+
+		// Parse second part (target)
+		if strings.Contains(parts[1], "=") {
+			targetParts := strings.Split(parts[1], "=")
+			if len(targetParts) == 2 {
+				targetCol = strings.TrimSpace(targetParts[1])
+			}
+		} else {
+			targetCol = strings.TrimSpace(parts[1])
+		}
+	}
+	return sourceCol, targetCol
+}
+
+// toSingular converts plural table names back to singular for column naming
+func toSingular(s string) string {
+	// Simple singularization rules (reverse of pluralization)
+	if strings.HasSuffix(s, "ies") && len(s) > 3 {
+		return s[:len(s)-3] + "y"
+	}
+	if strings.HasSuffix(s, "es") && len(s) > 2 {
+		// Check if it's a simple "s" addition or genuine "es" addition
+		withoutEs := s[:len(s)-2]
+		if strings.HasSuffix(withoutEs, "s") || strings.HasSuffix(withoutEs, "x") || strings.HasSuffix(withoutEs, "z") {
+			return withoutEs
+		}
+		// Fall back to removing just the "s"
+		return s[:len(s)-1]
+	}
+	if strings.HasSuffix(s, "s") && len(s) > 1 {
+		return s[:len(s)-1]
+	}
+	return s
 }

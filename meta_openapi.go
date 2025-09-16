@@ -99,6 +99,14 @@ type RelationshipInfo struct {
 	ForeignKey      string `json:"foreign_key,omitempty"`
 	PivotTable      string `json:"pivot_table,omitempty"` // e.g. "order_to_items"
 	PivotJoin       string `json:"pivot_join,omitempty"`  // e.g. "Order=Item"
+
+	// New fields for complete relationship metadata
+	SourceTable       string `json:"source_table,omitempty"`        // entity owning the relationship field
+	SourceColumn      string `json:"source_column,omitempty"`       // FK column on the source table
+	TargetTable       string `json:"target_table,omitempty"`        // referenced entity/table
+	TargetColumn      string `json:"target_column,omitempty"`       // PK column on the target table
+	SourcePivotColumn string `json:"source_pivot_column,omitempty"` // for M2M: column linking to source table
+	TargetPivotColumn string `json:"target_pivot_column,omitempty"` // for M2M: column linking to target table
 }
 
 // MetadataProvider interface for components that can provide API metadata

@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -76,6 +77,7 @@ type SchemaMetadata struct {
 }
 
 type PropertyInfo struct {
+	// Existing fields
 	Type         string                  `json:"type"`
 	Format       string                  `json:"format,omitempty"`
 	Description  string                  `json:"description,omitempty"`
@@ -87,6 +89,14 @@ type PropertyInfo struct {
 	Example      any                     `json:"example,omitempty"`
 	Properties   map[string]PropertyInfo `json:"properties,omitempty"` // For nested objects
 	Items        *PropertyInfo           `json:"items,omitempty"`      // For arrays
+
+	// New metadata fields
+	OriginalType  string            `json:"originalType,omitempty"`  // Go type string
+	OriginalKind  reflect.Kind      `json:"originalKind,omitempty"`  // Go kind
+	AllTags       map[string]string `json:"allTags,omitempty"`       // All struct tags
+	TransformPath []string          `json:"transformPath,omitempty"` // Transformation steps
+	GoPackage     string            `json:"goPackage,omitempty"`     // Package path
+	CustomTagData map[string]any    `json:"customTagData,omitempty"` // Custom tag handler results
 }
 
 type RelationshipInfo struct {
@@ -99,6 +109,14 @@ type RelationshipInfo struct {
 	ForeignKey      string `json:"foreign_key,omitempty"`
 	PivotTable      string `json:"pivot_table,omitempty"` // e.g. "order_to_items"
 	PivotJoin       string `json:"pivot_join,omitempty"`  // e.g. "Order=Item"
+
+	// New fields for complete relationship metadata
+	SourceTable       string `json:"source_table,omitempty"`        // entity owning the relationship field
+	SourceColumn      string `json:"source_column,omitempty"`       // FK column on the source table
+	TargetTable       string `json:"target_table,omitempty"`        // referenced entity/table
+	TargetColumn      string `json:"target_column,omitempty"`       // PK column on the target table
+	SourcePivotColumn string `json:"source_pivot_column,omitempty"` // for M2M: column linking to source table
+	TargetPivotColumn string `json:"target_pivot_column,omitempty"` // for M2M: column linking to target table
 }
 
 // MetadataProvider interface for components that can provide API metadata

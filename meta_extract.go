@@ -414,11 +414,6 @@ func getBaseTypeName(t reflect.Type) string {
 	return t.Name()
 }
 
-// extractPropertyInfo extracts OpenAPI property information from a type
-func extractPropertyInfo(t reflect.Type) PropertyInfo {
-	return extractPropertyInfoWithPath(t, nil, false)
-}
-
 // extractPropertyInfoWithPath extracts property info and tracks transformation path
 func extractPropertyInfoWithPath(t reflect.Type, transformPath []string, includeTypeMetadata bool) PropertyInfo {
 	// Build the complete transformation path for the entire type

@@ -54,6 +54,20 @@ type Item struct {
 	ID int64 `bun:",pk" json:"id"`
 }
 
+// Bug test structs for Task 3
+type BugTestM2M struct {
+	ID      int64  `bun:",pk" json:"id"`
+	Simple  []Item `bun:"m2m:simple_pivot" json:"simple_items"`            // No comma case
+	Complex []Item `bun:"m2m:complex_pivot,join:a=b" json:"complex_items"` // With comma case
+}
+
+type BugTestRequired struct {
+	ID           int64  `bun:",pk" json:"id"`
+	RequiredOnly string `bun:"field1,notnull" json:"required_only"`           // Should be required
+	ConflictCase string `bun:"field2,notnull" json:"conflict_case,omitempty"` // Should NOT be required (omitempty wins)
+	OptionalCase string `bun:"field3" json:"optional_case,omitempty"`         // Should NOT be required
+}
+
 // main user model that references many relationships
 type User struct {
 	BaseModel
@@ -197,6 +211,67 @@ func TestExtractSchemaFromType(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:   "m2m pivot table name preservation",
+			inType: reflect.TypeOf(BugTestM2M{}),
+			checkFn: func(t *testing.T, got router.SchemaMetadata) {
+				// Verify simple_pivot (no comma) is preserved
+				if rel, ok := got.Relationships["simple_items"]; ok {
+					if rel.PivotTable != "simple_pivot" {
+						t.Errorf("expected PivotTable=simple_pivot, got %s", rel.PivotTable)
+					}
+				} else {
+					t.Error("expected 'simple_items' relationship")
+				}
+
+				// Verify complex_pivot (with comma) still works
+				if rel, ok := got.Relationships["complex_items"]; ok {
+					if rel.PivotTable != "complex_pivot" {
+						t.Errorf("expected PivotTable=complex_pivot, got %s", rel.PivotTable)
+					}
+					if rel.PivotJoin != "a=b" {
+						t.Errorf("expected PivotJoin=a=b, got %s", rel.PivotJoin)
+					}
+				} else {
+					t.Error("expected 'complex_items' relationship")
+				}
+			},
+		},
+		{
+			name:   "required field consistency with omitempty",
+			inType: reflect.TypeOf(BugTestRequired{}),
+			checkFn: func(t *testing.T, got router.SchemaMetadata) {
+				// Check required_only: should be required
+				if prop, ok := got.Properties["required_only"]; ok {
+					if !prop.Required {
+						t.Error("expected required_only.Required=true")
+					}
+					if !contains(got.Required, "required_only") {
+						t.Error("expected 'required_only' in global Required slice")
+					}
+				}
+
+				// Check conflict_case: omitempty should win (not required)
+				if prop, ok := got.Properties["conflict_case"]; ok {
+					if prop.Required {
+						t.Error("expected conflict_case.Required=false (omitempty should win)")
+					}
+					if contains(got.Required, "conflict_case") {
+						t.Error("did not expect 'conflict_case' in global Required slice")
+					}
+				}
+
+				// Check optional_case: should not be required
+				if prop, ok := got.Properties["optional_case"]; ok {
+					if prop.Required {
+						t.Error("expected optional_case.Required=false")
+					}
+					if contains(got.Required, "optional_case") {
+						t.Error("did not expect 'optional_case' in global Required slice")
+					}
+				}
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -205,4 +280,14 @@ func TestExtractSchemaFromType(t *testing.T) {
 			tc.checkFn(t, got)
 		})
 	}
+}
+
+// Helper function for testing Required slice membership
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }

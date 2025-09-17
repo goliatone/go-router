@@ -143,14 +143,6 @@ func (c *httpRouterWebSocketContext) WebSocketUpgrade() error {
 	// Store negotiated subprotocol
 	c.subprotocol = conn.Subprotocol()
 
-	// Call OnConnect handler if configured
-	if c.config.OnConnect != nil {
-		if err := c.config.OnConnect(c); err != nil {
-			conn.Close()
-			return fmt.Errorf("OnConnect handler failed: %w", err)
-		}
-	}
-
 	return nil
 }
 

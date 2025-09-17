@@ -434,22 +434,8 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 	// Apply defaults to config
 	config.ApplyDefaults()
 
-	// Return a wrapper function that handles OnPreUpgrade before delegating to WebSocket
+	// Return a wrapper function that delegates to WebSocket
 	return func(c *fiber.Ctx) error {
-		// Execute OnPreUpgrade hook if configured
-		var upgradeData UpgradeData
-		if config.OnPreUpgrade != nil {
-			// Create a router context for the hook
-			fiberCtx := NewFiberContext(c, &defaultLogger{}).(*fiberContext)
-
-			data, err := config.OnPreUpgrade(fiberCtx)
-			if err != nil {
-				// Hook failed - prevent WebSocket upgrade
-				return c.Status(400).SendString(fmt.Sprintf("upgrade validation failed: %v", err))
-			}
-			upgradeData = data
-		}
-
 		// Create websocket upgrader config
 		wsConfig := websocket.Config{
 			ReadBufferSize:  config.ReadBufferSize,
@@ -471,7 +457,7 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 		}
 
 		// Create WebSocket handler with access to upgradeData via closure
-		wsHandler := createFiberWSHandler(config, handler, upgradeData)
+		wsHandler := createFiberWSHandler(config, handler, nil)
 
 		// Execute the WebSocket handler
 		return wsHandler(c)
@@ -500,90 +486,86 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 		}
 	}
 
-	wsHandler := websocket.New(func(conn *websocket.Conn) {
-		// Create Fiber context wrapper using a minimal context
+	// Return a handler that captures the fiber context during upgrade
+	return func(c *fiber.Ctx) error {
+		// Capture the fiber context before the upgrade
 		logger := &defaultLogger{} // Use default logger if not available
+		capturedFiberCtx := NewFiberContext(c, logger).(*fiberContext)
 
-		// Create base WebSocket context
-		baseWsCtx := &fiberWebSocketContext{
-			fiberContext:  nil, // we handle this case in the WebSocket context methods
-			config:        config,
-			conn:          conn,
-			isUpgraded:    true,
-			connectionID:  fmt.Sprintf("fiber-ws-%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano()),
-			closeHandlers: make([]func(code int, text string) error, 0),
-		}
-
-		// Create enhanced WebSocket context with upgrade data from closure
-		wsCtx := &enhancedWebSocketContext{
-			WebSocketContext: baseWsCtx,
-			upgradeData:      upgradeData, // This comes from the closure
-		}
-
-		if config.MaxMessageSize > 0 {
-			conn.SetReadLimit(config.MaxMessageSize)
-		}
-
-		conn.SetPingHandler(func(appData string) error {
-			writeTimeout := baseWsCtx.getWriteTimeout()
-			deadline := time.Now().Add(writeTimeout)
-			if err := conn.SetWriteDeadline(deadline); err != nil {
-				return err
+		wsHandler := websocket.New(func(conn *websocket.Conn) {
+			// Create base WebSocket context with properly initialized fiber context
+			baseWsCtx := &fiberWebSocketContext{
+				fiberContext:  capturedFiberCtx, // Use the captured context instead of nil
+				config:        config,
+				conn:          conn,
+				isUpgraded:    true,
+				connectionID:  fmt.Sprintf("fiber-ws-%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano()),
+				closeHandlers: make([]func(code int, text string) error, 0),
 			}
-			if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
-				return err
-			}
-			if baseWsCtx.pingHandler != nil {
-				return baseWsCtx.pingHandler([]byte(appData))
-			}
-			return nil
-		})
 
-		conn.SetPongHandler(func(appData string) error {
-			// Update read deadline on pong receipt
-			if config.PongWait > 0 {
-				deadline := time.Now().Add(config.PongWait)
-				if err := conn.SetReadDeadline(deadline); err != nil {
+			// Create enhanced WebSocket context
+			wsCtx := &enhancedWebSocketContext{
+				WebSocketContext: baseWsCtx,
+				upgradeData:      nil, // Upgrade data is handled by middleware
+			}
+
+			if config.MaxMessageSize > 0 {
+				conn.SetReadLimit(config.MaxMessageSize)
+			}
+
+			conn.SetPingHandler(func(appData string) error {
+				writeTimeout := baseWsCtx.getWriteTimeout()
+				deadline := time.Now().Add(writeTimeout)
+				if err := conn.SetWriteDeadline(deadline); err != nil {
 					return err
 				}
-			}
-			// Call custom handler if set
-			if baseWsCtx.pongHandler != nil {
-				return baseWsCtx.pongHandler([]byte(appData))
-			}
-			return nil
-		})
-
-		conn.SetCloseHandler(func(code int, text string) error {
-			// Call all registered close handlers
-			for _, closeHandler := range baseWsCtx.closeHandlers {
-				if err := closeHandler(code, text); err != nil {
-					// Log error but continue with other handlers
-					logger.Info("Close handler error", "error", err)
+				if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
+					return err
 				}
+				if baseWsCtx.pingHandler != nil {
+					return baseWsCtx.pingHandler([]byte(appData))
+				}
+				return nil
+			})
+
+			conn.SetPongHandler(func(appData string) error {
+				// Update read deadline on pong receipt
+				if config.PongWait > 0 {
+					deadline := time.Now().Add(config.PongWait)
+					if err := conn.SetReadDeadline(deadline); err != nil {
+						return err
+					}
+				}
+				// Call custom handler if set
+				if baseWsCtx.pongHandler != nil {
+					return baseWsCtx.pongHandler([]byte(appData))
+				}
+				return nil
+			})
+
+			conn.SetCloseHandler(func(code int, text string) error {
+				// Call all registered close handlers
+				for _, closeHandler := range baseWsCtx.closeHandlers {
+					if err := closeHandler(code, text); err != nil {
+						// Log error but continue with other handlers
+						logger.Info("Close handler error", "error", err)
+					}
+				}
+				return nil
+			})
+
+			// Store negotiated subprotocol
+			baseWsCtx.subprotocol = conn.Subprotocol()
+
+			// Call the main handler
+			if err := handler(wsCtx); err != nil {
+				logger.Info("WebSocket handler error", "error", err)
 			}
-			return nil
-		})
+		}, wsConfig)
 
-		// Store negotiated subprotocol
-		baseWsCtx.subprotocol = conn.Subprotocol()
-
-		// Call OnConnect handler if configured
-		if config.OnConnect != nil {
-			if err := config.OnConnect(wsCtx); err != nil {
-				logger.Info("OnConnect handler failed", "error", err)
-				conn.Close()
-				return
-			}
-		}
-
-		// Call the main handler
-		if err := handler(wsCtx); err != nil {
-			logger.Info("WebSocket handler error", "error", err)
-		}
-	}, wsConfig)
-
-	return wsHandler
+		// Execute the WebSocket handler
+		return wsHandler(c)
+	}
 }
 
 // getWriteTimeout returns the write timeout to use

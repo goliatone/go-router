@@ -128,10 +128,20 @@ func NewWSHub(opts ...func(*WSHubConfig)) *WSHub {
 
 // run processes hub events
 func (h *WSHub) run() {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logger.Error("Hub panic recovered", "panic", r)
+			// Restart the hub loop
+			go h.run()
+		}
+	}()
+
 	for {
 		select {
 		case client := <-h.register:
+			h.clientsMu.Lock()
 			h.clients[client.ID()] = client
+			h.clientsMu.Unlock()
 
 			// Call connect handlers
 			h.handlersMu.RLock()
@@ -147,8 +157,10 @@ func (h *WSHub) run() {
 			}
 
 		case client := <-h.unregisterCh:
+			h.clientsMu.Lock()
 			if _, ok := h.clients[client.ID()]; ok {
 				delete(h.clients, client.ID())
+				h.clientsMu.Unlock()
 
 				// Remove from all rooms using RoomManager
 				if h.roomManager != nil {
@@ -167,6 +179,8 @@ func (h *WSHub) run() {
 						}
 					}(handler)
 				}
+			} else {
+				h.clientsMu.Unlock()
 			}
 
 		case msg := <-h.broadcast:

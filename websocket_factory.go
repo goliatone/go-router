@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -24,6 +25,14 @@ func (f *BaseWebSocketContextFactory) AdapterName() string {
 // SupportsWebSocket always returns true for WebSocket context factories
 func (f *BaseWebSocketContextFactory) SupportsWebSocket() bool {
 	return true
+}
+
+// SupportedContextTypes returns the context type patterns this factory supports
+// Default implementation returns the adapter name for backward compatibility
+func (f *BaseWebSocketContextFactory) SupportedContextTypes() []string {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return []string{f.adapterName}
 }
 
 // WebSocketFactoryRegistry manages WebSocket context factories
@@ -62,8 +71,22 @@ func (r *WebSocketFactoryRegistry) GetByContext(c Context) WebSocketContextFacto
 
 	// Try to match context type to registered factories
 	for _, factory := range r.factories {
-		// This is a simple heuristic - adapters can override this logic
-		if factory.SupportsWebSocket() {
+		if !factory.SupportsWebSocket() {
+			continue
+		}
+
+		// First try to use SupportedContextTypes if the factory implements it
+		if extendedFactory, ok := factory.(interface {
+			SupportedContextTypes() []string
+		}); ok {
+			supportedTypes := extendedFactory.SupportedContextTypes()
+			for _, supportedType := range supportedTypes {
+				if contains(contextType, supportedType) {
+					return factory
+				}
+			}
+		} else {
+			// Fallback to the old method for backward compatibility
 			adapterName := factory.AdapterName()
 			if contains(contextType, adapterName) {
 				return factory
@@ -210,10 +233,15 @@ func generateConnectionID() string {
 
 // Helper function to check if a string contains a substring (case-insensitive)
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		(s == substr ||
-			fmt.Sprintf("%s", s) != s || // This is a placeholder check
-			len(s) > 0 && len(substr) > 0) // Basic length check
+	if len(substr) == 0 {
+		return true // empty substring is contained in any string
+	}
+	if len(s) < len(substr) {
+		return false // string is shorter than substring
+	}
+
+	// Convert both strings to lowercase for case-insensitive matching
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // WebSocketFactoryConfig provides configuration for WebSocket factories

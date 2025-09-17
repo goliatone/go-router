@@ -78,15 +78,15 @@ func (m *AckManager) SendWithAck(ctx context.Context, client WSClient, event *Ev
 		cancel:  cancel,
 	}
 
+	// Set up cleanup timer before storing to avoid race conditions
+	pending.timer = time.AfterFunc(timeout, func() {
+		m.timeoutAck(event.AckID)
+	})
+
 	// Store pending ack
 	m.pendingMu.Lock()
 	m.pending[event.AckID] = pending
 	m.pendingMu.Unlock()
-
-	// Set up cleanup timer
-	pending.timer = time.AfterFunc(timeout, func() {
-		m.timeoutAck(event.AckID)
-	})
 
 	// Send the event
 	if err := client.SendJSON(event); err != nil {
@@ -125,15 +125,15 @@ func (m *AckManager) SendWithCallback(ctx context.Context, client WSClient, even
 		cancel:   cancel,
 	}
 
+	// Set up cleanup timer before storing to avoid race conditions
+	pending.timer = time.AfterFunc(timeout, func() {
+		m.timeoutAck(event.AckID)
+	})
+
 	// Store pending ack
 	m.pendingMu.Lock()
 	m.pending[event.AckID] = pending
 	m.pendingMu.Unlock()
-
-	// Set up cleanup timer
-	pending.timer = time.AfterFunc(timeout, func() {
-		m.timeoutAck(event.AckID)
-	})
 
 	// Send the event
 	if err := client.SendJSON(event); err != nil {
@@ -146,51 +146,78 @@ func (m *AckManager) SendWithCallback(ctx context.Context, client WSClient, even
 
 // HandleAck processes an incoming acknowledgment
 func (m *AckManager) HandleAck(ack *EventAck) error {
-	m.pendingMu.RLock()
+	m.pendingMu.Lock()
 	pending, exists := m.pending[ack.ID]
-	m.pendingMu.RUnlock()
-
 	if !exists {
+		m.pendingMu.Unlock()
 		return fmt.Errorf("no pending acknowledgment for ID: %s", ack.ID)
 	}
 
+	// Create a copy of the needed fields under lock to avoid race conditions
+	ackChan := pending.ackChan
+	callback := pending.callback
+	ctx := pending.ctx
+	timer := pending.timer
+	cancel := pending.cancel
+
+	// Remove from pending map immediately to prevent double processing
+	delete(m.pending, ack.ID)
+	m.pendingMu.Unlock()
+
 	// Stop timeout timer
-	if pending.timer != nil {
-		pending.timer.Stop()
+	if timer != nil {
+		timer.Stop()
 	}
 
-	// Handle based on type
-	if pending.ackChan != nil {
+	// Handle based on type using copied values
+	if ackChan != nil {
 		// Channel-based acknowledgment
 		select {
-		case pending.ackChan <- ack:
+		case ackChan <- ack:
 		default:
 			// Channel might be closed
 		}
-	} else if pending.callback != nil {
+	} else if callback != nil {
 		// Callback-based acknowledgment
 		go func() {
-			if err := pending.callback(pending.ctx, ack); err != nil {
+			if err := callback(ctx, ack); err != nil {
 				// Log error (implementation would use actual logger)
 				fmt.Printf("ACK callback error: %v\n", err)
 			}
 		}()
 	}
 
-	// Cleanup
-	m.cleanupAck(ack.ID)
+	// Final cleanup (already removed from map, just clean up resources)
+	if timer != nil {
+		timer.Stop()
+	}
+	if cancel != nil {
+		cancel()
+	}
+	if ackChan != nil {
+		close(ackChan)
+	}
 
 	return nil
 }
 
 func (m *AckManager) timeoutAck(ackID string) {
-	m.pendingMu.RLock()
+	m.pendingMu.Lock()
 	pending, exists := m.pending[ackID]
-	m.pendingMu.RUnlock()
-
 	if !exists {
+		m.pendingMu.Unlock()
 		return
 	}
+
+	// Create a copy of the needed fields under lock to avoid race conditions
+	ackChan := pending.ackChan
+	callback := pending.callback
+	ctx := pending.ctx
+	cancel := pending.cancel
+
+	// Remove from pending map immediately to prevent double processing
+	delete(m.pending, ackID)
+	m.pendingMu.Unlock()
 
 	// Create timeout acknowledgment
 	timeoutAck := &EventAck{
@@ -200,24 +227,29 @@ func (m *AckManager) timeoutAck(ackID string) {
 		Timestamp: time.Now(),
 	}
 
-	// Handle based on type
-	if pending.ackChan != nil {
+	// Handle based on type using copied values
+	if ackChan != nil {
 		select {
-		case pending.ackChan <- timeoutAck:
+		case ackChan <- timeoutAck:
 		default:
 			// Channel might be closed
 		}
-	} else if pending.callback != nil {
+	} else if callback != nil {
 		go func() {
-			if err := pending.callback(pending.ctx, timeoutAck); err != nil {
+			if err := callback(ctx, timeoutAck); err != nil {
 				// Log error
 				fmt.Printf("ACK timeout callback error: %v\n", err)
 			}
 		}()
 	}
 
-	// Cleanup
-	m.cleanupAck(ackID)
+	// Final cleanup (already removed from map, just clean up resources)
+	if cancel != nil {
+		cancel()
+	}
+	if ackChan != nil {
+		close(ackChan)
+	}
 }
 
 func (m *AckManager) cleanupAck(ackID string) {
@@ -225,17 +257,22 @@ func (m *AckManager) cleanupAck(ackID string) {
 	defer m.pendingMu.Unlock()
 
 	if pending, exists := m.pending[ackID]; exists {
-		if pending.timer != nil {
-			pending.timer.Stop()
-		}
-		if pending.cancel != nil {
-			pending.cancel()
-		}
-		if pending.ackChan != nil {
-			close(pending.ackChan)
-		}
-		delete(m.pending, ackID)
+		m.cleanupAckUnsafe(ackID, pending)
 	}
+}
+
+func (m *AckManager) cleanupAckUnsafe(ackID string, pending *pendingAck) {
+	if pending.timer != nil {
+		pending.timer.Stop()
+	}
+	if pending.cancel != nil {
+		pending.cancel()
+	}
+	if pending.ackChan != nil {
+		close(pending.ackChan)
+	}
+	// Only delete from map if it still exists (might have been deleted already)
+	delete(m.pending, ackID)
 }
 
 // CancelAck cancels a pending acknowledgment

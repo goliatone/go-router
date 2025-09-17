@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.13.0](https://github.com/goliatone/go-router/compare/v0.12.0...v0.13.0) - (2025-09-17)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Clean up code ([907ed4f](https://github.com/goliatone/go-router/commit/907ed4f326cc2ea115ee40fca0f62e59f4dcbc13))  - (goliatone)
+- Lock broadcaster ([f453634](https://github.com/goliatone/go-router/commit/f4536343ce96d22623e3220c321f8c601108104f))  - (goliatone)
+- Remove double OnConnect call ([557eb98](https://github.com/goliatone/go-router/commit/557eb9892ae010d7ec0e42f12c618a1d02697861))  - (goliatone)
+- Ctx should not be nil ([ddb068b](https://github.com/goliatone/go-router/commit/ddb068bd94b63b26ddc00ed793ec16005c84d365))  - (goliatone)
+- Error generate in closure to prevent race conditions ([1c8de7d](https://github.com/goliatone/go-router/commit/1c8de7d96cef5b4a11b870a031e3cc61540a465f))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.13.0 ([869d05f](https://github.com/goliatone/go-router/commit/869d05f9d4a5f5081ac6599797b21811026ace89))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.12.0 ([1685c3c](https://github.com/goliatone/go-router/commit/1685c3c4ac6a51d94935a931dcd6daa434c83baf))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update ws readme ([4996e64](https://github.com/goliatone/go-router/commit/4996e643a10d38f1758791dff20d34cf38955bc2))  - (goliatone)
+- Update tests ([9aa4aa6](https://github.com/goliatone/go-router/commit/9aa4aa6e267f19062f9c95a43256ed03904189c4))  - (goliatone)
+
 # [0.12.0](https://github.com/goliatone/go-router/compare/v0.11.2...v0.12.0) - (2025-09-16)
 
 ## <!-- 1 -->🐛 Bug Fixes

@@ -648,6 +648,31 @@ hub := router.NewWSHub(func(config *router.WSHubConfig) {
 })
 ```
 
+## Lifecycle Guarantees
+
+The WebSocket implementation provides strict lifecycle guarantees to ensure predictable behavior:
+
+### Hook Invocation Contract
+
+**Critical**: All lifecycle hooks (`OnConnect`, `OnDisconnect`, `OnError`) are guaranteed to be called **exactly once** per connection:
+
+- `OnConnect` - Called once when a connection is established
+- `OnDisconnect` - Called once when a connection terminates
+- `OnError` - Called once per error occurrence
+
+This single invocation guarantee prevents duplicate side effects such as:
+- Double authentication attempts
+- Duplicate metrics recording
+- Multiple connection registrations
+- Repeated cleanup operations
+
+### Context Lifecycle
+
+WebSocket contexts maintain valid state throughout the connection lifetime:
+- Fiber WebSocket contexts preserve access to query parameters, headers, and context methods
+- HTTPRouter contexts maintain request context and metadata
+- All context methods are safe to call after successful upgrade
+
 ## Error Handling
 
 The WebSocket implementation follows a comprehensive error handling strategy.

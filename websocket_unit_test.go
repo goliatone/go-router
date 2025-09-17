@@ -16,7 +16,6 @@ import (
 )
 
 // Unit Test Suite for WebSocket Implementation
-// Task 6.1: Comprehensive testing of all WebSocket interfaces
 
 // Test: WebSocket Message Types
 func TestWebSocketMessageTypes(t *testing.T) {

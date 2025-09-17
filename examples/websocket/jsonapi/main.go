@@ -12,7 +12,6 @@ import (
 )
 
 // Example: JSON API over WebSocket
-// Task 6.3: Real-time JSON API with request/response pattern
 
 // APIRequest represents an API request
 type APIRequest struct {

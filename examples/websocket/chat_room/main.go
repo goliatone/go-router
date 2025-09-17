@@ -20,7 +20,6 @@ import (
 )
 
 // Example: Chat Room Application
-// Task 6.3: Multi-user chat room with WebSocket
 
 // ChatRoomMessage represents a chat message
 type ChatRoomMessage struct {

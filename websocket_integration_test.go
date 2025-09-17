@@ -1,6 +1,3 @@
-//go:build skip
-// +build skip
-
 package router_test
 
 import (
@@ -17,7 +14,6 @@ import (
 )
 
 // Integration Test Suite for WebSocket Implementation
-// Task 6.2: End-to-end WebSocket communication tests
 
 // Test: HTTPRouter Real WebSocket Communication
 func TestHTTPRouterRealWebSocket(t *testing.T) {

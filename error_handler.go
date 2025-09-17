@@ -12,10 +12,10 @@ func WithErrorHandlerMiddleware(opts ...ErrorHandlerOption) MiddlewareFunc {
 	}
 
 	return func(hf HandlerFunc) HandlerFunc {
-		var err error
 		return func(c Context) error {
 			// c.Set(ErrorHandlerConfigKey, config)
-			if err = c.Next(); err == nil {
+			err := c.Next()
+			if err == nil {
 				return nil
 			}
 			// Convert error to RouterError

@@ -398,12 +398,17 @@ func TestAckManager(t *testing.T) {
 		mgr := router.NewAckManager(1 * time.Second)
 		mockClient := &mockWSClient{id: "test-client"}
 
-		callbackCalled := false
+		var callbackCalled bool
 		var receivedAck *router.EventAck
+		var mu sync.Mutex
+		done := make(chan bool, 1)
 
 		callback := func(ctx context.Context, ack *router.EventAck) error {
+			mu.Lock()
 			callbackCalled = true
 			receivedAck = ack
+			mu.Unlock()
+			done <- true
 			return nil
 		}
 
@@ -424,9 +429,15 @@ func TestAckManager(t *testing.T) {
 		}
 		mgr.HandleAck(ack)
 
-		// Wait for callback
-		time.Sleep(50 * time.Millisecond)
+		// Wait for callback with timeout
+		select {
+		case <-done:
+			// Callback completed
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Callback not called within timeout")
+		}
 
+		mu.Lock()
 		if !callbackCalled {
 			t.Error("Callback was not called")
 		}
@@ -434,6 +445,7 @@ func TestAckManager(t *testing.T) {
 		if receivedAck == nil || !receivedAck.Success {
 			t.Error("Expected successful acknowledgment in callback")
 		}
+		mu.Unlock()
 	})
 }
 

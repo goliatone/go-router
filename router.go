@@ -91,6 +91,8 @@ type RequestContext interface {
 	FormFile(key string) (*multipart.FileHeader, error)
 	FormValue(key string, defaultValue ...string) string
 
+	IP() string
+
 	// GetRouteURL(routeName string, params Map) (string, error)
 	// RedirectToRoute(routeName string, params Map, status ...int) error
 	// Redirect(location string, status ...int) error

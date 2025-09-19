@@ -385,6 +385,10 @@ func (c *fiberContext) Param(name string, defaultValue ...string) string {
 	return c.ctx.Params(name, defaultValue...)
 }
 
+func (c *fiberContext) IP() string {
+	return c.ctx.IP()
+}
+
 func (c *fiberContext) Cookie(cookie *Cookie) {
 	c.ctx.Cookie(&fiber.Cookie{
 		Name:        cookie.Name,

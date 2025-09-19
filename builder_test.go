@@ -1,9 +1,6 @@
 package router_test
 
 import (
-	"context"
-	"errors"
-	"mime/multipart"
 	"net/http"
 	"testing"
 
@@ -12,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ router.Context = newMockContext()
+var _ router.Context = router.NewMockContext()
 
 func TestRouteBuilder_BasicRoute(t *testing.T) {
 
@@ -115,7 +112,7 @@ func TestRouteBuilder_MiddlewareChain(t *testing.T) {
 	require.NotNil(t, r.Handler)
 
 	// Build a context mock
-	mockCtx := newMockContext()
+	mockCtx := router.NewMockContext()
 	err = r.Handler(mockCtx)
 	require.NoError(t, err)
 
@@ -268,7 +265,7 @@ func TestRouteBuilder_GroupMiddleware(t *testing.T) {
 
 	// Test root route
 	rootRoute := mockRouter.GetRoutes()[0]
-	mockCtx := newMockContext()
+	mockCtx := router.NewMockContext()
 	err = rootRoute.Handler(mockCtx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"root", "handler"}, order)
@@ -502,93 +499,4 @@ func (r *MockRouteInfo) AddResponse(code int, desc string, content map[string]an
 	}
 	r.ResponsesVal[code] = desc
 	return r
-}
-
-// Example of a minimal mock context just for testing handler calls
-type mockContext struct {
-	store map[string]any
-}
-
-func newMockContext() *mockContext {
-	return &mockContext{store: make(map[string]any)}
-}
-
-func (m *mockContext) Redirect(location string, status ...int) error { return nil }
-func (m *mockContext) RedirectToRoute(routeName string, params router.ViewContext, status ...int) error {
-	return nil
-}
-func (m *mockContext) RedirectBack(fallback string, status ...int) error { return nil }
-
-func (m *mockContext) SendString(body string) error                             { return nil }
-func (m *mockContext) Referer() string                                          { return "" }
-func (m *mockContext) OriginalURL() string                                      { return "" }
-func (m *mockContext) Cookie(cookie *router.Cookie)                             {}
-func (m *mockContext) Cookies(key string, defaultValue ...string) string        { return "" }
-func (m *mockContext) CookieParser(out any) error                               { return nil }
-func (m *mockContext) Locals(key any, val ...any) any                           { return val }
-func (m *mockContext) LocalsMerge(key any, value map[string]any) map[string]any { return value }
-func (m *mockContext) Render(name string, bind any, layouts ...string) error    { return nil }
-func (m *mockContext) Method() string                                           { return "GET" }
-func (m *mockContext) Path() string                                             { return "/test" }
-func (m *mockContext) Param(name string, def ...string) string                  { return "" }
-func (m *mockContext) ParamsInt(name string, def int) int                       { return 0 }
-func (m *mockContext) Query(name string, def ...string) string                  { return "" }
-func (m *mockContext) QueryInt(name string, def int) int                        { return 0 }
-func (m *mockContext) Queries() map[string]string                               { return map[string]string{} }
-func (m *mockContext) Status(code int) router.Context                           { return m }
-func (m *mockContext) Send(body []byte) error                                   { return nil }
-func (m *mockContext) JSON(code int, v any) error                               { return nil }
-func (m *mockContext) NoContent(code int) error                                 { return nil }
-func (m *mockContext) Bind(v any) error                                         { return nil }
-func (m *mockContext) Body() []byte                                             { return nil }
-func (m *mockContext) SendStatus(s int) error                                   { return nil }
-func (m *mockContext) Context() context.Context {
-	// Return a non-nil context. You can return context.Background() or context.TODO() for tests.
-	return context.Background()
-}
-func (m *mockContext) FormFile(key string) (*multipart.FileHeader, error)  { return nil, nil }
-func (m *mockContext) FormValue(key string, defaultValue ...string) string { return "" }
-
-func (m *mockContext) SetContext(ctx context.Context) {
-	// Optionally store the context if needed, or just ignore for tests.
-}
-func (m *mockContext) Header(key string) string                          { return "" }
-func (m *mockContext) SetHeader(key string, value string) router.Context { return m }
-func (m *mockContext) Next() error                                       { return errors.New("not implemented") }
-func (m *mockContext) Set(k string, v any)                               { m.store[k] = v }
-func (m *mockContext) Get(k string, def any) any {
-	val, ok := m.store[k]
-	if !ok {
-		return def
-	}
-	return val
-}
-func (m *mockContext) GetString(k string, def string) string {
-	val := m.Get(k, def)
-	if s, ok := val.(string); ok {
-		return s
-	}
-	return def
-}
-func (m *mockContext) GetInt(k string, def int) int {
-	val := m.Get(k, def)
-	if i, ok := val.(int); ok {
-		return i
-	}
-	return def
-}
-func (m *mockContext) GetBool(k string, def bool) bool {
-	val := m.Get(k, def)
-	if b, ok := val.(bool); ok {
-		return b
-	}
-	return def
-}
-
-func (m *mockContext) RouteName() string {
-	return ""
-}
-
-func (m *mockContext) RouteParams() map[string]string {
-	return make(map[string]string)
 }

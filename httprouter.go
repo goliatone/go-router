@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -548,6 +549,25 @@ func (c *httpRouterContext) Method() string {
 }
 
 func (c *httpRouterContext) Path() string { return c.r.URL.Path }
+
+func (c *httpRouterContext) IP() string {
+	// check proxy header
+	if xff := c.r.Header.Get("X-Forwarded-For"); xff != "" {
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+
+	if xri := c.r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	if host, _, err := net.SplitHostPort(c.r.RemoteAddr); err == nil {
+		return host
+	}
+	return c.r.RemoteAddr
+}
 
 func (c *httpRouterContext) Param(name string, defaultValue ...string) string {
 	if out := c.params.ByName(name); out != "" {

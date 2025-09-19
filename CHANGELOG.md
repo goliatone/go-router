@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.14.0](https://github.com/goliatone/go-router/compare/v0.13.0...v0.14.0) - (2025-09-19)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.14.0 ([9deb829](https://github.com/goliatone/go-router/commit/9deb829edd20a151181f60b42351787f51c2037d))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Extend Context to have IP method ([2c4be39](https://github.com/goliatone/go-router/commit/2c4be396502f932108d3982bd0bd820c7f326eb3))  - (goliatone)
+- Implement IP context method ([8858412](https://github.com/goliatone/go-router/commit/885841284a389fa0b97545d90948c1c54df22a60))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Use MockContext ([d933019](https://github.com/goliatone/go-router/commit/d93301901fb8f7d5ff3fdab543331ca9a5bcc9fb))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.13.0 ([567f6ba](https://github.com/goliatone/go-router/commit/567f6ba7199711b7b91b76e79c08d270e7988887))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#13](https://github.com/goliatone/go-router/pull/13): New IP method to Context ([0d0ac4b](https://github.com/goliatone/go-router/commit/0d0ac4b7da2cffe28603958e76f5407031497057))  - (goliatone)
+
 # [0.13.0](https://github.com/goliatone/go-router/compare/v0.12.0...v0.13.0) - (2025-09-17)
 
 ## <!-- 1 -->🐛 Bug Fixes

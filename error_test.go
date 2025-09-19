@@ -374,7 +374,9 @@ func TestErrorLogging(t *testing.T) {
 		"user_id": 123,
 	}).WithRequestID("req-456")
 
-	ctx := &mockContext{}
+	ctx := router.NewMockContext()
+	ctx.On("Path").Return("/test")
+	ctx.On("Method").Return("GET")
 
 	// Test logging
 	router.LogError(logger, err, ctx)

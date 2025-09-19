@@ -77,40 +77,35 @@ type SchemaMetadata struct {
 }
 
 type PropertyInfo struct {
-	// Existing fields
-	Type         string                  `json:"type"`
-	Format       string                  `json:"format,omitempty"`
-	Description  string                  `json:"description,omitempty"`
-	Required     bool                    `json:"required"`
-	Nullable     bool                    `json:"nullable"`
-	ReadOnly     bool                    `json:"read_only"`
-	WriteOnly    bool                    `json:"write_only"`
-	OriginalName string                  `json:"original_name"`
-	Example      any                     `json:"example,omitempty"`
-	Properties   map[string]PropertyInfo `json:"properties,omitempty"` // For nested objects
-	Items        *PropertyInfo           `json:"items,omitempty"`      // For arrays
-
-	// New metadata fields
-	OriginalType  string            `json:"originalType,omitempty"`  // Go type string
-	OriginalKind  reflect.Kind      `json:"originalKind,omitempty"`  // Go kind
-	AllTags       map[string]string `json:"allTags,omitempty"`       // All struct tags
-	TransformPath []string          `json:"transformPath,omitempty"` // Transformation steps
-	GoPackage     string            `json:"goPackage,omitempty"`     // Package path
-	CustomTagData map[string]any    `json:"customTagData,omitempty"` // Custom tag handler results
+	Type          string                  `json:"type"`
+	Format        string                  `json:"format,omitempty"`
+	Description   string                  `json:"description,omitempty"`
+	Required      bool                    `json:"required"`
+	Nullable      bool                    `json:"nullable"`
+	ReadOnly      bool                    `json:"read_only"`
+	WriteOnly     bool                    `json:"write_only"`
+	OriginalName  string                  `json:"original_name"`
+	Example       any                     `json:"example,omitempty"`
+	Properties    map[string]PropertyInfo `json:"properties,omitempty"`    // For nested objects
+	Items         *PropertyInfo           `json:"items,omitempty"`         // For arrays
+	OriginalType  string                  `json:"originalType,omitempty"`  // Go type string
+	OriginalKind  reflect.Kind            `json:"originalKind,omitempty"`  // Go kind
+	AllTags       map[string]string       `json:"allTags,omitempty"`       // All struct tags
+	TransformPath []string                `json:"transformPath,omitempty"` // Transformation steps
+	GoPackage     string                  `json:"goPackage,omitempty"`     // Package path
+	CustomTagData map[string]any          `json:"customTagData,omitempty"` // Custom tag handler results
 }
 
 type RelationshipInfo struct {
-	RelationType    string `json:"relation_type"` // e.g. has-one, has-many, belongs-to, many-to-many
-	RelatedTypeName string `json:"related_type_name"`
-	IsSlice         bool   `json:"is_slice"`
-	JoinClause      string `json:"join_clause,omitempty"`
-	JoinKey         string `json:"join_key,omitempty"`
-	PrimaryKey      string `json:"primary_key,omitempty"`
-	ForeignKey      string `json:"foreign_key,omitempty"`
-	PivotTable      string `json:"pivot_table,omitempty"` // e.g. "order_to_items"
-	PivotJoin       string `json:"pivot_join,omitempty"`  // e.g. "Order=Item"
-
-	// New fields for complete relationship metadata
+	RelationType      string `json:"relation_type"` // e.g. has-one, has-many, belongs-to, many-to-many
+	RelatedTypeName   string `json:"related_type_name"`
+	IsSlice           bool   `json:"is_slice"`
+	JoinClause        string `json:"join_clause,omitempty"`
+	JoinKey           string `json:"join_key,omitempty"`
+	PrimaryKey        string `json:"primary_key,omitempty"`
+	ForeignKey        string `json:"foreign_key,omitempty"`
+	PivotTable        string `json:"pivot_table,omitempty"`         // e.g. "order_to_items"
+	PivotJoin         string `json:"pivot_join,omitempty"`          // e.g. "Order=Item"
 	SourceTable       string `json:"source_table,omitempty"`        // entity owning the relationship field
 	SourceColumn      string `json:"source_column,omitempty"`       // FK column on the source table
 	TargetTable       string `json:"target_table,omitempty"`        // referenced entity/table

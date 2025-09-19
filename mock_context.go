@@ -58,6 +58,11 @@ func (m *MockContext) Path() string {
 	return args.String(0)
 }
 
+func (m *MockContext) IP() string {
+	args := m.Called()
+	return args.String(0)
+}
+
 func (m *MockContext) Method() string {
 	args := m.Called()
 	return args.String(0)

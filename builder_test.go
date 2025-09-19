@@ -529,6 +529,7 @@ func (m *mockContext) Locals(key any, val ...any) any                           
 func (m *mockContext) LocalsMerge(key any, value map[string]any) map[string]any { return value }
 func (m *mockContext) Render(name string, bind any, layouts ...string) error    { return nil }
 func (m *mockContext) Method() string                                           { return "GET" }
+func (m *mockContext) IP() string                                               { return "0.0.0.0" }
 func (m *mockContext) Path() string                                             { return "/test" }
 func (m *mockContext) Param(name string, def ...string) string                  { return "" }
 func (m *mockContext) ParamsInt(name string, def int) int                       { return 0 }

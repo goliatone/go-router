@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.15.0](https://github.com/goliatone/go-router/compare/v0.14.0...v0.15.0) - (2025-09-22)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Ensure we have sane defaults and not nil structs ([59b9d21](https://github.com/goliatone/go-router/commit/59b9d211c7e10497d11a01e3c54abe19a6e2446d))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.15.0 ([fcd472d](https://github.com/goliatone/go-router/commit/fcd472d15fbe242f75e11631b44fc3cc42422615))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Tests for openapi helper ([badf886](https://github.com/goliatone/go-router/commit/badf886032b911ecb8332b72cc9ac21abf235c09))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.14.0 ([8479d30](https://github.com/goliatone/go-router/commit/8479d306c39f3c6fb37cbe0fdaab0a0952409f27))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#14](https://github.com/goliatone/go-router/pull/14): openapi ([f116581](https://github.com/goliatone/go-router/commit/f11658177ad21d96c9932a7b88d8b18db252959d))  - (goliatone)
+
 # [0.14.0](https://github.com/goliatone/go-router/compare/v0.13.0...v0.14.0) - (2025-09-19)
 
 ## <!-- 13 -->📦 Bumps

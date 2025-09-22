@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 
@@ -70,19 +71,26 @@ type OpenAPIRenderer struct {
 	providers  []OpenApiMetaGenerator
 }
 
-func NewOpenAPIRenderer() *OpenAPIRenderer {
-	return &OpenAPIRenderer{
-		Info: &OpenAPIInfo{},
-		// Servers:    make([]OpenAPIServer, 0),
-		// Security:   make([]OpenAPISecuritySchemas, 0),
-		Contact: &OpenAPIFieldContact{},
-		License: &OpenAPIInfoLicense{},
-		// Routes:     make([]RouteDefinition, 0),
-		// Paths:      make(map[string]any),
-		// Tags:       make([]any, 0),
-		// Components: make(map[string]any),
-		// providers:  make([]OpenApiMetaGenerator, 0),
+func NewOpenAPIRenderer(overrides ...OpenAPIRenderer) *OpenAPIRenderer {
+	// base renderer with safe defaults
+	base := &OpenAPIRenderer{
+		Info:       &OpenAPIInfo{},
+		Contact:    &OpenAPIFieldContact{},
+		License:    &OpenAPIInfoLicense{},
+		Servers:    make([]OpenAPIServer, 0),
+		Security:   make([]OpenAPISecuritySchemas, 0),
+		Routes:     make([]RouteDefinition, 0),
+		Paths:      make(map[string]any),
+		Tags:       make([]any, 0),
+		Components: make(map[string]any),
+		providers:  make([]OpenApiMetaGenerator, 0),
 	}
+
+	for _, override := range overrides {
+		mergeOpenAPIRenderer(base, override)
+	}
+
+	return base
 }
 
 func (o *OpenAPIRenderer) WithMetadataProviders(providers ...OpenApiMetaGenerator) *OpenAPIRenderer {
@@ -167,6 +175,10 @@ func either(o ...string) string {
 func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
 	// https://elements-demo.stoplight.io/#/operations/put-todos-id
 
+	if o.Info == nil {
+		o.Info = &OpenAPIInfo{}
+	}
+
 	base := map[string]any{
 		"openapi": "3.0.3",
 		"servers": []map[string]any{},
@@ -175,15 +187,32 @@ func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
 			"version":          either(o.Info.Version, o.Version),
 			"description":      either(o.Info.Description, o.Description),
 			"terms_of_service": either(o.Info.TermsOfService, o.TermsOfService),
-			"contact": map[string]any{
-				"email": o.Contact.Email,
-				"name":  o.Contact.Name,
-				"url":   o.Contact.URL,
-			},
-			"license": map[string]any{
-				"name": o.License.Name,
-				"url":  o.License.Url,
-			},
+			"contact": func() map[string]any {
+				if o.Contact != nil {
+					return map[string]any{
+						"email": o.Contact.Email,
+						"name":  o.Contact.Name,
+						"url":   o.Contact.URL,
+					}
+				}
+				return map[string]any{
+					"email": "",
+					"name":  "",
+					"url":   "",
+				}
+			}(),
+			"license": func() map[string]any {
+				if o.License != nil {
+					return map[string]any{
+						"name": o.License.Name,
+						"url":  o.License.Url,
+					}
+				}
+				return map[string]any{
+					"name": "",
+					"url":  "",
+				}
+			}(),
 		},
 		"paths":      o.Paths,
 		"components": o.Components,
@@ -384,4 +413,132 @@ func joinPaths(parts ...string) string {
 		return "/"
 	}
 	return "/" + strings.Join(cleanParts, "/")
+}
+
+// mergeOpenAPIRenderer merges override into base, only overwriting non zero values
+func mergeOpenAPIRenderer(base *OpenAPIRenderer, override OpenAPIRenderer) {
+	if override.Title != "" {
+		base.Title = override.Title
+	}
+
+	if override.Version != "" {
+		base.Version = override.Version
+	}
+
+	if override.Description != "" {
+		base.Description = override.Description
+	}
+
+	if override.TermsOfService != "" {
+		base.TermsOfService = override.TermsOfService
+	}
+
+	if override.Info != nil {
+		if base.Info == nil {
+			base.Info = &OpenAPIInfo{}
+		}
+		mergeOpenAPIInfo(base.Info, *override.Info)
+	}
+
+	if override.Contact != nil {
+		if base.Contact == nil {
+			base.Contact = &OpenAPIFieldContact{}
+		}
+		mergeContact(base.Contact, *override.Contact)
+	}
+
+	if override.License != nil {
+		if base.License == nil {
+			base.License = &OpenAPIInfoLicense{}
+		}
+		mergeLicense(base.License, *override.License)
+	}
+
+	if len(override.Servers) > 0 {
+		base.Servers = append(base.Servers, override.Servers...)
+	}
+
+	if len(override.Security) > 0 {
+		base.Security = append(base.Security, override.Security...)
+	}
+
+	if len(override.Routes) > 0 {
+		base.Routes = append(base.Routes, override.Routes...)
+	}
+
+	if len(override.Tags) > 0 {
+		base.Tags = append(base.Tags, override.Tags...)
+	}
+
+	if len(override.providers) > 0 {
+		base.providers = append(base.providers, override.providers...)
+	}
+
+	if len(override.Paths) > 0 {
+		if base.Paths == nil {
+			base.Paths = make(map[string]any)
+		}
+		maps.Copy(base.Paths, override.Paths)
+	}
+
+	if len(override.Components) > 0 {
+		if base.Components == nil {
+			base.Components = make(map[string]any)
+		}
+		maps.Copy(base.Components, override.Components)
+	}
+}
+
+// mergeOpenAPIInfo merges override into base Info
+func mergeOpenAPIInfo(base *OpenAPIInfo, override OpenAPIInfo) {
+	if override.Title != "" {
+		base.Title = override.Title
+	}
+	if override.Version != "" {
+		base.Version = override.Version
+	}
+	if override.Description != "" {
+		base.Description = override.Description
+	}
+	if override.TermsOfService != "" {
+		base.TermsOfService = override.TermsOfService
+	}
+
+	if !isEmptyContact(override.Contact) {
+		base.Contact = override.Contact
+	}
+
+	if !isEmptyLicense(override.License) {
+		base.License = override.License
+	}
+}
+
+// mergeContact merges override into base Contact
+func mergeContact(base *OpenAPIFieldContact, override OpenAPIFieldContact) {
+	if override.Name != "" {
+		base.Name = override.Name
+	}
+	if override.Email != "" {
+		base.Email = override.Email
+	}
+	if override.URL != "" {
+		base.URL = override.URL
+	}
+}
+
+func mergeLicense(base *OpenAPIInfoLicense, override OpenAPIInfoLicense) {
+	if override.Name != "" {
+		base.Name = override.Name
+	}
+	if override.Url != "" {
+		base.Url = override.Url
+	}
+}
+
+func isEmptyContact(contact OpenAPIFieldContact) bool {
+	return contact.Name == "" && contact.Email == "" && contact.URL == ""
+}
+
+func isEmptyLicense(license OpenAPIInfoLicense) bool {
+	return license.Name == "" && license.Url == ""
 }

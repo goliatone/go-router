@@ -8,6 +8,7 @@ import (
 	"mime"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -208,26 +209,26 @@ func (br *BaseRouter) joinPath(prefix, path string) string {
 
 // Static file handler implementation
 func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (string, HandlerFunc) {
-	cfg := Static{
+	baseCfg := Static{
 		Root:  root,
 		Index: "index.html",
 	}
-	if len(config) > 0 {
-		cfg = config[0]
-	}
-	if cfg.Root == "" {
-		cfg.Root = "."
-	}
+	cfg := mergeStaticConfig(baseCfg, config...)
 
-	// Normalize prefix and root
 	prefix = path.Clean("/" + prefix)
 
-	// Create filesystem
-	var fileSystem fs.FS
-	if cfg.FS != nil {
-		fileSystem = cfg.FS
-	} else {
-		fileSystem = os.DirFS(cfg.Root)
+	if root != "" && len(config) > 0 && config[0].Root != "" && config[0].Root != root {
+		r.logger.Warn("static configuration overrides positional root %q with config root %q for prefix %q", root, config[0].Root, prefix)
+	}
+
+	if suspect := detectConsecutiveDuplicateSegment(cfg.Root); suspect != "" {
+		r.logger.Warn("static configuration root %q contains duplicated segment %q for prefix %q", cfg.Root, suspect, prefix)
+	}
+
+	fileSystem, fsErr := r.prepareStaticFilesystem(prefix, cfg)
+	if fsErr != nil {
+		r.logger.Error("static configuration for prefix %q is invalid: %v", prefix, fsErr)
+		return prefix, staticConfigErrorHandler(prefix, fsErr, r.logger)
 	}
 
 	handler := func(c Context) error {
@@ -312,4 +313,121 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 	}
 
 	return prefix, handler
+}
+
+func (r *BaseRouter) prepareStaticFilesystem(prefix string, cfg Static) (fs.FS, error) {
+	if cfg.FS != nil {
+		root := normalizeFSRoot(cfg.Root)
+		fsToUse := cfg.FS
+		if root != "." {
+			sub, err := fs.Sub(fsToUse, root)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve filesystem root %q: %w", root, err)
+			}
+			fsToUse = sub
+		}
+		if _, err := fs.Stat(fsToUse, "."); err != nil {
+			return nil, fmt.Errorf("filesystem root validation failed: %w", err)
+		}
+		return fsToUse, nil
+	}
+
+	localRoot := cfg.Root
+	if localRoot == "" {
+		localRoot = "."
+	}
+
+	cleaned := filepath.Clean(localRoot)
+	info, err := os.Stat(cleaned)
+	if err != nil {
+		r.logger.Warn("static local root %q for prefix %q not accessible during startup: %v", cleaned, prefix, err)
+	} else if !info.IsDir() {
+		return nil, fmt.Errorf("static root %q must be a directory", cleaned)
+	}
+
+	return os.DirFS(cleaned), nil
+}
+
+func mergeStaticConfig(base Static, overrides ...Static) Static {
+	if base.Index == "" {
+		base.Index = "index.html"
+	}
+
+	if base.Root == "" {
+		base.Root = "."
+	}
+
+	if len(overrides) == 0 {
+		return base
+	}
+
+	o := overrides[0]
+	if o.FS != nil {
+		base.FS = o.FS
+	}
+
+	if o.Root != "" {
+		base.Root = o.Root
+	}
+
+	if o.Index != "" {
+		base.Index = o.Index
+	}
+
+	base.Browse = o.Browse
+	base.MaxAge = o.MaxAge
+	base.Download = o.Download
+	base.Compress = o.Compress
+
+	if o.ModifyResponse != nil {
+		base.ModifyResponse = o.ModifyResponse
+	}
+
+	if base.Root == "" {
+		base.Root = "."
+	}
+	if base.Index == "" {
+		base.Index = "index.html"
+	}
+
+	return base
+}
+
+func normalizeFSRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "."
+	}
+	root = strings.TrimPrefix(root, "./")
+	root = strings.TrimPrefix(root, "/")
+	root = path.Clean(root)
+	if root == "." || root == "" {
+		return "."
+	}
+	return root
+}
+
+func detectConsecutiveDuplicateSegment(p string) string {
+	if p == "" {
+		return ""
+	}
+	parts := strings.Split(p, "/")
+	var last string
+	for _, part := range parts {
+		if part == "" || part == "." {
+			continue
+		}
+		if part == last {
+			return part
+		}
+		last = part
+	}
+	return ""
+}
+
+func staticConfigErrorHandler(prefix string, err error, logger Logger) HandlerFunc {
+	return func(c Context) error {
+		logger.Error("static handler for prefix %q is misconfigured: %v", prefix, err)
+		return c.Status(500).SendString("Static file configuration error")
+	}
 }

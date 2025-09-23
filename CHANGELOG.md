@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.16.0](https://github.com/goliatone/go-router/compare/v0.15.0...v0.16.0) - (2025-09-23)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Make handling static router more intuitive ([3903ca1](https://github.com/goliatone/go-router/commit/3903ca1cacebef3d8595e50711d1938567a2169f))  - (goliatone)
+- Ignore examples in test ([2d4f08e](https://github.com/goliatone/go-router/commit/2d4f08e46b981742e75028e68f30f3605b985118))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.16.0 ([8638da2](https://github.com/goliatone/go-router/commit/8638da2d34bfbff1e422031238303251d94da94f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.15.0 ([e2a1ea5](https://github.com/goliatone/go-router/commit/e2a1ea54601f45b3e3d24483785d86bcae2eebed))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- More tests ([8c8d95b](https://github.com/goliatone/go-router/commit/8c8d95b928bfd9d2ca3bd797626e36da684a80b9))  - (goliatone)
+
 # [0.15.0](https://github.com/goliatone/go-router/compare/v0.14.0...v0.15.0) - (2025-09-22)
 
 ## <!-- 1 -->🐛 Bug Fixes

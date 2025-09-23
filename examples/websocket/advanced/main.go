@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -1081,16 +1084,16 @@ func dashboardHandler(ctx router.Context) error {
     <meta charset="utf-8">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
         .container { max-width: 1400px; margin: 0 auto; }
-        .header { 
-            text-align: center; 
-            color: white; 
+        .header {
+            text-align: center;
+            color: white;
             margin-bottom: 30px;
             padding: 20px;
             background: rgba(255,255,255,0.1);
@@ -1099,18 +1102,18 @@ func dashboardHandler(ctx router.Context) error {
         }
         .header h1 { font-size: 2.5em; margin-bottom: 10px; }
         .header p { font-size: 1.2em; opacity: 0.9; }
-        
-        .tabs { 
-            display: flex; 
+
+        .tabs {
+            display: flex;
             background: rgba(255,255,255,0.2);
             border-radius: 15px 15px 0 0;
             overflow: hidden;
             margin-bottom: 0;
         }
-        .tab { 
-            flex: 1; 
-            padding: 15px 20px; 
-            cursor: pointer; 
+        .tab {
+            flex: 1;
+            padding: 15px 20px;
+            cursor: pointer;
             background: transparent;
             color: white;
             border: none;
@@ -1118,12 +1121,12 @@ func dashboardHandler(ctx router.Context) error {
             transition: background 0.3s;
         }
         .tab:hover { background: rgba(255,255,255,0.1); }
-        .tab.active { 
+        .tab.active {
             background: rgba(255,255,255,0.3);
             font-weight: bold;
         }
-        
-        .content { 
+
+        .content {
             background: white;
             border-radius: 0 0 15px 15px;
             min-height: 600px;
@@ -1131,41 +1134,41 @@ func dashboardHandler(ctx router.Context) error {
             overflow: visible;
             transition: all 0.3s ease;
         }
-        .feature { 
-            display: none; 
+        .feature {
+            display: none;
             padding: 30px;
             min-height: 540px; /* 600px - 60px padding */
         }
         .feature.active { display: block; }
-        .feature h2 { 
-            color: #333; 
+        .feature h2 {
+            color: #333;
             margin-bottom: 20px;
             font-size: 1.8em;
         }
-        
-        .controls { 
-            background: #f8f9fa; 
-            padding: 20px; 
-            border-radius: 10px; 
+
+        .controls {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
             margin-bottom: 20px;
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
             align-items: center;
         }
-        .status { 
-            padding: 8px 16px; 
-            border-radius: 20px; 
+        .status {
+            padding: 8px 16px;
+            border-radius: 20px;
             font-weight: bold;
             font-size: 14px;
         }
         .status.connected { background: #d4edda; color: #155724; }
         .status.disconnected { background: #f8d7da; color: #721c24; }
-        
-        button { 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 8px; 
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
@@ -1179,31 +1182,31 @@ func dashboardHandler(ctx router.Context) error {
         .btn-danger:hover { background: #c82333; }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-secondary:hover { background: #545b62; }
-        
-        input, textarea, select { 
-            padding: 10px; 
-            border: 2px solid #e1e1e1; 
+
+        input, textarea, select {
+            padding: 10px;
+            border: 2px solid #e1e1e1;
             border-radius: 8px;
             font-size: 14px;
             transition: border-color 0.3s;
         }
-        input:focus, textarea:focus, select:focus { 
-            outline: none; 
-            border-color: #007bff; 
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #007bff;
         }
-        
-        .messages { 
-            height: 300px; 
-            overflow-y: auto; 
-            border: 2px solid #e1e1e1; 
-            border-radius: 8px; 
+
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 2px solid #e1e1e1;
+            border-radius: 8px;
             padding: 15px;
             background: #fafafa;
             margin: 15px 0;
         }
-        .message { 
-            margin: 8px 0; 
-            padding: 8px 12px; 
+        .message {
+            margin: 8px 0;
+            padding: 8px 12px;
             border-radius: 6px;
             font-size: 14px;
             line-height: 1.4;
@@ -1212,51 +1215,51 @@ func dashboardHandler(ctx router.Context) error {
         .message.success { background: #e8f5e8; border-left: 4px solid #4caf50; }
         .message.error { background: #ffebee; border-left: 4px solid #f44336; }
         .message.warning { background: #fff8e1; border-left: 4px solid #ff9800; }
-        
+
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .card { 
-            background: #f8f9fa; 
-            padding: 20px; 
+        .card {
+            background: #f8f9fa;
+            padding: 20px;
             border-radius: 10px;
             border: 1px solid #e1e1e1;
         }
         .card h3 { color: #495057; margin-bottom: 15px; }
-        
-        .stats { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
-            gap: 15px; 
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
             margin: 20px 0;
         }
-        .stat { 
-            text-align: center; 
-            padding: 20px; 
+        .stat {
+            text-align: center;
+            padding: 20px;
             background: linear-gradient(45deg, #007bff, #0056b3);
-            color: white; 
+            color: white;
             border-radius: 10px;
         }
         .stat .number { font-size: 2em; font-weight: bold; }
         .stat .label { font-size: 0.9em; opacity: 0.9; }
-        
-        .file-list, .doc-list, .room-list { 
-            max-height: 200px; 
-            overflow-y: auto; 
+
+        .file-list, .doc-list, .room-list {
+            max-height: 200px;
+            overflow-y: auto;
         }
-        .list-item { 
-            padding: 10px; 
-            border-bottom: 1px solid #e1e1e1; 
+        .list-item {
+            padding: 10px;
+            border-bottom: 1px solid #e1e1e1;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         .list-item:hover { background: #f8f9fa; }
-        
-        .canvas { 
-            border: 2px solid #e1e1e1; 
+
+        .canvas {
+            border: 2px solid #e1e1e1;
             border-radius: 8px;
             cursor: crosshair;
         }
-        
+
         @media (max-width: 768px) {
             .grid { grid-template-columns: 1fr; }
             .tabs { flex-wrap: wrap; }
@@ -1270,7 +1273,7 @@ func dashboardHandler(ctx router.Context) error {
             <h1>🚀 Advanced WebSocket Features</h1>
             <p>Interactive dashboard showcasing file transfer, collaboration, gaming, reconnection, and multi-protocol features</p>
         </div>
-        
+
         <div class="tabs">
             <button class="tab active" onclick="showFeature('files')">📁 File Transfer</button>
             <button class="tab" onclick="showFeature('collab')">📝 Collaboration</button>
@@ -1278,7 +1281,7 @@ func dashboardHandler(ctx router.Context) error {
             <button class="tab" onclick="showFeature('reconnect')">🔄 Reconnection</button>
             <button class="tab" onclick="showFeature('multiproto')">🌐 Multi-Protocol</button>
         </div>
-        
+
         <div class="content">
             <!-- File Transfer Feature -->
             <div id="files" class="feature active">
@@ -1290,7 +1293,7 @@ func dashboardHandler(ctx router.Context) error {
                     <input type="file" id="file-input" style="margin-left: 20px;">
                     <button onclick="uploadFile()" class="btn-success">Upload File</button>
                 </div>
-                
+
                 <div class="grid">
                     <div class="card">
                         <h3>File Operations</h3>
@@ -1299,14 +1302,14 @@ func dashboardHandler(ctx router.Context) error {
                             <button onclick="listFiles()" class="btn-secondary">List Files</button>
                         </div>
                     </div>
-                    
+
                     <div class="card">
                         <h3>Available Files</h3>
                         <div id="file-list" class="file-list"></div>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Collaboration Feature -->
             <div id="collab" class="feature">
                 <h2>📝 Real-time Collaboration</h2>
@@ -1317,26 +1320,26 @@ func dashboardHandler(ctx router.Context) error {
                     <input type="text" id="doc-name" placeholder="New document name" style="margin-left: 20px;">
                     <button onclick="createDocument()" class="btn-success">Create Document</button>
                 </div>
-                
+
                 <div class="grid">
                     <div class="card">
                         <h3>Document Editor</h3>
                         <select id="doc-select" onchange="joinDocument()">
                             <option value="">Select a document...</option>
                         </select>
-                        <textarea id="doc-content" placeholder="Document content..." style="width: 100%; height: 200px; margin-top: 10px;" 
+                        <textarea id="doc-content" placeholder="Document content..." style="width: 100%; height: 200px; margin-top: 10px;"
                                   oninput="scheduleAutoSave()"></textarea>
                         <button onclick="saveDocument()" class="btn-success" style="margin-top: 10px;">Save Changes</button>
                         <span id="save-status" style="margin-left: 10px; color: #666;"></span>
                     </div>
-                    
+
                     <div class="card">
                         <h3>Collaboration Activity</h3>
                         <div id="collab-messages" class="messages"></div>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Gaming Feature -->
             <div id="game" class="feature">
                 <h2>🎮 Gaming Server</h2>
@@ -1348,7 +1351,7 @@ func dashboardHandler(ctx router.Context) error {
                     <input type="text" id="game-id" placeholder="Game ID" value="lobby">
                     <button onclick="joinGame()" class="btn-success">Join Game</button>
                 </div>
-                
+
                 <div class="grid">
                     <div class="card">
                         <h3>Game Canvas</h3>
@@ -1359,7 +1362,7 @@ func dashboardHandler(ctx router.Context) error {
                             <button onclick="sendGameAction('special')" class="btn-primary">Special</button>
                         </div>
                     </div>
-                    
+
                     <div class="card">
                         <h3>Game Activity</h3>
                         <div id="game-messages" class="messages"></div>
@@ -1376,11 +1379,11 @@ func dashboardHandler(ctx router.Context) error {
                     </div>
                 </div>
             </div>
-            
+
             <!-- Reconnection Feature -->
             <div id="reconnect" class="feature">
                 <h2>🔄 Reconnection & Message Queueing</h2>
-                
+
                 <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
                     <h4 style="margin: 0 0 10px 0; color: #1565c0;">💡 How to test reconnection:</h4>
                     <ol style="margin: 0; padding-left: 20px; color: #1976d2;">
@@ -1399,7 +1402,7 @@ func dashboardHandler(ctx router.Context) error {
                     <button onclick="simulateReconnect()" class="btn-success" style="margin-left: 20px;">Simulate Reconnect</button>
                     <span id="session-id" style="margin-left: 20px; font-family: monospace; background: #f8f9fa; padding: 5px 10px; border-radius: 4px;"></span>
                 </div>
-                
+
                 <div class="grid">
                     <div class="card">
                         <h3>Message Queue Testing</h3>
@@ -1418,7 +1421,7 @@ func dashboardHandler(ctx router.Context) error {
                             <button onclick="quickTest()" class="btn-primary" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;">Quick Test</button>
                         </div>
                     </div>
-                    
+
                     <div class="card">
                         <h3>Reconnection Activity</h3>
                         <div id="reconnect-messages" class="messages"></div>
@@ -1430,7 +1433,7 @@ func dashboardHandler(ctx router.Context) error {
                     </div>
                 </div>
             </div>
-            
+
             <!-- Multi-Protocol Feature -->
             <div id="multiproto" class="feature">
                 <h2>🌐 Multi-Protocol Support</h2>
@@ -1445,7 +1448,7 @@ func dashboardHandler(ctx router.Context) error {
                     <button onclick="disconnectMultiProto()" class="btn-secondary">Disconnect</button>
                     <button onclick="sendProtocolPing()" class="btn-success" style="margin-left: 20px;">Send Ping</button>
                 </div>
-                
+
                 <div class="grid">
                     <div class="card">
                         <h3>Protocol Testing</h3>
@@ -1468,7 +1471,7 @@ func dashboardHandler(ctx router.Context) error {
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="card">
                         <h3>Protocol Activity</h3>
                         <div id="multiproto-messages" class="messages"></div>
@@ -1514,17 +1517,17 @@ func dashboardHandler(ctx router.Context) error {
         function connectFiles() {
             if (filesWs) return;
             filesWs = new WebSocket('ws://localhost:8080/ws/files');
-            
+
             filesWs.onopen = () => {
                 updateStatus('files-status', true);
                 addMessage('files-messages', '✅ Connected to File Transfer System', 'success');
             };
-            
+
             filesWs.onmessage = (e) => {
                 const data = JSON.parse(e.data);
                 handleFilesMessage(data);
             };
-            
+
             filesWs.onclose = () => {
                 updateStatus('files-status', false);
                 addMessage('files-messages', '❌ Disconnected from File Transfer System', 'error');
@@ -1628,8 +1631,8 @@ func dashboardHandler(ctx router.Context) error {
                 container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No files uploaded</div>';
                 return;
             }
-            
-            container.innerHTML = files.map(file => 
+
+            container.innerHTML = files.map(file =>
                 '<div class="list-item">' +
                     '<div><strong>' + file.name + '</strong><br><small>' + file.size + ' bytes - ' + file.uploaded + '</small></div>' +
                     '<div>' +
@@ -1643,21 +1646,21 @@ func dashboardHandler(ctx router.Context) error {
         // Collaboration Functions
         let autoSaveTimeout = null;
         let isAutoSaving = false;
-        
+
         function connectCollab() {
             if (collabWs) return;
             collabWs = new WebSocket('ws://localhost:8080/ws/collab');
-            
+
             collabWs.onopen = () => {
                 updateStatus('collab-status', true);
                 addMessage('collab-messages', '✅ Connected to Collaboration System', 'success');
             };
-            
+
             collabWs.onmessage = (e) => {
                 const data = JSON.parse(e.data);
                 handleCollabMessage(data);
             };
-            
+
             collabWs.onclose = () => {
                 updateStatus('collab-status', false);
                 addMessage('collab-messages', '❌ Disconnected from Collaboration System', 'error');
@@ -1668,15 +1671,15 @@ func dashboardHandler(ctx router.Context) error {
         function scheduleAutoSave() {
             // Don't auto-save if we're in the middle of updating from another client
             if (isAutoSaving) return;
-            
+
             // Clear existing timeout
             if (autoSaveTimeout) {
                 clearTimeout(autoSaveTimeout);
             }
-            
+
             // Update status
             document.getElementById('save-status').textContent = 'Typing...';
-            
+
             // Schedule auto-save after 1 second of no typing
             autoSaveTimeout = setTimeout(() => {
                 saveDocument(true); // true indicates auto-save
@@ -1717,25 +1720,25 @@ func dashboardHandler(ctx router.Context) error {
                 }
                 return;
             }
-            
+
             // Update status
             const statusEl = document.getElementById('save-status');
             statusEl.textContent = isAutoSave ? 'Auto-saving...' : 'Saving...';
             statusEl.style.color = '#007bff';
-            
-            collabWs.send(JSON.stringify({ 
-                type: 'document_operation', 
+
+            collabWs.send(JSON.stringify({
+                type: 'document_operation',
                 document_id: docId,
                 operation: isAutoSave ? 'auto_update' : 'manual_update',
                 content: content
             }));
-            
+
             // Clear auto-save timeout
             if (autoSaveTimeout) {
                 clearTimeout(autoSaveTimeout);
                 autoSaveTimeout = null;
             }
-            
+
             setTimeout(() => {
                 statusEl.textContent = 'Saved';
                 statusEl.style.color = '#28a745';
@@ -1765,15 +1768,15 @@ func dashboardHandler(ctx router.Context) error {
                     if (currentDocSelect === data.document.id) {
                         // Temporarily disable auto-save to prevent conflicts
                         isAutoSaving = true;
-                        
+
                         // Only update if we're viewing this document
                         document.getElementById('doc-content').value = data.document.content;
                         updateDocumentVersion(data.document.version);
-                        
+
                         if (data.editor_id) {
                             addMessage('collab-messages', '✏️ Document updated by ' + data.editor_id + ' (v' + data.document.version + ')', 'info');
                         }
-                        
+
                         // Re-enable auto-save after a short delay
                         setTimeout(() => {
                             isAutoSaving = false;
@@ -1821,17 +1824,17 @@ func dashboardHandler(ctx router.Context) error {
         function connectGame() {
             if (gameWs) return;
             gameWs = new WebSocket('ws://localhost:8080/ws/game');
-            
+
             gameWs.onopen = () => {
                 updateStatus('game-status', true);
                 addMessage('game-messages', '✅ Connected to Gaming Server', 'success');
             };
-            
+
             gameWs.onmessage = (e) => {
                 const data = JSON.parse(e.data);
                 handleGameMessage(data);
             };
-            
+
             gameWs.onclose = () => {
                 updateStatus('game-status', false);
                 addMessage('game-messages', '❌ Disconnected from Gaming Server', 'error');
@@ -1849,8 +1852,8 @@ func dashboardHandler(ctx router.Context) error {
             if (!gameWs) return;
             const playerName = document.getElementById('player-name').value;
             const gameId = document.getElementById('game-id').value;
-            gameWs.send(JSON.stringify({ 
-                type: 'join_game', 
+            gameWs.send(JSON.stringify({
+                type: 'join_game',
                 player_name: playerName,
                 game_id: gameId
             }));
@@ -1862,14 +1865,14 @@ func dashboardHandler(ctx router.Context) error {
             const rect = canvas.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            
-            gameWs.send(JSON.stringify({ 
-                type: 'player_move', 
+
+            gameWs.send(JSON.stringify({
+                type: 'player_move',
                 game_id: document.getElementById('game-id').value,
-                x: x, 
-                y: y 
+                x: x,
+                y: y
             }));
-            
+
             // Update canvas visually
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#007bff';
@@ -1879,8 +1882,8 @@ func dashboardHandler(ctx router.Context) error {
 
         function sendGameAction(action) {
             if (!gameWs) return;
-            gameWs.send(JSON.stringify({ 
-                type: 'game_action', 
+            gameWs.send(JSON.stringify({
+                type: 'game_action',
                 game_id: document.getElementById('game-id').value,
                 action: action
             }));
@@ -1917,11 +1920,11 @@ func dashboardHandler(ctx router.Context) error {
         // Reconnection Functions
         function connectReconnect() {
             if (reconnectWs) return;
-            
+
             // Try to use stored session ID first, then current session
             const storedSessionId = localStorage.getItem('reconnect_session_id');
             const sessionToUse = storedSessionId || currentSessionId;
-            
+
             let url = 'ws://localhost:8080/ws/reconnect';
             if (sessionToUse) {
                 url += '?session_id=' + sessionToUse;
@@ -1929,24 +1932,24 @@ func dashboardHandler(ctx router.Context) error {
             } else {
                 addMessage('reconnect-messages', '🆕 Creating new session...', 'info');
             }
-            
+
             reconnectWs = new WebSocket(url);
-            
+
             reconnectWs.onopen = () => {
                 updateStatus('reconnect-status', true);
                 addMessage('reconnect-messages', '✅ Connected to Reconnection System', 'success');
             };
-            
+
             reconnectWs.onmessage = (e) => {
                 const data = JSON.parse(e.data);
                 handleReconnectMessage(data);
             };
-            
+
             reconnectWs.onerror = (error) => {
                 addMessage('reconnect-messages', '💥 WebSocket error occurred', 'error');
                 console.error('Reconnection WebSocket error:', error);
             };
-            
+
             reconnectWs.onclose = (event) => {
                 updateStatus('reconnect-status', false);
                 if (event.code === 1000) {
@@ -1975,7 +1978,7 @@ func dashboardHandler(ctx router.Context) error {
                 // Force immediate disconnect
                 reconnectWs.onclose = null; // Temporarily disable onclose to avoid duplicate messages
                 reconnectWs.close(1000, 'Manual disconnect');
-                
+
                 // Manually trigger the disconnect handling
                 setTimeout(() => {
                     updateStatus('reconnect-status', false);
@@ -2001,18 +2004,18 @@ func dashboardHandler(ctx router.Context) error {
             if (!reconnectWs) return;
             const message = document.getElementById('queue-message').value;
             const targetSession = document.getElementById('target-session').value;
-            
+
             if (!message || !targetSession) {
                 addMessage('reconnect-messages', '❌ Please enter message and target session', 'error');
                 return;
             }
-            
+
             reconnectWs.send(JSON.stringify({
                 type: 'send_message',
                 target_session: targetSession,
                 data: message
             }));
-            
+
             document.getElementById('queue-message').value = '';
         }
 
@@ -2025,7 +2028,7 @@ func dashboardHandler(ctx router.Context) error {
                 addMessage('reconnect-messages', '❌ No active session', 'error');
                 return;
             }
-            
+
             addMessage('reconnect-messages', '🔍 Checking for queued messages...', 'info');
             reconnectWs.send(JSON.stringify({ type: 'get_queued' }));
         }
@@ -2048,11 +2051,11 @@ func dashboardHandler(ctx router.Context) error {
                 addMessage('reconnect-messages', '❌ Connect first to get a session ID!', 'error');
                 return;
             }
-            
+
             const testMessage = 'Test message sent at ' + new Date().toLocaleTimeString();
             document.getElementById('queue-message').value = testMessage;
             document.getElementById('target-session').value = currentSessionId;
-            
+
             addMessage('reconnect-messages', '🧪 Quick test: queuing message to your own session...', 'info');
             setTimeout(() => {
                 sendQueuedMessage();
@@ -2128,7 +2131,7 @@ func dashboardHandler(ctx router.Context) error {
         // Multi-Protocol Functions
         function connectMultiProto() {
             const protocol = document.getElementById('protocol-select').value;
-            
+
             // Disconnect existing connection if switching protocols
             if (multiprotoWs) {
                 addMessage('multiproto-messages', '🔄 Switching to ' + protocol + ' protocol...', 'info');
@@ -2140,11 +2143,11 @@ func dashboardHandler(ctx router.Context) error {
                 createMultiProtoConnection(protocol);
             }
         }
-        
+
         function createMultiProtoConnection(protocol) {
             addMessage('multiproto-messages', '🔗 Connecting with ' + protocol + ' protocol...', 'info');
             multiprotoWs = new WebSocket('ws://localhost:8080/ws/multiproto?protocol=' + protocol);
-            
+
             multiprotoWs.onopen = () => {
                 updateStatus('multiproto-status', true);
                 addMessage('multiproto-messages', '✅ Connected with ' + protocol + ' protocol', 'success');
@@ -2153,16 +2156,16 @@ func dashboardHandler(ctx router.Context) error {
                     if (multiprotoWs) getProtocolStats();
                 }, 500);
             };
-            
+
             multiprotoWs.onmessage = (e) => {
                 const data = JSON.parse(e.data);
                 handleMultiProtoMessage(data);
             };
-            
+
             multiprotoWs.onerror = (error) => {
                 addMessage('multiproto-messages', '💥 Connection error with ' + protocol + ' protocol', 'error');
             };
-            
+
             multiprotoWs.onclose = () => {
                 updateStatus('multiproto-status', false);
                 addMessage('multiproto-messages', '❌ Disconnected from Multi-Protocol System', 'error');
@@ -2179,7 +2182,7 @@ func dashboardHandler(ctx router.Context) error {
         function protocolChanged() {
             const protocol = document.getElementById('protocol-select').value;
             addMessage('multiproto-messages', '📝 Protocol changed to: ' + protocol + '. Click Connect to switch.', 'info');
-            
+
             // Auto-connect if already connected
             if (multiprotoWs && multiprotoWs.readyState === WebSocket.OPEN) {
                 connectMultiProto();
@@ -2253,7 +2256,7 @@ func dashboardHandler(ctx router.Context) error {
             addMessage('game-messages', '🚀 Gaming Server ready', 'info');
             addMessage('reconnect-messages', '🚀 Reconnection System ready', 'info');
             addMessage('multiproto-messages', '🚀 Multi-Protocol System ready', 'info');
-            
+
             // Load stored session for reconnection testing
             loadStoredSession();
         };

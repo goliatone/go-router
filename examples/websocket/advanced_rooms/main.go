@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -737,7 +740,7 @@ func homeHandler(ctx router.Context) error {
                 return;
             }
 
-            roomList.innerHTML = rooms.map(room => 
+            roomList.innerHTML = rooms.map(room =>
                 '<div class="room-item room-type-' + room.type + ' ' + (joinedRooms.has(room.id) ? 'joined' : '') + '"' +
                      ' onclick="joinRoom(\'' + room.id + '\')">' +
                     '<strong>' + room.name + '</strong>' +
@@ -753,7 +756,7 @@ func homeHandler(ctx router.Context) error {
         function updateStats(stats) {
             if (!stats) return;
             const content = document.getElementById('statsContent');
-            content.innerHTML = 
+            content.innerHTML =
                 'Total Rooms: ' + (stats.total_rooms || stats.TotalRooms || 0) + '<br>' +
                 'Active Rooms: ' + (stats.active_rooms || stats.ActiveRooms || 0) + '<br>' +
                 'Total Clients: ' + (stats.total_clients || stats.TotalClients || 0) + '<br>' +

@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -480,7 +483,7 @@ func chatHomeHandler(ctx router.Context) error {
         function updateStatus(text, isConnected) {
             status.textContent = text;
             status.className = 'status ' + (isConnected ? 'status-connected' : 'status-disconnected');
-            
+
             messageInput.disabled = !isConnected;
             sendButton.disabled = !isConnected;
             connected = isConnected;
@@ -489,7 +492,7 @@ func chatHomeHandler(ctx router.Context) error {
         function addMessage(msg, type = 'info') {
             const div = document.createElement('div');
             div.className = 'message message-' + type;
-            
+
             if (typeof msg === 'object') {
                 let content = '';
                 if (msg.user && msg.user !== 'System') {
@@ -498,18 +501,18 @@ func chatHomeHandler(ctx router.Context) error {
                     content += '<strong>📢 System:</strong> ';
                 }
                 content += escapeHtml(msg.message);
-                
-                const meta = '<div class="message-meta">' + 
+
+                const meta = '<div class="message-meta">' +
                            new Date(msg.timestamp).toLocaleTimeString() +
                            (msg.room ? ' in #' + msg.room : '') +
                            '</div>';
-                           
+
                 div.innerHTML = content + meta;
             } else {
-                div.innerHTML = escapeHtml(msg) + 
+                div.innerHTML = escapeHtml(msg) +
                               '<div class="message-meta">' + new Date().toLocaleTimeString() + '</div>';
             }
-            
+
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
         }
@@ -538,13 +541,13 @@ func chatHomeHandler(ctx router.Context) error {
             currentRoom = room;
 
             updateStatus('Connecting...', false);
-            
+
             ws = new WebSocket('ws://localhost:8081/ws/chat');
 
             ws.onopen = function() {
                 console.log('WebSocket connected successfully');
                 updateStatus('Connected to ' + currentRoom, true);
-                
+
                 // Join the selected room
                 const joinMsg = {
                     type: 'join',
@@ -553,7 +556,7 @@ func chatHomeHandler(ctx router.Context) error {
                 };
                 console.log('Sending join message:', joinMsg);
                 ws.send(JSON.stringify(joinMsg));
-                
+
                 addMessage('Connected to chat room: #' + currentRoom, 'system');
                 messageInput.focus();
             };
@@ -562,7 +565,7 @@ func chatHomeHandler(ctx router.Context) error {
                 try {
                     const msg = JSON.parse(event.data);
                     let msgType = 'info';
-                    
+
                     switch(msg.type) {
                         case 'welcome':
                         case 'room_info':
@@ -581,7 +584,7 @@ func chatHomeHandler(ctx router.Context) error {
                             msgType = msg.user === currentUser ? 'self' : 'user';
                             break;
                     }
-                    
+
                     addMessage(msg, msgType);
                 } catch (e) {
                     addMessage(event.data, 'system');
@@ -608,7 +611,7 @@ func chatHomeHandler(ctx router.Context) error {
 
         function sendMessage() {
             console.log('sendMessage called, connected:', connected, 'ws:', !!ws);
-            
+
             if (!connected || !ws) {
                 console.log('Not connected - connected:', connected, 'ws:', !!ws);
                 addMessage('Not connected to chat', 'error');
@@ -658,7 +661,7 @@ func chatHomeHandler(ctx router.Context) error {
 
         // Generate default username
         usernameInput.value = 'User_' + Math.random().toString(36).substr(2, 6);
-        
+
         // Auto-focus username input
         usernameInput.focus();
     </script>

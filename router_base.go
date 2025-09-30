@@ -303,6 +303,7 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 			return c.Status(500).SendString(err.Error())
 		}
 
+		// TODO: We might want to modify ModifyResponse to also take in the content
 		if cfg.ModifyResponse != nil {
 			if err := cfg.ModifyResponse(c); err != nil {
 				return err

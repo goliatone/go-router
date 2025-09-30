@@ -222,6 +222,7 @@ type Static struct {
 	Download       bool                // Force download
 	Compress       bool                // Enable compression
 	ModifyResponse func(Context) error // Hook to modify response
+	// ModifyResponse func(Context, []byte) ([]byte, error) // Hook to modify response
 }
 
 // Router represents a generic router interface

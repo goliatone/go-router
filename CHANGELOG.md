@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.17.1](https://github.com/goliatone/go-router/compare/v0.17.0...v0.17.1) - (2025-10-03)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.17.1 ([eaaa1a3](https://github.com/goliatone/go-router/commit/eaaa1a3035516a838bc61e7ebb9d566e84949c5e))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.17.0 ([32b4ad1](https://github.com/goliatone/go-router/commit/32b4ad1f4070360b97a26d1ade38a9dfae951c9c))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#15](https://github.com/goliatone/go-router/pull/15): github.com/goliatone/go-router to v0.9.0 ([7a866ac](https://github.com/goliatone/go-router/commit/7a866ac6809786f0e8ac02c4241db6731149b0c0))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update example ([78b375f](https://github.com/goliatone/go-router/commit/78b375f579ca428345f84af594f123bd3cbec923))  - (goliatone)
+- **deps:** Bump {{ .Module }} to {{ .Version }} ([f13058d](https://github.com/goliatone/go-router/commit/f13058dce61d322165a62931c3d35badf94c3690))  - (goliatone)
+
 # [0.17.0](https://github.com/goliatone/go-router/compare/v0.16.0...v0.17.0) - (2025-10-03)
 
 ## <!-- 1 -->🐛 Bug Fixes

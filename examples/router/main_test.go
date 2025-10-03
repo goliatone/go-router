@@ -1,3 +1,6 @@
+//go:build exampletests
+// +build exampletests
+
 package main
 
 import (

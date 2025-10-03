@@ -1,0 +1,181 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ user.name }} - go-router Demo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-content">
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="/" class="breadcrumb-link">Users</a>
+            <span class="breadcrumb-separator">/</span>
+            <span class="breadcrumb-current">{{ user.name }}</span>
+        </nav>
+        <h1 class="page-title">User Details</h1>
+    </div>
+    <div class="page-header-actions">
+        <a href="/users/{{ user.id }}/edit" class="btn btn-primary">
+            <span class="btn-icon">✎</span>
+            Edit User
+        </a>
+        <button
+            class="btn btn-danger delete-user"
+            data-user-id="{{ user.id }}"
+            data-user-name="{{ user.name }}"
+            data-redirect="/"
+        >
+            <span class="btn-icon">✕</span>
+            Delete User
+        </button>
+    </div>
+</div>
+
+<div class="detail-container">
+    <div class="detail-card">
+        <div class="detail-card-header">
+            <h2 class="detail-card-title">User Information</h2>
+            <span class="detail-card-badge">Active</span>
+        </div>
+
+        <div class="detail-card-body">
+            <!-- User ID -->
+            <div class="detail-row">
+                <div class="detail-label">
+                    <span class="detail-label-icon">🔑</span>
+                    <span class="detail-label-text">User ID</span>
+                </div>
+                <div class="detail-value">
+                    <code class="detail-code">{{ user.id }}</code>
+                    <button
+                        class="btn-copy"
+                        data-copy="{{ user.id }}"
+                        title="Copy to clipboard"
+                        aria-label="Copy user ID"
+                    >
+                        📋
+                    </button>
+                </div>
+            </div>
+
+            <!-- Name -->
+            <div class="detail-row">
+                <div class="detail-label">
+                    <span class="detail-label-icon">👤</span>
+                    <span class="detail-label-text">Name</span>
+                </div>
+                <div class="detail-value">
+                    <strong>{{ user.name }}</strong>
+                </div>
+            </div>
+
+            <!-- Email -->
+            <div class="detail-row">
+                <div class="detail-label">
+                    <span class="detail-label-icon">✉️</span>
+                    <span class="detail-label-text">Email</span>
+                </div>
+                <div class="detail-value">
+                    <a href="mailto:{{ user.email }}" class="detail-link">{{ user.email }}</a>
+                    <button
+                        class="btn-copy"
+                        data-copy="{{ user.email }}"
+                        title="Copy to clipboard"
+                        aria-label="Copy email"
+                    >
+                        📋
+                    </button>
+                </div>
+            </div>
+
+            <!-- Created At -->
+            <div class="detail-row">
+                <div class="detail-label">
+                    <span class="detail-label-icon">📅</span>
+                    <span class="detail-label-text">Created</span>
+                </div>
+                <div class="detail-value">
+                    <time datetime="{{ user.created_at }}" class="detail-time">
+                        {{ user.created_at }}
+                    </time>
+                    <span class="detail-time-relative" data-timestamp="{{ user.created_at }}"></span>
+                </div>
+            </div>
+
+            <!-- Updated At -->
+            <div class="detail-row">
+                <div class="detail-label">
+                    <span class="detail-label-icon">🔄</span>
+                    <span class="detail-label-text">Last Updated</span>
+                </div>
+                <div class="detail-value">
+                    <time datetime="{{ user.updated_at }}" class="detail-time">
+                        {{ user.updated_at }}
+                    </time>
+                    <span class="detail-time-relative" data-timestamp="{{ user.updated_at }}"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-card-footer">
+            <div class="detail-actions">
+                <a href="/" class="btn btn-secondary">
+                    ← Back to List
+                </a>
+                <div class="detail-actions-right">
+                    <a href="/users/{{ user.id }}/edit" class="btn btn-primary">
+                        Edit User
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Information Card -->
+    <div class="detail-card api-card">
+        <div class="detail-card-header">
+            <h3 class="detail-card-title">API Access</h3>
+        </div>
+        <div class="detail-card-body">
+            <p class="api-description">Access this user via the REST API:</p>
+
+            <div class="api-endpoint">
+                <div class="api-method">GET</div>
+                <code class="api-url">/api/users/{{ user.id }}</code>
+                <button
+                    class="btn-copy"
+                    data-copy="/api/users/{{ user.id }}"
+                    title="Copy endpoint"
+                >
+                    📋
+                </button>
+            </div>
+
+            <div class="api-example">
+                <h4 class="api-example-title">Example Response:</h4>
+                <pre class="api-code"><code>{
+  "id": "{{ user.id }}",
+  "name": "{{ user.name }}",
+  "email": "{{ user.email }}",
+  "created_at": "{{ user.created_at }}",
+  "updated_at": "{{ user.updated_at }}"
+}</code></pre>
+            </div>
+
+            <div class="api-links">
+                <a href="/meta/docs" class="btn btn-sm btn-secondary">View API Documentation</a>
+                <a href="/api/users/{{ user.id }}" class="btn btn-sm btn-secondary" target="_blank">
+                    Open in New Tab →
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize user detail functionality
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.UserDetail) {
+        window.UserDetail.init();
+    }
+});
+</script>
+{% endblock %}

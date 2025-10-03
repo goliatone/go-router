@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ mode|title }} User - go-router Demo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-content">
+        <h1 class="page-title">
+            {% if mode == "edit" %}
+                Edit User
+            {% else %}
+                Create New User
+            {% endif %}
+        </h1>
+        <p class="page-subtitle">
+            {% if mode == "edit" %}
+                Update user information
+            {% else %}
+                Add a new user to the system
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="form-container">
+    <form
+        id="user-form"
+        method="POST"
+        action="{% if mode == 'edit' %}/users/{{ user.id }}{% else %}/users{% endif %}"
+        class="form"
+        novalidate
+    >
+        <!-- Form Errors -->
+        {% if errors %}
+        <div class="alert alert-error" role="alert">
+            <h4 class="alert-title">Please correct the following errors:</h4>
+            <ul class="error-list">
+                {% for error in errors %}
+                <li>{{ error.field }}: {{ error.message }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <!-- Name Field -->
+        <div class="form-group">
+            <label for="name" class="form-label required">Name</label>
+            <input
+                type="text"
+                id="name"
+                name="name"
+                class="form-input {% if errors.name %}invalid{% endif %}"
+                value="{% if user %}{{ user.name }}{% endif %}"
+                required
+                minlength="1"
+                maxlength="100"
+                placeholder="Enter user's full name"
+                aria-describedby="name-error name-help"
+            >
+            <div id="name-error" class="form-error" style="display: none;"></div>
+            <div id="name-help" class="form-help">Full name is required (1-100 characters)</div>
+        </div>
+
+        <!-- Email Field -->
+        <div class="form-group">
+            <label for="email" class="form-label required">Email</label>
+            <input
+                type="email"
+                id="email"
+                name="email"
+                class="form-input {% if errors.email %}invalid{% endif %}"
+                value="{% if user %}{{ user.email }}{% endif %}"
+                required
+                pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                placeholder="user@example.com"
+                aria-describedby="email-error email-help"
+                {% if mode == "edit" %}readonly{% endif %}
+            >
+            <div id="email-error" class="form-error" style="display: none;"></div>
+            <div id="email-help" class="form-help">
+                {% if mode == "edit" %}
+                    Email cannot be changed after creation
+                {% else %}
+                    Valid email address is required
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- User ID (Edit Mode Only) -->
+        {% if mode == "edit" and user %}
+        <div class="form-group">
+            <label for="user-id" class="form-label">User ID</label>
+            <input
+                type="text"
+                id="user-id"
+                class="form-input"
+                value="{{ user.id }}"
+                readonly
+                disabled
+                aria-describedby="id-help"
+            >
+            <div id="id-help" class="form-help">System generated ID (cannot be changed)</div>
+        </div>
+
+        <div class="form-group-row">
+            <div class="form-group">
+                <label for="created-at" class="form-label">Created At</label>
+                <input
+                    type="text"
+                    id="created-at"
+                    class="form-input"
+                    value="{{ user.created_at }}"
+                    readonly
+                    disabled
+                >
+            </div>
+            <div class="form-group">
+                <label for="updated-at" class="form-label">Updated At</label>
+                <input
+                    type="text"
+                    id="updated-at"
+                    class="form-input"
+                    value="{{ user.updated_at }}"
+                    readonly
+                    disabled
+                >
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Form Actions -->
+        <div class="form-actions">
+            <a href="{% if mode == 'edit' and user %}/users/{{ user.id }}{% else %}/{% endif %}" class="btn btn-secondary">
+                Cancel
+            </a>
+            <button type="submit" class="btn btn-primary" id="submit-btn">
+                <span class="btn-text">
+                    {% if mode == "edit" %}
+                        Update User
+                    {% else %}
+                        Create User
+                    {% endif %}
+                </span>
+                <span class="btn-spinner" style="display: none;"></span>
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+// Initialize form validation
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.UserForm) {
+        window.UserForm.init('{{ mode }}');
+    }
+});
+</script>
+{% endblock %}

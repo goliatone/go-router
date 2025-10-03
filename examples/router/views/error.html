@@ -1,0 +1,257 @@
+{% extends "layout.html" %}
+
+{% block title %}Error {{ error_code|default:"" }} - go-router Demo{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-content">
+        <!-- Error Icon -->
+        <div class="error-icon">
+            {% if error_code == 404 %}
+                🔍
+            {% elif error_code == 403 %}
+                🔒
+            {% elif error_code == 401 %}
+                🚫
+            {% elif error_code == 500 %}
+                ⚠️
+            {% else %}
+                ❌
+            {% endif %}
+        </div>
+
+        <!-- Error Code -->
+        <h1 class="error-code">
+            {% if error_code %}
+                {{ error_code }}
+            {% else %}
+                Error
+            {% endif %}
+        </h1>
+
+        <!-- Error Title -->
+        <h2 class="error-title">
+            {% if error_title %}
+                {{ error_title }}
+            {% elif error_code == 404 %}
+                Page Not Found
+            {% elif error_code == 403 %}
+                Forbidden
+            {% elif error_code == 401 %}
+                Unauthorized
+            {% elif error_code == 500 %}
+                Internal Server Error
+            {% else %}
+                Something Went Wrong
+            {% endif %}
+        </h2>
+
+        <!-- Error Message -->
+        <p class="error-message">
+            {% if error_message %}
+                {{ error_message }}
+            {% elif error_code == 404 %}
+                The page or resource you're looking for doesn't exist. It might have been moved or deleted.
+            {% elif error_code == 403 %}
+                You don't have permission to access this resource.
+            {% elif error_code == 401 %}
+                You need to be authenticated to access this resource.
+            {% elif error_code == 500 %}
+                The server encountered an error while processing your request. Please try again later.
+            {% else %}
+                An unexpected error occurred. Please try again or contact support if the problem persists.
+            {% endif %}
+        </p>
+
+        <!-- Error Details (Development Mode Only) -->
+        {% if error_details and is_development %}
+        <details class="error-details">
+            <summary class="error-details-summary">Technical Details (Development Mode)</summary>
+            <div class="error-details-content">
+                <pre class="error-stack">{{ error_details }}</pre>
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="error-actions">
+            <a href="/" class="btn btn-primary">
+                ← Back to Home
+            </a>
+            <button onclick="window.history.back()" class="btn btn-secondary">
+                Go Back
+            </button>
+            {% if error_code == 404 %}
+            <a href="/users/new" class="btn btn-secondary">
+                Create New User
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- Help Links -->
+        <div class="error-help">
+            <p class="error-help-text">Need help?</p>
+            <div class="error-help-links">
+                <a href="/meta/docs" class="error-help-link">API Documentation</a>
+                <span class="error-help-separator">•</span>
+                <a href="https://github.com/goliatone/go-router" class="error-help-link" target="_blank">
+                    GitHub Repository
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.error-container {
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.error-content {
+    max-width: 600px;
+    text-align: center;
+}
+
+.error-icon {
+    font-size: 6rem;
+    margin-bottom: 1rem;
+    animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-20px);
+    }
+}
+
+.error-code {
+    font-size: 4rem;
+    font-weight: 700;
+    color: var(--color-danger, #dc2626);
+    margin: 0;
+    line-height: 1;
+}
+
+.error-title {
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--color-text-primary, #1f2937);
+    margin: 1rem 0;
+}
+
+.error-message {
+    font-size: 1.125rem;
+    color: var(--color-text-secondary, #6b7280);
+    margin: 1.5rem 0;
+    line-height: 1.6;
+}
+
+.error-details {
+    margin: 2rem 0;
+    text-align: left;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+
+.error-details-summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #6b7280;
+    padding: 0.5rem;
+}
+
+.error-details-summary:hover {
+    color: #374151;
+}
+
+.error-details-content {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #fff;
+    border-radius: 0.25rem;
+}
+
+.error-stack {
+    margin: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    color: #dc2626;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.error-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 2rem 0;
+}
+
+.error-help {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.error-help-text {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: 0 0 0.5rem 0;
+}
+
+.error-help-links {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.error-help-link {
+    font-size: 0.875rem;
+    color: var(--color-primary, #3b82f6);
+    text-decoration: none;
+}
+
+.error-help-link:hover {
+    text-decoration: underline;
+}
+
+.error-help-separator {
+    color: #d1d5db;
+}
+
+@media (max-width: 640px) {
+    .error-icon {
+        font-size: 4rem;
+    }
+
+    .error-code {
+        font-size: 3rem;
+    }
+
+    .error-title {
+        font-size: 1.5rem;
+    }
+
+    .error-message {
+        font-size: 1rem;
+    }
+
+    .error-actions {
+        flex-direction: column;
+    }
+}
+</style>
+{% endblock %}

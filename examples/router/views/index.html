@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+
+{% block title %}User List - go-router Demo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-content">
+        <h1 class="page-title">Users</h1>
+        <p class="page-subtitle">Manage your users with full CRUD operations</p>
+    </div>
+    <div class="page-header-actions">
+        <a href="/users/new" class="btn btn-primary">
+            <span class="btn-icon">+</span>
+            Create User
+        </a>
+    </div>
+</div>
+
+<!-- Search Bar -->
+<div class="search-bar">
+    <div class="search-input-wrapper">
+        <input
+            type="text"
+            id="user-search"
+            class="search-input"
+            placeholder="Search by name or email..."
+            aria-label="Search users"
+        >
+        <span class="search-icon">🔍</span>
+    </div>
+    <div class="search-results-info">
+        <span id="results-count">{{ users|length }} user{{ users|length|pluralize:"s" }}</span>
+    </div>
+</div>
+
+{% if users %}
+<!-- User Table (Desktop) -->
+<div class="table-container desktop-only">
+    <table class="table">
+        <thead>
+            <tr>
+                <th class="sortable" data-sort="name">
+                    Name
+                    <span class="sort-indicator"></span>
+                </th>
+                <th class="sortable" data-sort="email">
+                    Email
+                    <span class="sort-indicator"></span>
+                </th>
+                <th class="sortable" data-sort="created">
+                    Created
+                    <span class="sort-indicator"></span>
+                </th>
+                <th class="sortable" data-sort="updated">
+                    Updated
+                    <span class="sort-indicator"></span>
+                </th>
+                <th class="actions-column">Actions</th>
+            </tr>
+        </thead>
+        <tbody id="user-table-body">
+            {% for user in users %}
+            <tr class="user-row" data-user-id="{{ user.id }}" data-user-name="{{ user.name }}" data-user-email="{{ user.email }}">
+                <td class="user-name">{{ user.name }}</td>
+                <td class="user-email">{{ user.email }}</td>
+                <td class="user-created" data-timestamp="{{ user.created_at }}">
+                    <span class="date-display">{{ user.created_at }}</span>
+                </td>
+                <td class="user-updated" data-timestamp="{{ user.updated_at }}">
+                    <span class="date-display">{{ user.updated_at }}</span>
+                </td>
+                <td class="user-actions">
+                    <div class="action-buttons">
+                        <a href="/users/{{ user.id }}" class="btn btn-sm btn-secondary" title="View Details">
+                            View
+                        </a>
+                        <a href="/users/{{ user.id }}/edit" class="btn btn-sm btn-primary" title="Edit User">
+                            Edit
+                        </a>
+                        <button
+                            class="btn btn-sm btn-danger delete-user"
+                            data-user-id="{{ user.id }}"
+                            data-user-name="{{ user.name }}"
+                            title="Delete User"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- User Cards (Mobile) -->
+<div class="cards-container mobile-only">
+    {% for user in users %}
+    <div class="user-card" data-user-id="{{ user.id }}" data-user-name="{{ user.name }}" data-user-email="{{ user.email }}">
+        <div class="card-header">
+            <h3 class="card-title">{{ user.name }}</h3>
+            <span class="card-id">#{{ user.id|slice:":8" }}</span>
+        </div>
+        <div class="card-body">
+            <div class="card-field">
+                <label class="card-label">Email:</label>
+                <span class="card-value user-email">{{ user.email }}</span>
+            </div>
+            <div class="card-field">
+                <label class="card-label">Created:</label>
+                <span class="card-value user-created" data-timestamp="{{ user.created_at }}">{{ user.created_at }}</span>
+            </div>
+            <div class="card-field">
+                <label class="card-label">Updated:</label>
+                <span class="card-value user-updated" data-timestamp="{{ user.updated_at }}">{{ user.updated_at }}</span>
+            </div>
+        </div>
+        <div class="card-footer">
+            <a href="/users/{{ user.id }}" class="btn btn-sm btn-secondary">View</a>
+            <a href="/users/{{ user.id }}/edit" class="btn btn-sm btn-primary">Edit</a>
+            <button
+                class="btn btn-sm btn-danger delete-user"
+                data-user-id="{{ user.id }}"
+                data-user-name="{{ user.name }}"
+            >
+                Delete
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- No Results Message -->
+<div id="no-results" class="empty-state" style="display: none;">
+    <div class="empty-state-icon">🔍</div>
+    <h3 class="empty-state-title">No users found</h3>
+    <p class="empty-state-message">Try adjusting your search criteria</p>
+</div>
+
+{% else %}
+<!-- Empty State -->
+<div class="empty-state">
+    <div class="empty-state-icon">👥</div>
+    <h3 class="empty-state-title">No users yet</h3>
+    <p class="empty-state-message">Get started by creating your first user</p>
+    <a href="/users/new" class="btn btn-primary">Create Your First User</a>
+</div>
+{% endif %}
+
+<script>
+// Initialize user list functionality
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.UserList) {
+        window.UserList.init();
+    }
+});
+</script>
+{% endblock %}

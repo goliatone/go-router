@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>{% block title %}go-router Demo{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-brand">
+                <a href="/" class="navbar-logo">
+                    <span class="logo-icon">🚀</span>
+                    <span class="logo-text">go-router</span>
+                </a>
+            </div>
+            <div class="navbar-menu">
+                <a href="/" class="nav-link">Users</a>
+                <a href="/users/new" class="nav-link">Create User</a>
+                <a href="/meta/docs" class="nav-link">API Docs</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div id="flash-container" class="flash-container">
+        {% if flash.success %}
+        <div class="flash flash-success" role="alert">
+            <span class="flash-icon">✓</span>
+            <span class="flash-message">{{ flash.success_message|default:"Operation completed successfully" }}</span>
+            <button class="flash-close" aria-label="Close">&times;</button>
+        </div>
+        {% endif %}
+
+        {% if flash.error %}
+        <div class="flash flash-error" role="alert">
+            <span class="flash-icon">✕</span>
+            <span class="flash-message">{{ flash.error_message|default:"An error occurred" }}</span>
+            <button class="flash-close" aria-label="Close">&times;</button>
+        </div>
+        {% endif %}
+
+        {% if flash.warning %}
+        <div class="flash flash-warning" role="alert">
+            <span class="flash-icon">⚠</span>
+            <span class="flash-message">{{ flash.warning_message }}</span>
+            <button class="flash-close" aria-label="Close">&times;</button>
+        </div>
+        {% endif %}
+
+        {% if flash.info %}
+        <div class="flash flash-info" role="alert">
+            <span class="flash-icon">ℹ</span>
+            <span class="flash-message">{{ flash.info_message }}</span>
+            <button class="flash-close" aria-label="Close">&times;</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 go-router Demo. Built with <a href="https://github.com/goliatone/go-router" target="_blank">go-router</a></p>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal" style="display: none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title" class="modal-title">Confirm Action</h3>
+            </div>
+            <div class="modal-body">
+                <p id="modal-message">Are you sure you want to proceed?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="modal-confirm" class="btn btn-danger">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

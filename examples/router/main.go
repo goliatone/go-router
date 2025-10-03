@@ -16,6 +16,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/template/django/v3"
 	"github.com/goliatone/go-router"
+	"github.com/goliatone/go-router/flash"
+	flashmw "github.com/goliatone/go-router/middleware/flash"
 	"github.com/goliatone/hashid/pkg/hashid"
 	"github.com/julienschmidt/httprouter"
 )
@@ -227,15 +229,28 @@ func main() {
 	app := newFiberAdapter()
 	// app := newHTTPServerAdapter()
 	store := NewUserStore()
+
+	// Serve static files
+	app.WrappedRouter().Static("/static", "./views")
+
+	// Create API routes
 	createRoutes(app, store)
 
 	app.Router().PrintRoutes()
 
+	// Front-end routes with HTML rendering
 	front := app.Router().Use(router.ToMiddleware(func(c router.Context) error {
 		c.SetHeader(router.HeaderContentType, "text/html")
 		return c.Next()
 	}))
 
+	// Add flash middleware for front-end routes
+	front.Use(flashmw.New())
+
+	// Front-end route handlers
+	createFrontEndRoutes(front, store)
+
+	// OpenAPI documentation
 	router.ServeOpenAPI(front, &router.OpenAPIRenderer{
 		Title:   "My Test App",
 		Version: "v0.0.1",
@@ -431,5 +446,234 @@ func deleteUser(store *UserStore) router.HandlerFunc {
 		store.Unlock()
 
 		return c.JSON(http.StatusNoContent, nil)
+	}
+}
+
+// ==============================================
+// Front-End Route Handlers (HTML Rendering)
+// ==============================================
+
+func createFrontEndRoutes[T any](front router.Router[T], store *UserStore) {
+	// Home page - User list
+	front.Get("/", renderUserList(store))
+
+	// Create user form
+	front.Get("/users/new", renderCreateForm())
+
+	// User detail page
+	front.Get("/users/:id", renderUserDetail(store))
+
+	// Edit user form
+	front.Get("/users/:id/edit", renderEditForm(store))
+
+	// Form submissions
+	front.Post("/users", handleCreateUser(store))
+	front.Post("/users/:id", handleUpdateUser(store))
+	front.Post("/users/:id/delete", handleDeleteUser(store))
+}
+
+func renderUserList(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		store.RLock()
+		users := make([]User, 0, len(store.users))
+		for _, user := range store.users {
+			users = append(users, user)
+		}
+		store.RUnlock()
+
+		return c.Render("index", map[string]any{
+			"users": users,
+		})
+	}
+}
+
+func renderCreateForm() router.HandlerFunc {
+	return func(c router.Context) error {
+		return c.Render("user-form", map[string]any{
+			"mode": "create",
+		})
+	}
+}
+
+func renderUserDetail(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		id := c.Param("id", "")
+
+		store.RLock()
+		user, exists := store.users[id]
+		store.RUnlock()
+
+		if !exists {
+			return c.Render("error", map[string]any{
+				"error_code":    404,
+				"error_title":   "User Not Found",
+				"error_message": fmt.Sprintf("The user with ID %s does not exist.", id),
+			})
+		}
+
+		return c.Render("user-detail", map[string]any{
+			"user": user,
+		})
+	}
+}
+
+func renderEditForm(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		id := c.Param("id", "")
+
+		store.RLock()
+		user, exists := store.users[id]
+		store.RUnlock()
+
+		if !exists {
+			return c.Render("error", map[string]any{
+				"error_code":    404,
+				"error_title":   "User Not Found",
+				"error_message": fmt.Sprintf("The user with ID %s does not exist.", id),
+			})
+		}
+
+		return c.Render("user-form", map[string]any{
+			"mode": "edit",
+			"user": user,
+		})
+	}
+}
+
+func handleCreateUser(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		name := c.FormValue("name")
+		email := c.FormValue("email")
+
+		// Validation
+		var validationErrors []map[string]string
+		if name == "" {
+			validationErrors = append(validationErrors, map[string]string{
+				"field":   "name",
+				"message": "Name is required",
+			})
+		}
+		if email == "" {
+			validationErrors = append(validationErrors, map[string]string{
+				"field":   "email",
+				"message": "Email is required",
+			})
+		}
+
+		if len(validationErrors) > 0 {
+			return c.Render("user-form", map[string]any{
+				"mode":   "create",
+				"errors": validationErrors,
+				"user": map[string]string{
+					"name":  name,
+					"email": email,
+				},
+			})
+		}
+
+		// Create user
+		id, err := hashid.New(email)
+		if err != nil {
+			return c.Render("user-form", map[string]any{
+				"mode": "create",
+				"errors": []map[string]string{
+					{
+						"field":   "email",
+						"message": "Invalid email format",
+					},
+				},
+				"user": map[string]string{
+					"name":  name,
+					"email": email,
+				},
+			})
+		}
+
+		user := User{
+			ID:        id,
+			Name:      name,
+			Email:     email,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		store.Lock()
+		store.users[user.ID] = user
+		store.Unlock()
+
+		// Set flash message and redirect
+		return flash.Redirect(c, fmt.Sprintf("/users/%s", user.ID), router.ViewContext{
+			"success":         true,
+			"success_message": fmt.Sprintf("User '%s' has been created successfully", name),
+		})
+	}
+}
+
+func handleUpdateUser(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		id := c.Param("id", "")
+		name := c.FormValue("name")
+
+		store.Lock()
+		defer store.Unlock()
+
+		user, exists := store.users[id]
+		if !exists {
+			return c.Render("error", map[string]any{
+				"error_code":    404,
+				"error_title":   "User Not Found",
+				"error_message": fmt.Sprintf("The user with ID %s does not exist.", id),
+			})
+		}
+
+		// Validation
+		if name == "" {
+			return c.Render("user-form", map[string]any{
+				"mode": "edit",
+				"user": user,
+				"errors": []map[string]string{
+					{
+						"field":   "name",
+						"message": "Name is required",
+					},
+				},
+			})
+		}
+
+		// Update user
+		user.Name = name
+		user.UpdatedAt = time.Now()
+		store.users[id] = user
+
+		// Set flash message and redirect
+		return flash.Redirect(c, fmt.Sprintf("/users/%s", user.ID), router.ViewContext{
+			"success":         true,
+			"success_message": fmt.Sprintf("User '%s' has been updated successfully", name),
+		})
+	}
+}
+
+func handleDeleteUser(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		id := c.Param("id", "")
+
+		store.Lock()
+		user, exists := store.users[id]
+		if !exists {
+			store.Unlock()
+			return flash.Redirect(c, "/", router.ViewContext{
+				"error":         true,
+				"error_message": "User not found",
+			})
+		}
+
+		delete(store.users, id)
+		store.Unlock()
+
+		// Set flash message and redirect
+		return flash.Redirect(c, "/", router.ViewContext{
+			"success":         true,
+			"success_message": fmt.Sprintf("User '%s' has been deleted successfully", user.Name),
+		})
 	}
 }

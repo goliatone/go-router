@@ -138,6 +138,19 @@ func NewMetadataAggregator() *MetadataAggregator {
 	}
 }
 
+// Clone creates a shallow copy of the aggregator with shared providers.
+func (ma *MetadataAggregator) Clone() *MetadataAggregator {
+	if ma == nil {
+		return nil
+	}
+
+	cloned := &MetadataAggregator{
+		providers:  append([]MetadataProvider(nil), ma.providers...),
+		globalTags: append([]string(nil), ma.globalTags...),
+	}
+	return cloned
+}
+
 // AddProvider adds a metadata provider to the aggregator
 func (ma *MetadataAggregator) AddProvider(provider MetadataProvider) {
 	ma.providers = append(ma.providers, provider)

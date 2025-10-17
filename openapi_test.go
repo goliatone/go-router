@@ -1,24 +1,27 @@
 package router
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
 func TestOpenAPIRenderer_GenerateOpenAPI_NilSafety(t *testing.T) {
 	tests := []struct {
-		name     string
-		renderer *OpenAPIRenderer
+		name      string
+		renderer  *OpenAPIRenderer
 		wantPanic bool
 	}{
 		{
 			name: "completely nil renderer",
 			renderer: &OpenAPIRenderer{
-				Contact: nil,
-				License: nil,
-				Info:    nil,
-				Paths:   nil,
+				Contact:    nil,
+				License:    nil,
+				Info:       nil,
+				Paths:      nil,
 				Components: nil,
-				Tags:    nil,
+				Tags:       nil,
 			},
 			wantPanic: false,
 		},
@@ -52,12 +55,12 @@ func TestOpenAPIRenderer_GenerateOpenAPI_NilSafety(t *testing.T) {
 		{
 			name: "all valid",
 			renderer: &OpenAPIRenderer{
-				Contact: &OpenAPIFieldContact{Name: "Test", Email: "test@example.com", URL: "https://example.com"},
-				License: &OpenAPIInfoLicense{Name: "MIT", Url: "https://opensource.org/licenses/MIT"},
-				Info:    &OpenAPIInfo{Title: "Test API", Version: "1.0.0", Description: "A test API"},
-				Paths:   make(map[string]any),
+				Contact:    &OpenAPIFieldContact{Name: "Test", Email: "test@example.com", URL: "https://example.com"},
+				License:    &OpenAPIInfoLicense{Name: "MIT", Url: "https://opensource.org/licenses/MIT"},
+				Info:       &OpenAPIInfo{Title: "Test API", Version: "1.0.0", Description: "A test API"},
+				Paths:      make(map[string]any),
 				Components: make(map[string]any),
-				Tags:    make([]any, 0),
+				Tags:       make([]any, 0),
 			},
 			wantPanic: false,
 		},
@@ -114,9 +117,9 @@ func TestOpenAPIRenderer_GenerateOpenAPI_NilSafety(t *testing.T) {
 
 func TestOpenAPIRenderer_AppenRouteInfo_NilSafety(t *testing.T) {
 	tests := []struct {
-		name     string
-		renderer *OpenAPIRenderer
-		routes   []RouteDefinition
+		name      string
+		renderer  *OpenAPIRenderer
+		routes    []RouteDefinition
 		wantPanic bool
 	}{
 		{
@@ -225,6 +228,169 @@ func TestOpenAPIRenderer_WithMetadataProviders_NilSafety(t *testing.T) {
 				t.Error("WithMetadataProviders() should return the same renderer instance")
 			}
 		})
+	}
+}
+
+func TestServeOpenAPI_IncludesRegisteredRoutes(t *testing.T) {
+	app := NewHTTPServer().(*HTTPServer)
+	r := app.Router()
+
+	r.Get("/users", func(c Context) error {
+		return c.SendString("ok")
+	}).SetName("users.list")
+
+	renderer := NewOpenAPIRenderer()
+	ServeOpenAPI(r, renderer)
+
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	rec := httptest.NewRecorder()
+	app.WrappedRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode openapi document: %v", err)
+	}
+
+	paths, ok := payload["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("openapi document missing paths: %#v", payload["paths"])
+	}
+
+	if _, ok := paths["/users"]; !ok {
+		t.Fatalf("expected /users to be present in openapi paths, got %v", paths)
+	}
+}
+
+func TestServeOpenAPI_IncludesLateRegisteredRoutes(t *testing.T) {
+	app := NewHTTPServer().(*HTTPServer)
+	r := app.Router()
+
+	renderer := NewOpenAPIRenderer()
+	ServeOpenAPI(r, renderer)
+
+	r.Get("/posts", func(c Context) error {
+		return c.SendString("ok")
+	}).SetName("posts.list")
+
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	rec := httptest.NewRecorder()
+	app.WrappedRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode openapi document: %v", err)
+	}
+
+	paths, ok := payload["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("openapi document missing paths: %#v", payload["paths"])
+	}
+
+	if _, ok := paths["/posts"]; !ok {
+		t.Fatalf("expected /posts to be present in openapi paths, got %v", paths)
+	}
+}
+
+func TestServeOpenAPI_CanExcludeDocumentationRoutes(t *testing.T) {
+	app := NewHTTPServer().(*HTTPServer)
+	r := app.Router()
+
+	r.Get("/widgets", func(c Context) error {
+		return c.SendString("ok")
+	}).SetName("widgets.list")
+
+	renderer := NewOpenAPIRenderer()
+	ServeOpenAPI(r, renderer, WithOpenAPIEndpointsInSpec(false))
+
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	rec := httptest.NewRecorder()
+	app.WrappedRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode openapi document: %v", err)
+	}
+
+	paths, ok := payload["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("openapi document missing paths: %#v", payload["paths"])
+	}
+
+	if _, ok := paths["/openapi.json"]; ok {
+		t.Fatalf("did not expect /openapi.json in openapi paths when disabled: %v", paths)
+	}
+
+	if _, ok := paths["/widgets"]; !ok {
+		t.Fatalf("expected /widgets to be present in openapi paths, got %v", paths)
+	}
+}
+
+func TestServeOpenAPI_CompilesMetadataProviders(t *testing.T) {
+	app := NewHTTPServer().(*HTTPServer)
+	r := app.Router()
+
+	provider := &stubMetadataProvider{}
+	aggregator := NewMetadataAggregator()
+	aggregator.AddProvider(provider)
+
+	renderer := NewOpenAPIRenderer()
+	renderer.WithMetadataProviders(aggregator)
+
+	ServeOpenAPI(r, renderer)
+
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	rec := httptest.NewRecorder()
+	app.WrappedRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode openapi document: %v", err)
+	}
+
+	paths, ok := payload["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("openapi document missing paths: %#v", payload["paths"])
+	}
+
+	if _, ok := paths["/aggregated"]; !ok {
+		t.Fatalf("expected /aggregated to be present in openapi paths, got %v", paths)
+	}
+}
+
+type stubMetadataProvider struct{}
+
+func (s *stubMetadataProvider) GetMetadata() ResourceMetadata {
+	return ResourceMetadata{
+		Name:       "aggregated",
+		PluralName: "aggregated",
+		Routes: []RouteDefinition{
+			{
+				Method:  GET,
+				Path:    "/aggregated",
+				Name:    "aggregated.index",
+				Summary: "Aggregated endpoint",
+			},
+		},
+		Tags: []string{"aggregated"},
+		Schema: SchemaMetadata{
+			Properties: map[string]PropertyInfo{},
+		},
 	}
 }
 
@@ -573,7 +739,7 @@ func TestNewOpenAPIRenderer_StructMerging(t *testing.T) {
 				},
 				{
 					Paths: map[string]any{
-						"/users": map[string]any{"post": "create user"}, // Should override
+						"/users":    map[string]any{"post": "create user"}, // Should override
 						"/comments": map[string]any{"get": "get comments"}, // Should add
 					},
 					Components: map[string]any{

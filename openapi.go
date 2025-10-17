@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/http"
 	"strings"
+	"sync"
 
 	"dario.cat/mergo"
 	"gopkg.in/yaml.v2"
@@ -12,9 +13,10 @@ import (
 
 // Functional options for configuring ServeOpenAPI
 type openAPIConfig struct {
-	docsPath    string
-	openapiPath string
-	title       string
+	docsPath        string
+	openapiPath     string
+	title           string
+	includeDocPaths bool
 }
 
 type OpenAPIOption func(*openAPIConfig)
@@ -30,18 +32,26 @@ func WithOpenAPIPath(path string) OpenAPIOption {
 		cfg.openapiPath = path
 	}
 }
+
 func WithTitle(title string) OpenAPIOption {
 	return func(cfg *openAPIConfig) {
 		cfg.title = title
 	}
 }
 
+func WithOpenAPIEndpointsInSpec(include bool) OpenAPIOption {
+	return func(cfg *openAPIConfig) {
+		cfg.includeDocPaths = include
+	}
+}
+
 // Default paths: /meta/docs and /openapi.json
 func defaultOpenAPIConfig() *openAPIConfig {
 	return &openAPIConfig{
-		docsPath:    "/meta/docs/",
-		openapiPath: "/openapi",
-		title:       "API Documentation",
+		docsPath:        "/meta/docs/",
+		openapiPath:     "/openapi",
+		title:           "API Documentation",
+		includeDocPaths: true,
 	}
 }
 
@@ -282,6 +292,9 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 		opt(cfg)
 	}
 
+	// Guard against concurrent access to the renderer when it cannot be cloned.
+	var rendererMu sync.Mutex
+
 	// We will serve /openapi.yaml by default: cfg.openapiPath + ".yaml"
 	yamlPath := cfg.openapiPath
 	if !strings.HasSuffix(yamlPath, ".yaml") {
@@ -293,14 +306,37 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 		jsonPath = jsonPath + ".json"
 	}
 
-	doc := renderer.GenerateOpenAPI()
+	buildDoc := func() map[string]any {
+		switch base := renderer.(type) {
+		case *OpenAPIRenderer:
+			cloned := cloneOpenAPIRenderer(base)
+			routes := router.Routes()
+			if !cfg.includeDocPaths {
+				routes = filterOpenAPISelfRoutes(routes)
+			}
+			// Ensure base renderer state is accounted for before appending router metadata.
+			cloned.AppenRouteInfo(nil)
+			cloned.AppenRouteInfo(routes)
+			autoCompileProviders(cloned.providers)
+			return cloned.GenerateOpenAPI()
+		default:
+			// Fall back to locking around non-cloneable generators.
+			rendererMu.Lock()
+			defer rendererMu.Unlock()
+
+			autoCompileGenerator(renderer)
+			return renderer.GenerateOpenAPI()
+		}
+	}
 
 	router.Get(jsonPath, func(c Context) error {
+		doc := buildDoc()
 		return c.JSON(http.StatusOK, doc)
 	}).SetName("openapi.json")
 
 	// Serve OpenAPI YAML
 	router.Get(yamlPath, func(c Context) error {
+		doc := buildDoc()
 		yamlBytes, err := yaml.Marshal(doc)
 		if err != nil {
 			return NewInternalError(err, "failed to geenrate yaml")
@@ -337,6 +373,102 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 		c.SetHeader("Content-Type", "text/html; charset=utf-8")
 		return c.Send([]byte(html))
 	}).SetName("openapi.docs")
+}
+
+func cloneOpenAPIRenderer(base *OpenAPIRenderer) *OpenAPIRenderer {
+	if base == nil {
+		return nil
+	}
+
+	cloned := &OpenAPIRenderer{
+		Servers:        append([]OpenAPIServer(nil), base.Servers...),
+		Security:       append([]OpenAPISecuritySchemas(nil), base.Security...),
+		Title:          base.Title,
+		Version:        base.Version,
+		Description:    base.Description,
+		TermsOfService: base.TermsOfService,
+		Routes:         append([]RouteDefinition(nil), base.Routes...),
+		Tags:           append([]any(nil), base.Tags...),
+	}
+
+	if base.Info != nil {
+		infoCopy := *base.Info
+		cloned.Info = &infoCopy
+	}
+
+	if base.Contact != nil {
+		contactCopy := *base.Contact
+		cloned.Contact = &contactCopy
+	}
+
+	if base.License != nil {
+		licenseCopy := *base.License
+		cloned.License = &licenseCopy
+	}
+
+	if len(base.Paths) > 0 {
+		cloned.Paths = make(map[string]any, len(base.Paths))
+		for k, v := range base.Paths {
+			cloned.Paths[k] = v
+		}
+	}
+
+	if len(base.Components) > 0 {
+		cloned.Components = make(map[string]any, len(base.Components))
+		for k, v := range base.Components {
+			cloned.Components[k] = v
+		}
+	}
+
+	if len(base.providers) > 0 {
+		cloned.providers = cloneOpenAPIProviders(base.providers)
+	}
+
+	return cloned
+}
+
+func cloneOpenAPIProviders(providers []OpenApiMetaGenerator) []OpenApiMetaGenerator {
+	copied := make([]OpenApiMetaGenerator, len(providers))
+	for i, provider := range providers {
+		switch p := provider.(type) {
+		case *MetadataAggregator:
+			copied[i] = p.Clone()
+		default:
+			copied[i] = provider
+		}
+	}
+	return copied
+}
+
+func filterOpenAPISelfRoutes(routes []RouteDefinition) []RouteDefinition {
+	if len(routes) == 0 {
+		return routes
+	}
+
+	filtered := make([]RouteDefinition, 0, len(routes))
+	for _, rt := range routes {
+		switch rt.Name {
+		case "openapi.json", "openapi.yaml", "openapi.docs":
+			continue
+		}
+		filtered = append(filtered, rt)
+	}
+	return filtered
+}
+
+func autoCompileProviders(providers []OpenApiMetaGenerator) {
+	for _, provider := range providers {
+		autoCompileGenerator(provider)
+	}
+}
+
+func autoCompileGenerator(generator OpenApiMetaGenerator) {
+	type compiler interface {
+		Compile()
+	}
+	if c, ok := generator.(compiler); ok {
+		c.Compile()
+	}
 }
 
 func (o *OpenAPIRenderer) addRouteToPath(rt RouteDefinition) {

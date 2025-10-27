@@ -1,5 +1,29 @@
 # Changelog
 
+# [0.19.0](https://github.com/goliatone/go-router/compare/v0.18.0...v0.19.0) - (2025-10-27)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Path for fs ([8a102f8](https://github.com/goliatone/go-router/commit/8a102f819dd0906ea13f945e0a1a7bc78a07c565))  - (goliatone)
+- Assets dir optional ([fe2fbab](https://github.com/goliatone/go-router/commit/fe2fbabe4e149b404aceaff3d21e76d2334bf727))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.19.0 ([81f3c9b](https://github.com/goliatone/go-router/commit/81f3c9b48212b3554432e87c3017f5a2046c393b))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.18.0 ([a247e3a](https://github.com/goliatone/go-router/commit/a247e3abe8f9b2f49a79048a01848a2ac67f519e))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#16](https://github.com/goliatone/go-router/pull/16): quick start ([058ecbb](https://github.com/goliatone/go-router/commit/058ecbbc622281005979547e81514247d580cc59))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update examples ([fc76bfe](https://github.com/goliatone/go-router/commit/fc76bfebce24514cc67ad30388265f455fecfee3))  - (goliatone)
+- Update readme ([847d3b5](https://github.com/goliatone/go-router/commit/847d3b576cd3e7f5e2c5638a996e1b95936e690c))  - (goliatone)
+
 # [0.18.0](https://github.com/goliatone/go-router/compare/v0.17.1...v0.18.0) - (2025-10-17)
 
 ## <!-- 1 -->🐛 Bug Fixes

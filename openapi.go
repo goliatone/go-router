@@ -365,8 +365,8 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
       apiDescriptionUrl="` + yamlPath + `"
       router="hash"
       layout="sidebar"
-      tryItCredentialsPolicy="same-origin"
-    ></elements-api>
+      tryItCredentialsPolicy="same-origin">
+    </elements-api>
 
   </body>
 </html>`
@@ -408,16 +408,12 @@ func cloneOpenAPIRenderer(base *OpenAPIRenderer) *OpenAPIRenderer {
 
 	if len(base.Paths) > 0 {
 		cloned.Paths = make(map[string]any, len(base.Paths))
-		for k, v := range base.Paths {
-			cloned.Paths[k] = v
-		}
+		maps.Copy(cloned.Paths, base.Paths)
 	}
 
 	if len(base.Components) > 0 {
 		cloned.Components = make(map[string]any, len(base.Components))
-		for k, v := range base.Components {
-			cloned.Components[k] = v
-		}
+		maps.Copy(cloned.Components, base.Components)
 	}
 
 	if len(base.providers) > 0 {

@@ -133,91 +133,104 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 	}
 
 	var finalAssetFS fs.FS
+	assetDir := strings.TrimSpace(opts.GetAssetsDir())
+	hasAssetFS := false
 
-	if !opts.GetEmbed() {
-		assetRootPath := filepath.Clean(opts.GetAssetsDir())
-		if !DirExists(assetRootPath) {
-			return nil, fmt.Errorf("asset directory does not exist: %s", assetRootPath)
+	if assetDir != "" {
+		if opts.GetEmbed() {
+			if opts.GetAssetsFS() == nil {
+				lgr.Debug("Asset directory configured but no embedded filesystem provided; disabling asset helpers")
+			} else {
+				subFS, err := autoSubFS(opts.GetAssetsFS(), NormalizePath(assetDir), lgr)
+				if err != nil {
+					lgr.Warn("Failed to prepare embedded asset filesystem: %v", err)
+				} else {
+					finalAssetFS = subFS
+					hasAssetFS = true
+				}
+			}
+		} else {
+			assetRootPath := filepath.Clean(assetDir)
+			finalAssetFS = os.DirFS(assetRootPath)
+			hasAssetFS = true
+
+			if !DirExists(assetRootPath) && opts.GetDebug() {
+				lgr.Warn("Asset directory does not exist; helpers will render empty output: %s", assetRootPath)
+			}
 		}
-		finalAssetFS = os.DirFS(assetRootPath)
-	} else {
-		assetRootPath := NormalizePath(opts.GetAssetsDir())
-		if opts.GetAssetsFS() == nil {
-			return nil, errors.New("AssetFS must be provided in embed mode")
-		}
-		subFS, err := autoSubFS(opts.GetAssetsFS(), assetRootPath, lgr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to prepare asset filesystem: %w", err)
-		}
-		finalAssetFS = subFS
 	}
 
 	cssPath := NormalizePath(opts.GetCSSPath())
 	jsPath := NormalizePath(opts.GetJSPath())
 
-	if !DirExists(cssPath, finalAssetFS) {
-		return nil, fmt.Errorf("init view: CSS directory '%s' does not exist within the asset filesystem", cssPath)
-	}
-	if !DirExists(jsPath, finalAssetFS) {
-		return nil, fmt.Errorf("init view: JS directory '%s' does not exist within the asset filesystem", jsPath)
-	}
-
-	assetURLPrefix := "/" + NormalizePath(opts.GetURLPrefix())
-	if assetURLPrefix == "/" {
-		assetURLPrefix = ""
-	}
-
-	lgr.Debug("Asset URL prefix computed", "prefix", assetURLPrefix)
-
-	d.AddFunc("css", func(name string) template.HTML {
-		var res template.HTML
-		g := glob.MustCompile(name)
-
-		fs.WalkDir(finalAssetFS, cssPath, func(path string, info fs.DirEntry, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
-			if g.Match(info.Name()) {
-				urlPath := assetURLPrefix + "/" + path
-				urlPath = ppath.Clean(urlPath)
-				res = template.HTML(`<link rel="stylesheet" href="` + urlPath + `">`)
-				lgr.Debug("Resolved CSS asset", "name", name, "path", urlPath)
-				return filepath.SkipDir
-			}
-			return nil
-		})
-
-		if res == "" && opts.GetDebug() {
-			res = template.HTML("<!-- CSS NOT FOUND: " + name + " (looked in " + cssPath + ") -->")
-			lgr.Warn("Could not resolve CSS", "name", name)
+	if hasAssetFS {
+		assetURLPrefix := "/" + NormalizePath(opts.GetURLPrefix())
+		if assetURLPrefix == "/" {
+			assetURLPrefix = ""
 		}
-		return res
-	})
 
-	d.AddFunc("js", func(name string) template.HTML {
-		var res template.HTML
-		g := glob.MustCompile(name)
+		lgr.Debug("Asset URL prefix computed", "prefix", assetURLPrefix)
 
-		fs.WalkDir(finalAssetFS, jsPath, func(path string, info fs.DirEntry, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
-			if g.Match(info.Name()) {
-				urlPath := assetURLPrefix + "/" + path
-				urlPath = ppath.Clean(urlPath)
-				res = template.HTML(`<script async src="` + urlPath + `"></script>`)
-				lgr.Debug("Resolved JS asset", "name", name, "path", urlPath)
-				return filepath.SkipDir
-			}
-			return nil
-		})
+		if cssPath != "" {
+			d.AddFunc("css", func(name string) template.HTML {
+				var res template.HTML
+				g := glob.MustCompile(name)
 
-		if res == "" && opts.GetDebug() {
-			res = template.HTML("<!-- JS NOT FOUND: " + name + " (looked in " + jsPath + ") -->")
-			lgr.Warn("Could not resolve JS", "name", name)
+				fs.WalkDir(finalAssetFS, cssPath, func(path string, info fs.DirEntry, err error) error {
+					if err != nil || info.IsDir() {
+						return nil
+					}
+					if g.Match(info.Name()) {
+						urlPath := assetURLPrefix + "/" + path
+						urlPath = ppath.Clean(urlPath)
+						res = template.HTML(`<link rel="stylesheet" href="` + urlPath + `">`)
+						lgr.Debug("Resolved CSS asset", "name", name, "path", urlPath)
+						return filepath.SkipDir
+					}
+					return nil
+				})
+
+				if res == "" && opts.GetDebug() {
+					res = template.HTML("<!-- CSS NOT FOUND: " + name + " (looked in " + cssPath + ") -->")
+					lgr.Warn("Could not resolve CSS", "name", name)
+				}
+				return res
+			})
+		} else if opts.GetDebug() {
+			lgr.Debug("CSS helper disabled; no CSS path configured")
 		}
-		return res
-	})
+
+		if jsPath != "" {
+			d.AddFunc("js", func(name string) template.HTML {
+				var res template.HTML
+				g := glob.MustCompile(name)
+
+				fs.WalkDir(finalAssetFS, jsPath, func(path string, info fs.DirEntry, err error) error {
+					if err != nil || info.IsDir() {
+						return nil
+					}
+					if g.Match(info.Name()) {
+						urlPath := assetURLPrefix + "/" + path
+						urlPath = ppath.Clean(urlPath)
+						res = template.HTML(`<script async src="` + urlPath + `"></script>`)
+						lgr.Debug("Resolved JS asset", "name", name, "path", urlPath)
+						return filepath.SkipDir
+					}
+					return nil
+				})
+
+				if res == "" && opts.GetDebug() {
+					res = template.HTML("<!-- JS NOT FOUND: " + name + " (looked in " + jsPath + ") -->")
+					lgr.Warn("Could not resolve JS", "name", name)
+				}
+				return res
+			})
+		} else if opts.GetDebug() {
+			lgr.Debug("JS helper disabled; no JS path configured")
+		}
+	} else if assetDir != "" && opts.GetDebug() {
+		lgr.Debug("Asset helpers disabled; asset filesystem unavailable")
+	}
 
 	d.AddFunc("to_json", toJSON)
 	d.AddFunc("match_str", matchStr)

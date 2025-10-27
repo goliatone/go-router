@@ -14,7 +14,6 @@ import (
 	"github.com/goliatone/go-errors"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/template/django/v3"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/go-router/flash"
 	flashmw "github.com/goliatone/go-router/middleware/flash"
@@ -73,14 +72,22 @@ func NewUserStore() *UserStore {
 }
 
 func newFiberAdapter() router.Server[*fiber.App] {
-	engine := django.New("./views", ".html")
+	cfg := router.NewSimpleViewConfig("./views").
+		WithAssets("./views", "css", "js").
+		WithURLPrefix("static")
+
+	viewEngine, err := router.InitializeViewEngine(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize view engine: %v", err)
+	}
+
 	app := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return fiber.New(
 			fiber.Config{
 				AppName:           "Go Router - Fiber",
 				EnablePrintRoutes: true,
 				PassLocalsToViews: true,
-				Views:             engine,
+				Views:             viewEngine,
 			},
 		)
 	})

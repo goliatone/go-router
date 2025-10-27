@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -72,9 +74,12 @@ func NewUserStore() *UserStore {
 }
 
 func newFiberAdapter() router.Server[*fiber.App] {
-	cfg := router.NewSimpleViewConfig("./views").
-		WithAssets("./views", "css", "js").
-		WithURLPrefix("static")
+	viewsDir := exampleViewsDir()
+
+	cfg := router.NewSimpleViewConfig(viewsDir).
+		WithAssets(viewsDir, "css", "js").
+		WithURLPrefix("static").
+		WithReload(true)
 
 	viewEngine, err := router.InitializeViewEngine(cfg)
 	if err != nil {
@@ -238,7 +243,7 @@ func main() {
 	store := NewUserStore()
 
 	// Serve static files
-	app.WrappedRouter().Static("/static", "./views")
+	app.WrappedRouter().Static("/static", exampleViewsDir())
 
 	// Create API routes
 	createRoutes(app, store)
@@ -290,6 +295,14 @@ The API version: v0.0.0..
 		log.Panic(err)
 	}
 
+}
+
+func exampleViewsDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "./views"
+	}
+	return filepath.Join(filepath.Dir(file), "views")
 }
 
 type DomainError struct {

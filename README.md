@@ -274,6 +274,22 @@ The core function is `router.InitializeViewEngine(config)`. It takes a configura
 *   **Automatic Asset Handling**: Template functions `css(glob)` and `js(glob)` automatically find your versioned assets (e.g., `main-*.css`) and generate the correct HTML tags.
 *   **Intelligent Pathing**: The engine automatically handles subdirectories in embedded filesystems, so your paths are always clean and relative to your declared asset/template roots.
 
+#### Quick Start: File Based Templates
+
+For a quick start you can skip building a custom config struct and use `SimpleViewConfig`:
+
+```go
+cfg := router.NewSimpleViewConfig("./views")
+viewEngine, err := router.InitializeViewEngine(cfg)
+if err != nil {
+    log.Fatalf("init views: %v", err)
+}
+
+app := fiber.New(fiber.Config{Views: viewEngine})
+```
+
+Asset helpers are opt-in `cfg.WithAssets("./public", "css", "js")` when you have static files.
+
 #### Configuration (`ViewConfigProvider` Interface)
 
 Your configuration struct must provide getters for the following options:
@@ -287,16 +303,16 @@ Your configuration struct must provide getters for the following options:
 | `GetTemplateFunctions()` | `map[string]any` | A map of custom functions to register with the template engine. |
 | **Embedded Mode Options** | | |
 | `GetTemplatesFS()` | `[]fs.FS` | **(Required)** A slice of `fs.FS` filesystems containing your templates. Order matters for overrides (first found wins). |
-| `GetAssetsFS()` | `fs.FS` | **(Required)** The `fs.FS` filesystem containing your static assets (CSS, JS). |
+| `GetAssetsFS()` | `fs.FS` | **(Optional)** Embedded filesystem for your static assets. Required only if you enable asset helpers in embedded mode. |
 | `GetDirFS()` | `string` | The path *inside* `GetTemplatesFS` to the root of your templates (e.g., "templates"). |
-| `GetAssetsDir()` | `string` | The path *inside* `GetAssetsFS` to the root of your assets (e.g., "public"). |
+| `GetAssetsDir()` | `string` | The path *inside* `GetAssetsFS` to the root of your assets (e.g., "public"). Optional when asset helpers are disabled. |
 | `GetDevDir()` | `string` | An absolute OS path to a directory of override templates. These take highest priority, perfect for local development without changing embedded files. |
 | **Live (Non-Embedded) Mode Options** | | |
 | `GetDirOS()` | `string` | **(Required)** The absolute or relative OS path to your templates directory. |
-| `GetAssetsDir()` | `string` | **(Required)** The absolute or relative OS path to your assets directory. |
+| `GetAssetsDir()` | `string` | The absolute or relative OS path to your assets directory. Leave empty to disable asset helpers. |
 | **Asset URL Generation** | | |
-| `GetCSSPath()` | `string` | The subdirectory within your `AssetsDir` where CSS files are located (e.g., "css"). |
-| `GetJSPath()` | `string` | The subdirectory within your `AssetsDir` where JS files are located (e.g., "js"). |
+| `GetCSSPath()` | `string` | The subdirectory within your `AssetsDir` where CSS files are located (e.g., "css"). Optional when not using the `css` helper. |
+| `GetJSPath()` | `string` | The subdirectory within your `AssetsDir` where JS files are located (e.g., "js"). Optional when not using the `js` helper. |
 | `GetURLPrefix()` | `string` | An optional prefix to add to all generated asset URLs. Useful for serving assets from a namespaced path like `/static`. |
 
 ---
@@ -403,28 +419,17 @@ This will render `<link href="/static/css/main-a1b2c3d4.css">` in the final HTML
 
 #### Example 2: Live Mode for Development
 
-This setup loads files directly from your disk, and `Reload: true` ensures you see template changes without restarting the server.
+This setup loads files directly from your disk. Using `SimpleViewConfig` keeps the configuration minimal while enabling reloads and asset helpers.
 
-**main.go:**
-```go
-type DevConfig struct {
-    // ...
-}
-func (c *DevConfig) GetEmbed() bool       { return false }
-func (c *DevConfig) GetReload() bool      { return true }
-func (c *DevConfig) GetDirOS() string     { return "./templates" } // path on disk
-func (c *DevConfig) GetAssetsDir() string { return "./assets" }    // path on your disk
-func (c *DevConfig) GetURLPrefix() string { return "" } // we serve from root URL /
-// other getters
-```
-
-**Server Setup:**
 ```go
 func main() {
-    config := &DevConfig{}
+    cfg := router.NewSimpleViewConfig("./templates").
+        WithAssets("./assets", "css", "js") // optional
 
-    viewEngine, err := router.InitializeViewEngine(config)
-    // define error handling, etc...
+    viewEngine, err := router.InitializeViewEngine(cfg)
+    if err != nil {
+        log.Fatalf("Failed to init view engine: %v", err)
+    }
 
     app := fiber.New(fiber.Config{
         Views: viewEngine,
@@ -896,7 +901,7 @@ type PropertyInfo struct {
 1. **OpenAPI Schema Generation**: Extract field types, validation rules, and relationships for API documentation
 2. **Database Migration Tools**: Analyze struct relationships and generate database schemas
 3. **Form Generation**: Create web forms based on struct validation tags
-4. **Code Documentation**: Auto-generate documentation from struct comments and tags
+4. **Code Documentation**: Auto generate documentation from struct comments and tags
 5. **Data Validation**: Extract validation rules for runtime validation
 6. **API Client Generation**: Generate client SDKs based on struct definitions
 

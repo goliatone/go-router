@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -14,7 +16,6 @@ import (
 	"github.com/goliatone/go-errors"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/template/django/v3"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/go-router/flash"
 	flashmw "github.com/goliatone/go-router/middleware/flash"
@@ -73,14 +74,25 @@ func NewUserStore() *UserStore {
 }
 
 func newFiberAdapter() router.Server[*fiber.App] {
-	engine := django.New("./views", ".html")
+	viewsDir := exampleViewsDir()
+
+	cfg := router.NewSimpleViewConfig(viewsDir).
+		WithAssets(viewsDir, "css", "js").
+		WithURLPrefix("static").
+		WithReload(true)
+
+	viewEngine, err := router.InitializeViewEngine(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize view engine: %v", err)
+	}
+
 	app := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return fiber.New(
 			fiber.Config{
 				AppName:           "Go Router - Fiber",
 				EnablePrintRoutes: true,
 				PassLocalsToViews: true,
-				Views:             engine,
+				Views:             viewEngine,
 			},
 		)
 	})
@@ -231,7 +243,7 @@ func main() {
 	store := NewUserStore()
 
 	// Serve static files
-	app.WrappedRouter().Static("/static", "./views")
+	app.WrappedRouter().Static("/static", exampleViewsDir())
 
 	// Create API routes
 	createRoutes(app, store)
@@ -283,6 +295,14 @@ The API version: v0.0.0..
 		log.Panic(err)
 	}
 
+}
+
+func exampleViewsDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "./views"
+	}
+	return filepath.Join(filepath.Dir(file), "views")
 }
 
 type DomainError struct {

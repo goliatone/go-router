@@ -225,6 +225,7 @@ func TestEmbeddedTemplates(t *testing.T) {
 		JSPath:     "js",
 		TemplateFS: []fs.FS{templateRoot},
 		AssetFS:    assetRoot,
+		AssetsDir:  ".",
 		Functions:  map[string]any{},
 	}
 
@@ -276,6 +277,7 @@ func TestTemplateOverriding(t *testing.T) {
 		JSPath:     "js",
 		TemplateFS: []fs.FS{themeTemplates, baseTemplates},
 		AssetFS:    os.DirFS(assetDir),
+		AssetsDir:  ".",
 		Functions:  map[string]any{},
 	}
 
@@ -313,6 +315,7 @@ func TestAssetResolution(t *testing.T) {
 		JSPath:     "js",
 		TemplateFS: []fs.FS{templateRoot},
 		AssetFS:    assetRoot,
+		AssetsDir:  ".",
 		URLPrefix:  "",
 		Functions:  map[string]any{},
 	}
@@ -429,41 +432,49 @@ func TestNonEmbeddedMode(t *testing.T) {
 }
 
 func TestAssetPathEdgeCases(t *testing.T) {
+	templateRoot, err := fs.Sub(baseTemplates, "testdata/templates")
+	require.NoError(t, err)
+
+	assetRoot, err := fs.Sub(assetsFS, "testdata/assets")
+	require.NoError(t, err)
+
 	tests := []struct {
-		name       string
-		cssPath    string
-		jsPath     string
-		setupFiles map[string]string
-		expectErr  bool
+		name             string
+		cssPath          string
+		jsPath           string
+		expectedContains []string
 	}{
 		{
-			name:      "Non-existent CSS directory",
-			cssPath:   "non-existent/css",
-			jsPath:    "assets/js",
-			expectErr: true,
+			name:    "Non-existent CSS directory",
+			cssPath: "missing/css",
+			jsPath:  "js",
+			expectedContains: []string{
+				"<!-- CSS NOT FOUND: main-*.css (looked in missing/css) -->",
+				`<script async src="/js/app-asset.js"></script>`,
+			},
 		},
 		{
-			name:      "Non-existent JS directory",
-			cssPath:   "assets/css",
-			jsPath:    "non-existent/js",
-			expectErr: true,
+			name:    "Non-existent JS directory",
+			cssPath: "css",
+			jsPath:  "missing/js",
+			expectedContains: []string{
+				`<link rel="stylesheet" href="/css/main-asset.css">`,
+				"<!-- JS NOT FOUND: app-*.js (looked in missing/js) -->",
+			},
 		},
 		{
-			name:      "Path normalization with trailing slashes",
-			cssPath:   "testdata/assets/css/",
-			jsPath:    "testdata/assets/js/",
-			expectErr: false,
+			name:    "Path normalization with trailing slashes",
+			cssPath: "css/",
+			jsPath:  "js/",
+			expectedContains: []string{
+				`<link rel="stylesheet" href="/css/main-asset.css">`,
+				`<script async src="/js/app-asset.js"></script>`,
+			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var tempDir string
-			if tc.setupFiles != nil {
-				tempDir = setupTempDir(t, tc.setupFiles)
-				defer os.RemoveAll(tempDir)
-			}
-
 			config := &MockViewConfig{
 				Embed:      true,
 				Debug:      true,
@@ -471,19 +482,86 @@ func TestAssetPathEdgeCases(t *testing.T) {
 				Ext:        ".html",
 				CSSPath:    tc.cssPath,
 				JSPath:     tc.jsPath,
-				TemplateFS: []fs.FS{baseTemplates},
-				AssetFS:    assetsFS,
+				TemplateFS: []fs.FS{templateRoot},
+				AssetFS:    assetRoot,
+				AssetsDir:  ".",
+				URLPrefix:  "",
 			}
 
-			_, err := router.InitializeViewEngine(config)
+			viewEngine, err := router.InitializeViewEngine(config)
+			assert.NoError(t, err)
 
-			if tc.expectErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
+			app := createFiberApp(t, viewEngine)
+			resp, err := app.Test(httptest.NewRequest("GET", "/with-assets", nil))
+			require.NoError(t, err)
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			for _, expected := range tc.expectedContains {
+				assert.Contains(t, string(body), expected)
 			}
 		})
 	}
+}
+
+func TestSimpleViewConfigQuickStart(t *testing.T) {
+	templateContent := `<html><body><h1>{{ Title }}</h1></body></html>`
+	tempDir := setupTempDir(t, map[string]string{
+		"home.html": templateContent,
+	})
+	defer os.RemoveAll(tempDir)
+
+	cfg := router.NewSimpleViewConfig(tempDir)
+
+	viewEngine, err := router.InitializeViewEngine(cfg)
+	require.NoError(t, err)
+
+	app := fiber.New(fiber.Config{Views: viewEngine})
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Render("home", fiber.Map{"Title": "Quick Start"})
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "Quick Start")
+}
+
+func TestSimpleViewConfigMissingAssets(t *testing.T) {
+	templateContent := `
+	<html>
+	<head>{{ css("main.css") | safe }}</head>
+	<body>{{ js("app.js") | safe }}</body>
+	</html>`
+
+	tempDir := setupTempDir(t, map[string]string{
+		"home.html": templateContent,
+	})
+	defer os.RemoveAll(tempDir)
+
+	cfg := router.NewSimpleViewConfig(tempDir)
+	cfg.WithAssets(filepath.Join(tempDir, "public"), "css", "js")
+
+	viewEngine, err := router.InitializeViewEngine(cfg)
+	require.NoError(t, err)
+
+	app := fiber.New(fiber.Config{Views: viewEngine})
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Render("home", fiber.Map{})
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "<!-- CSS NOT FOUND: main.css (looked in css) -->")
+	assert.Contains(t, string(body), "<!-- JS NOT FOUND: app.js (looked in js) -->")
 }
 
 func TestPathNormalization(t *testing.T) {

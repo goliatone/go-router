@@ -98,11 +98,16 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 		finalTemplateFS = os.DirFS(dirOS)
 	}
 
-	engine := django.NewPathForwardingFileSystem(
-		http.FS(finalTemplateFS),
-		".", // always use root of the prepared filesystem
-		cfg.GetExt(),
-	)
+	var engine *django.Engine
+	if cfg.GetEmbed() {
+		engine = django.NewPathForwardingFileSystem(
+			http.FS(finalTemplateFS),
+			".", // embedded filesystems expect clean root
+			cfg.GetExt(),
+		)
+	} else {
+		engine = django.New(cfg.GetDirOS(), cfg.GetExt())
+	}
 
 	pongo2.DefaultSet.Options.TrimBlocks = true
 	engine.Reload(cfg.GetReload())

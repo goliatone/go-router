@@ -125,6 +125,7 @@ type MetadataAggregator struct {
 	globalTags []string
 
 	////
+	info       *OpenAPIInfo
 	Paths      map[string]any
 	Schemas    map[string]any
 	Tags       []any
@@ -135,6 +136,10 @@ type MetadataAggregator struct {
 func NewMetadataAggregator() *MetadataAggregator {
 	return &MetadataAggregator{
 		providers: make([]MetadataProvider, 0),
+		info: &OpenAPIInfo{
+			Title:   "API Documentation",
+			Version: "1.0.0",
+		},
 	}
 }
 
@@ -147,6 +152,11 @@ func (ma *MetadataAggregator) Clone() *MetadataAggregator {
 	cloned := &MetadataAggregator{
 		providers:  append([]MetadataProvider(nil), ma.providers...),
 		globalTags: append([]string(nil), ma.globalTags...),
+	}
+
+	if ma.info != nil {
+		infoCopy := *ma.info
+		cloned.info = &infoCopy
 	}
 	return cloned
 }
@@ -164,6 +174,11 @@ func (ma *MetadataAggregator) AddProviders(providers ...MetadataProvider) {
 // SetTags sets global tags that will be added to all operations
 func (ma *MetadataAggregator) SetTags(tags []string) {
 	ma.globalTags = tags
+}
+
+// SetInfo configures the top-level OpenAPI info object.
+func (ma *MetadataAggregator) SetInfo(info OpenAPIInfo) {
+	ma.info = &info
 }
 
 // GenerateOpenAPI generates a complete OpenAPI specification from all providers
@@ -218,8 +233,22 @@ func (ma *MetadataAggregator) Compile() {
 }
 
 func (ma *MetadataAggregator) GenerateOpenAPI() map[string]any {
+	info := ma.info
+	if info == nil {
+		info = &OpenAPIInfo{
+			Title:   "API Documentation",
+			Version: "1.0.0",
+		}
+	}
+
 	return map[string]any{
-		"openapi":    "3.0.3",
+		"openapi": "3.0.3",
+		"info": map[string]any{
+			"title":          either(info.Title, "API Documentation"),
+			"version":        either(info.Version, "1.0.0"),
+			"description":    info.Description,
+			"termsOfService": info.TermsOfService,
+		},
 		"paths":      ma.Paths,
 		"tags":       ma.Tags,
 		"components": ma.Components,

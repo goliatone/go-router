@@ -388,6 +388,25 @@ func TestMetadataAggregator_NormalizesPathParams(t *testing.T) {
 	}
 }
 
+func TestMetadataAggregator_GenerateOpenAPIIncludesInfo(t *testing.T) {
+	aggregator := NewMetadataAggregator()
+	aggregator.AddProvider(&pathOnlyMetadataProvider{path: "/authors/:id"})
+
+	aggregator.Compile()
+	doc := aggregator.GenerateOpenAPI()
+
+	info, ok := doc["info"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected info object in OpenAPI document, got %#v", doc["info"])
+	}
+	if title, _ := info["title"].(string); title == "" {
+		t.Errorf("expected info.title to be set, got %q", title)
+	}
+	if version, _ := info["version"].(string); version == "" {
+		t.Errorf("expected info.version to be set, got %q", version)
+	}
+}
+
 func TestOpenAPIRenderer_EmitsKinOpenAPIValidSpec(t *testing.T) {
 	renderer := NewOpenAPIRenderer()
 	renderer.Info = &OpenAPIInfo{

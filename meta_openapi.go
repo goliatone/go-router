@@ -179,14 +179,15 @@ func (ma *MetadataAggregator) Compile() {
 
 		for _, route := range metadata.Routes {
 			pathItem := convertRouteToPathItem(route)
+			normalizedPath := joinPaths(route.Path)
 
-			if existingPath, exists := paths[route.Path]; exists {
+			if existingPath, exists := paths[normalizedPath]; exists {
 				existing := existingPath.(map[string]any)
 				for k, v := range pathItem {
 					existing[k] = v
 				}
 			} else {
-				paths[route.Path] = pathItem
+				paths[normalizedPath] = pathItem
 			}
 		}
 

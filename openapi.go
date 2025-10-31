@@ -533,14 +533,91 @@ func (o *OpenAPIRenderer) addRouteToPath(rt RouteDefinition) {
 func joinPaths(parts ...string) string {
 	cleanParts := make([]string, 0)
 	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" && p != "/" {
-			cleanParts = append(cleanParts, strings.Trim(p, "/"))
+		if p = strings.TrimSpace(p); p == "" || p == "/" {
+			continue
+		}
+		trimmed := strings.Trim(p, "/")
+		if trimmed == "" {
+			continue
+		}
+		subParts := strings.Split(trimmed, "/")
+		for _, part := range subParts {
+			if part = strings.TrimSpace(part); part != "" {
+				cleanParts = append(cleanParts, part)
+			}
 		}
 	}
 	if len(cleanParts) == 0 {
 		return "/"
 	}
-	return "/" + strings.Join(cleanParts, "/")
+	return normalizePathParams("/" + strings.Join(cleanParts, "/"))
+}
+
+func normalizePathParams(path string) string {
+	if !strings.Contains(path, ":") {
+		return path
+	}
+
+	var b strings.Builder
+	b.Grow(len(path))
+
+	for i := 0; i < len(path); {
+		ch := path[i]
+		if ch != ':' {
+			b.WriteByte(ch)
+			i++
+			continue
+		}
+
+		j := i + 1
+		for j < len(path) && isPathParamChar(path[j]) {
+			j++
+		}
+
+		if j == i+1 {
+			// Not a valid Fiber-style parameter, keep the colon as-is.
+			b.WriteByte(ch)
+			i++
+			continue
+		}
+
+		paramName := path[i+1 : j]
+		b.WriteByte('{')
+		b.WriteString(paramName)
+		b.WriteByte('}')
+
+		// Skip optional marker (e.g. :id?)
+		if j < len(path) && path[j] == '?' {
+			j++
+		}
+
+		// Skip Fiber's inline type or regex declarations like :id<int> or :id([0-9]+)
+		if j < len(path) && (path[j] == '<' || path[j] == '(') {
+			closing := byte('>')
+			if path[j] == '(' {
+				closing = ')'
+			}
+			j++
+			for j < len(path) && path[j] != closing {
+				j++
+			}
+			if j < len(path) {
+				j++
+			}
+		}
+
+		i = j
+	}
+
+	return b.String()
+}
+
+func isPathParamChar(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') ||
+		(ch >= 'A' && ch <= 'Z') ||
+		(ch >= '0' && ch <= '9') ||
+		ch == '_' ||
+		ch == '-'
 }
 
 // mergeOpenAPIRenderer merges override into base, only overwriting non zero values

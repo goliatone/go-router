@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.21.0](https://github.com/goliatone/go-router/compare/v0.20.0...v0.21.0) - (2025-10-31)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Openapi info section ([d8411d2](https://github.com/goliatone/go-router/commit/d8411d2ce073c9d8f8cc87176c5fd8aaf5c2a11c))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.21.0 ([1c703ea](https://github.com/goliatone/go-router/commit/1c703ea2b1e4af8c0ebf5f09217c571eb1accd7b))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.20.0 ([834ef72](https://github.com/goliatone/go-router/commit/834ef72914f54d0066f30d025148213ab7f2f387))  - (goliatone)
+
 # [0.20.0](https://github.com/goliatone/go-router/compare/v0.19.0...v0.20.0) - (2025-10-31)
 
 ## <!-- 1 -->🐛 Bug Fixes

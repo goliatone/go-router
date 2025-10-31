@@ -889,6 +889,126 @@ type PropertyInfo struct {
 }
 ```
 
+### Vendor Extensions
+
+#### Recommended Label Field (`x-formgen-label-field`)
+
+- Apply `crud:"label"` (or `crud:"label:<field>"`) to the struct property that should act as the default display label for the resource.
+- `GetResourceMetadata` captures tag metadata by default and surfaces the selected property in the generated OpenAPI schema as:
+
+```yaml
+components:
+  schemas:
+    article:
+      type: object
+      x-formgen-label-field: "title"
+      properties:
+        title:
+          type: string
+```
+
+- Downstream tools (e.g., `go-crud`, `go-formgen`) can read the extension to pick consistent labels without recalculating them.
+
+### Pagination & Query Parameters
+
+- `GetResourceMetadata` publishes reusable query parameter components under `#/components/parameters`, keeping defaults and descriptions in one place:
+
+```yaml
+components:
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of records to return (default 25)
+      schema:
+        type: integer
+        default: 25
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Number of records to skip before starting to return results (default 0)
+      schema:
+        type: integer
+        default: 0
+```
+
+- Collection routes reference the shared components via `$ref` while keeping field filter operators inline:
+
+```yaml
+paths:
+  /articles:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Include"
+        - $ref: "#/components/parameters/Select"
+        - $ref: "#/components/parameters/Order"
+        - name: "{field}"
+          in: query
+          description: Filter by field value (e.g. name=John)
+          schema:
+            type: string
+```
+
+- Downstream generators can reuse the parameter definitions directly (and override defaults if needed) instead of parsing duplicated inline metadata.
+
+### Relation Metadata (`x-formgen-relations`)
+
+- Register a relation metadata provider so the aggregator can export valid include paths and filter hints:
+
+```go
+provider := router.NewDefaultRelationProvider()
+
+aggregator := router.NewMetadataAggregator().
+    WithRelationProvider(provider).
+    WithRelationProviders(map[reflect.Type]router.RelationMetadataProvider{
+        reflect.TypeOf(User{}): userSpecificProvider,
+    })
+
+// Optional: trim or enrich relation metadata before it is published.
+router.RegisterRelationFilter(func(t reflect.Type, desc *router.RelationDescriptor) *router.RelationDescriptor {
+    if desc == nil {
+        return nil
+    }
+    delete(desc.Tree.Children, "internalFlags")
+    return desc
+})
+
+aggregator.AddProvider(controller)
+doc := aggregator.GenerateOpenAPI()
+```
+
+- Each schema with relation metadata exposes a vendor extension:
+
+```yaml
+components:
+  schemas:
+    author:
+      x-formgen-relations:
+        includes:
+          - books
+          - books.publisher
+        relations:
+          - name: books.publisher
+            filters:
+              - field: country
+                operator: eq
+        tree:
+          name: author
+          fields: [id, name]
+          children:
+            books:
+              name: books
+              children:
+                publisher:
+                  name: publisher
+```
+
+- Downstream packages (e.g., `go-crud`, `go-formgen`) can read the extension to drive include UIs, validation, and filter builders without duplicating repository logic.
+
 ### Performance Considerations
 
 - **Default configuration** has minimal overhead and maintains backward compatibility

@@ -6,6 +6,10 @@
 
 - Openapi info section ([d8411d2](https://github.com/goliatone/go-router/commit/d8411d2ce073c9d8f8cc87176c5fd8aaf5c2a11c))  - (goliatone)
 
+## <!-- 4 -->✨ Features
+
+- Surface relation metadata providers and expose the `x-formgen-relations` OpenAPI extension ([unreleased])
+
 ## <!-- 13 -->📦 Bumps
 
 - Bump version: v0.21.0 ([1c703ea](https://github.com/goliatone/go-router/commit/1c703ea2b1e4af8c0ebf5f09217c571eb1accd7b))  - (goliatone)
@@ -908,5 +912,4 @@
 
 - Add readme ([35dce27](https://github.com/goliatone/go-router/commit/35dce274b74cc2214eac454325bdb3622fe3869d))  - (goliatone)
 - Add hashid to deps ([d5c548e](https://github.com/goliatone/go-router/commit/d5c548eb6eae23b9a1b29a9619fa3dfb06879642))  - (goliatone)
-
 

@@ -1,14 +1,31 @@
 # Changelog
 
+# [0.22.0](https://github.com/goliatone/go-router/compare/v0.21.0...v0.22.0) - (2025-10-31)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.22.0 ([38d10ab](https://github.com/goliatone/go-router/commit/38d10abb695da7d98c906ad507f5e43815ae05ee))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Parameters and relations to metadata generated ([d602396](https://github.com/goliatone/go-router/commit/d602396768642a9af017b8423472cdc5781c2abf))  - (goliatone)
+- Meta relations handler ([beb07ce](https://github.com/goliatone/go-router/commit/beb07ce312c4bc118d6c2a998930167c71e57a50))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.21.0 ([85c5fad](https://github.com/goliatone/go-router/commit/85c5fad2b5c06b483c287854b42b06212e4884e0))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update examples ([317d610](https://github.com/goliatone/go-router/commit/317d610f7cddf892c08428d87ad00cc103007d6f))  - (goliatone)
+- Update tests ([64099d7](https://github.com/goliatone/go-router/commit/64099d7f4a3e35f32369734915e584da8d41220c))  - (goliatone)
+- Update readme ([c50d930](https://github.com/goliatone/go-router/commit/c50d930e79f69b164dcb1a986d6eb2c194bf4eb5))  - (goliatone)
+
 # [0.21.0](https://github.com/goliatone/go-router/compare/v0.20.0...v0.21.0) - (2025-10-31)
 
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Openapi info section ([d8411d2](https://github.com/goliatone/go-router/commit/d8411d2ce073c9d8f8cc87176c5fd8aaf5c2a11c))  - (goliatone)
-
-## <!-- 4 -->✨ Features
-
-- Surface relation metadata providers and expose the `x-formgen-relations` OpenAPI extension ([unreleased])
 
 ## <!-- 13 -->📦 Bumps
 
@@ -912,4 +929,5 @@
 
 - Add readme ([35dce27](https://github.com/goliatone/go-router/commit/35dce274b74cc2214eac454325bdb3622fe3869d))  - (goliatone)
 - Add hashid to deps ([d5c548e](https://github.com/goliatone/go-router/commit/d5c548eb6eae23b9a1b29a9619fa3dfb06879642))  - (goliatone)
+
 

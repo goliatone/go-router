@@ -193,10 +193,10 @@ func (o *OpenAPIRenderer) GenerateOpenAPI() map[string]any {
 		"openapi": "3.0.3",
 		"servers": []map[string]any{},
 		"info": map[string]any{
-			"title":            either(o.Info.Title, o.Title),
-			"version":          either(o.Info.Version, o.Version),
-			"description":      either(o.Info.Description, o.Description),
-			"terms_of_service": either(o.Info.TermsOfService, o.TermsOfService),
+			"title":          either(o.Info.Title, o.Title),
+			"version":        either(o.Info.Version, o.Version),
+			"description":    either(o.Info.Description, o.Description),
+			"termsOfService": either(o.Info.TermsOfService, o.TermsOfService),
 			"contact": func() map[string]any {
 				if o.Contact != nil {
 					return map[string]any{

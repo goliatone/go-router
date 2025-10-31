@@ -1,10 +1,13 @@
 package router
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	openapi3 "github.com/getkin/kin-openapi/openapi3"
 )
 
 func TestOpenAPIRenderer_GenerateOpenAPI_NilSafety(t *testing.T) {
@@ -373,6 +376,84 @@ func TestServeOpenAPI_CompilesMetadataProviders(t *testing.T) {
 	}
 }
 
+func TestMetadataAggregator_NormalizesPathParams(t *testing.T) {
+	provider := &pathOnlyMetadataProvider{path: "/authors/:id"}
+	aggregator := NewMetadataAggregator()
+	aggregator.AddProvider(provider)
+
+	aggregator.Compile()
+
+	if _, ok := aggregator.Paths["/authors/{id}"]; !ok {
+		t.Fatalf("expected normalized path /authors/{id}, got %v", aggregator.Paths)
+	}
+}
+
+func TestOpenAPIRenderer_EmitsKinOpenAPIValidSpec(t *testing.T) {
+	renderer := NewOpenAPIRenderer()
+	renderer.Info = &OpenAPIInfo{
+		Title:   "Validation Test API",
+		Version: "1.0.0",
+	}
+	renderer.License = &OpenAPIInfoLicense{
+		Name: "MIT",
+		Url:  "https://opensource.org/licenses/MIT",
+	}
+
+	renderer.AppenRouteInfo([]RouteDefinition{
+		{
+			Method:  GET,
+			Path:    "/authors/:id",
+			Name:    "authors.show",
+			Summary: "Fetch an author by ID",
+			Parameters: []Parameter{
+				{
+					Name:     "id",
+					In:       "path",
+					Required: true,
+					Schema: map[string]any{
+						"type": "string",
+					},
+				},
+			},
+			Responses: []Response{
+				{
+					Code:        200,
+					Description: "Author retrieved",
+					Content: map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{
+								"type":     "object",
+								"required": []string{"id"},
+								"properties": map[string]any{
+									"id": map[string]any{
+										"type": "string",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	doc := renderer.GenerateOpenAPI()
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("failed to marshal OpenAPI document: %v", err)
+	}
+
+	loader := openapi3.NewLoader()
+	spec, err := loader.LoadFromData(data)
+	if err != nil {
+		t.Fatalf("failed to load OpenAPI document: %v", err)
+	}
+
+	if err := spec.Validate(context.Background()); err != nil {
+		t.Fatalf("expected OpenAPI document to pass kin-openapi validation: %v", err)
+	}
+}
+
 type stubMetadataProvider struct{}
 
 func (s *stubMetadataProvider) GetMetadata() ResourceMetadata {
@@ -388,6 +469,32 @@ func (s *stubMetadataProvider) GetMetadata() ResourceMetadata {
 			},
 		},
 		Tags: []string{"aggregated"},
+		Schema: SchemaMetadata{
+			Properties: map[string]PropertyInfo{},
+		},
+	}
+}
+
+type pathOnlyMetadataProvider struct {
+	path   string
+	method HTTPMethod
+}
+
+func (p *pathOnlyMetadataProvider) GetMetadata() ResourceMetadata {
+	method := p.method
+	if method == "" {
+		method = GET
+	}
+	return ResourceMetadata{
+		Name:       "path-only",
+		PluralName: "path-only",
+		Routes: []RouteDefinition{
+			{
+				Method: method,
+				Path:   p.path,
+				Name:   "path.only",
+			},
+		},
 		Schema: SchemaMetadata{
 			Properties: map[string]PropertyInfo{},
 		},
@@ -568,6 +675,26 @@ func TestJoinPaths_Function(t *testing.T) {
 			name:     "only empty and slash strings",
 			parts:    []string{"", "/", ""},
 			expected: "/",
+		},
+		{
+			name:     "fiber params converted",
+			parts:    []string{"/authors/:id"},
+			expected: "/authors/{id}",
+		},
+		{
+			name:     "multiple params across segments",
+			parts:    []string{" /api", "books/:book_id/chapters/:chapter_id"},
+			expected: "/api/books/{book_id}/chapters/{chapter_id}",
+		},
+		{
+			name:     "composite segment with extension",
+			parts:    []string{"/files/:id.:ext"},
+			expected: "/files/{id}.{ext}",
+		},
+		{
+			name:     "optional param indicator removed",
+			parts:    []string{"/users/:id?"},
+			expected: "/users/{id}",
 		},
 	}
 

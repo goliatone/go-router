@@ -10,16 +10,21 @@ import (
 // ResourceMetadata represents collected metadata about an API resource
 type ResourceMetadata struct {
 	// Resource identifiers
-	Name        string   `json:"name"`
-	PluralName  string   `json:"plural_name"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
+	Name         string       `json:"name"`
+	PluralName   string       `json:"plural_name"`
+	Description  string       `json:"description"`
+	Tags         []string     `json:"tags"`
+	ResourceType reflect.Type `json:"-"`
 
 	// Routes metadata
 	Routes []RouteDefinition `json:"routes"`
 
 	// Schema information
-	Schema SchemaMetadata `json:"schema"`
+	Schema    SchemaMetadata      `json:"schema"`
+	Relations *RelationDescriptor `json:"-"`
+
+	// Shared parameter components (referenced from routes via $ref)
+	Parameters map[string]Parameter `json:"parameters,omitempty"`
 }
 
 // RouteDefinition represents all metadata about a route,
@@ -45,6 +50,7 @@ type RouteDefinition struct {
 
 // Parameter unifies the parameter definitions
 type Parameter struct {
+	Ref         string         `json:"-"`
 	Name        string         `json:"name"`
 	In          string         `json:"in"` // query, path, header, cookie
 	Required    bool           `json:"required"`
@@ -72,6 +78,7 @@ type SchemaMetadata struct {
 	Required      []string                    `json:"required"`
 	Name          string                      `json:"entity_name"`
 	Description   string                      `json:"description"`
+	LabelField    string                      `json:"label_field,omitempty"`
 	Properties    map[string]PropertyInfo     `json:"properties"`
 	Relationships map[string]RelationshipInfo `json:"relationships,omitempty"`
 }
@@ -125,11 +132,14 @@ type MetadataAggregator struct {
 	globalTags []string
 
 	////
-	info       *OpenAPIInfo
-	Paths      map[string]any
-	Schemas    map[string]any
-	Tags       []any
-	Components map[string]any
+	info                *OpenAPIInfo
+	Paths               map[string]any
+	Schemas             map[string]any
+	Tags                []any
+	Components          map[string]any
+	relationProvider    RelationMetadataProvider
+	relationProviders   map[reflect.Type]RelationMetadataProvider
+	RelationDescriptors map[string]*RelationDescriptor
 }
 
 // NewMetadataAggregator creates a new aggregator
@@ -150,13 +160,26 @@ func (ma *MetadataAggregator) Clone() *MetadataAggregator {
 	}
 
 	cloned := &MetadataAggregator{
-		providers:  append([]MetadataProvider(nil), ma.providers...),
-		globalTags: append([]string(nil), ma.globalTags...),
+		providers:        append([]MetadataProvider(nil), ma.providers...),
+		globalTags:       append([]string(nil), ma.globalTags...),
+		relationProvider: ma.relationProvider,
 	}
 
 	if ma.info != nil {
 		infoCopy := *ma.info
 		cloned.info = &infoCopy
+	}
+	if len(ma.relationProviders) > 0 {
+		cloned.relationProviders = make(map[reflect.Type]RelationMetadataProvider, len(ma.relationProviders))
+		for t, provider := range ma.relationProviders {
+			cloned.relationProviders[t] = provider
+		}
+	}
+	if len(ma.RelationDescriptors) > 0 {
+		cloned.RelationDescriptors = make(map[string]*RelationDescriptor, len(ma.RelationDescriptors))
+		for name, descriptor := range ma.RelationDescriptors {
+			cloned.RelationDescriptors[name] = descriptor
+		}
 	}
 	return cloned
 }
@@ -169,6 +192,31 @@ func (ma *MetadataAggregator) AddProvider(provider MetadataProvider) {
 // AddProviders adds multiple metadata providers to the aggregator
 func (ma *MetadataAggregator) AddProviders(providers ...MetadataProvider) {
 	ma.providers = append(ma.providers, providers...)
+}
+
+// WithRelationProvider sets the default relation metadata provider.
+func (ma *MetadataAggregator) WithRelationProvider(provider RelationMetadataProvider) *MetadataAggregator {
+	ma.relationProvider = provider
+	return ma
+}
+
+// WithRelationProviders registers per-resource relation metadata providers.
+func (ma *MetadataAggregator) WithRelationProviders(overrides map[reflect.Type]RelationMetadataProvider) *MetadataAggregator {
+	if len(overrides) == 0 {
+		return ma
+	}
+
+	if ma.relationProviders == nil {
+		ma.relationProviders = make(map[reflect.Type]RelationMetadataProvider, len(overrides))
+	}
+
+	for t, provider := range overrides {
+		if t == nil || provider == nil {
+			continue
+		}
+		ma.relationProviders[indirectType(t)] = provider
+	}
+	return ma
 }
 
 // SetTags sets global tags that will be added to all operations
@@ -186,11 +234,25 @@ func (ma *MetadataAggregator) Compile() {
 	paths := make(map[string]any)
 	schemas := make(map[string]any)
 	tags := make(map[string]any)
+	parameters := make(map[string]any)
+	relationDescriptors := make(map[string]*RelationDescriptor)
 
 	for _, provider := range ma.providers {
 		metadata := provider.GetMetadata()
 
-		schemas[metadata.Name] = convertSchemaToOpenAPI(metadata.Schema)
+		if descriptor := ma.buildRelationDescriptor(&metadata); descriptor != nil {
+			relationDescriptors[metadata.Name] = descriptor
+		}
+
+		schema := convertSchemaToOpenAPI(metadata.Schema)
+		if metadata.Relations != nil {
+			schema["x-formgen-relations"] = convertRelationDescriptor(metadata.Relations)
+		}
+		schemas[metadata.Name] = schema
+
+		for name, parameter := range metadata.Parameters {
+			parameters[name] = convertParameterDefinition(parameter)
+		}
 
 		for _, route := range metadata.Routes {
 			pathItem := convertRouteToPathItem(route)
@@ -227,8 +289,17 @@ func (ma *MetadataAggregator) Compile() {
 	ma.Paths = paths
 	ma.Schemas = schemas
 	ma.Tags = convertMapToArray(tags)
-	ma.Components = map[string]any{
+	components := map[string]any{
 		"schemas": schemas,
+	}
+	if len(parameters) > 0 {
+		components["parameters"] = parameters
+	}
+	ma.Components = components
+	if len(relationDescriptors) > 0 {
+		ma.RelationDescriptors = relationDescriptors
+	} else {
+		ma.RelationDescriptors = nil
 	}
 }
 
@@ -284,30 +355,45 @@ func convertRouteToPathItem(route RouteDefinition) map[string]any {
 }
 
 func convertSchemaToOpenAPI(schema SchemaMetadata) map[string]any {
-	return map[string]any{
+	result := map[string]any{
 		"type":        "object",
 		"properties":  convertProperties(schema.Properties),
 		"required":    schema.Required,
 		"description": schema.Description,
 	}
+
+	if schema.LabelField != "" {
+		result["x-formgen-label-field"] = schema.LabelField
+	}
+
+	return result
 }
 
 func convertParameters(params []Parameter) []map[string]any {
 	result := make([]map[string]any, len(params))
 	for i, p := range params {
-		param := map[string]any{
-			"name":        p.Name,
-			"in":          p.In,
-			"required":    p.Required,
-			"description": p.Description,
-			"schema":      p.Schema,
+		if p.Ref != "" {
+			result[i] = map[string]any{"$ref": p.Ref}
+			continue
 		}
-		if p.Example != nil {
-			param["example"] = p.Example
-		}
-		result[i] = param
+
+		result[i] = convertParameterDefinition(p)
 	}
 	return result
+}
+
+func convertParameterDefinition(p Parameter) map[string]any {
+	param := map[string]any{
+		"name":        p.Name,
+		"in":          p.In,
+		"required":    p.Required,
+		"description": p.Description,
+		"schema":      p.Schema,
+	}
+	if p.Example != nil {
+		param["example"] = p.Example
+	}
+	return param
 }
 
 func convertRequestBody(rb *RequestBody) map[string]any {
@@ -390,6 +476,112 @@ func convertProperties(props map[string]PropertyInfo) map[string]any {
 		}
 
 		result[name] = property
+	}
+	return result
+}
+
+func (ma *MetadataAggregator) buildRelationDescriptor(metadata *ResourceMetadata) *RelationDescriptor {
+	if metadata == nil || metadata.ResourceType == nil {
+		return nil
+	}
+
+	provider := ma.selectRelationProvider(metadata.ResourceType)
+	if provider == nil {
+		return nil
+	}
+
+	descriptor, err := provider.BuildRelationDescriptor(metadata.ResourceType)
+	if err != nil {
+		return nil
+	}
+
+	descriptor = ApplyRelationFilters(metadata.ResourceType, descriptor)
+	metadata.Relations = descriptor
+	return descriptor
+}
+
+func (ma *MetadataAggregator) selectRelationProvider(resourceType reflect.Type) RelationMetadataProvider {
+	if resourceType == nil {
+		return nil
+	}
+
+	if len(ma.relationProviders) > 0 {
+		if provider, ok := ma.relationProviders[indirectType(resourceType)]; ok && provider != nil {
+			return provider
+		}
+	}
+	return ma.relationProvider
+}
+
+func convertRelationDescriptor(descriptor *RelationDescriptor) map[string]any {
+	if descriptor == nil {
+		return nil
+	}
+
+	result := make(map[string]any)
+	if len(descriptor.Includes) > 0 {
+		result["includes"] = descriptor.Includes
+	}
+	if len(descriptor.Relations) > 0 {
+		relations := make([]map[string]any, len(descriptor.Relations))
+		for i, rel := range descriptor.Relations {
+			entry := map[string]any{
+				"name": rel.Name,
+			}
+			if len(rel.Filters) > 0 {
+				filters := make([]map[string]any, len(rel.Filters))
+				for idx, filter := range rel.Filters {
+					filters[idx] = map[string]any{
+						"field":    filter.Field,
+						"operator": filter.Operator,
+						"value":    filter.Value,
+					}
+				}
+				entry["filters"] = filters
+			}
+			relations[i] = entry
+		}
+		result["relations"] = relations
+	}
+	if descriptor.Tree != nil {
+		result["tree"] = convertRelationNode(descriptor.Tree)
+	}
+	return result
+}
+
+func convertRelationNode(node *RelationNode) map[string]any {
+	if node == nil {
+		return nil
+	}
+
+	result := map[string]any{
+		"name": node.Name,
+	}
+	if node.Display != "" {
+		result["display"] = node.Display
+	}
+	if node.TypeName != "" {
+		result["typeName"] = node.TypeName
+	}
+	if len(node.Fields) > 0 {
+		result["fields"] = node.Fields
+	}
+	if len(node.Aliases) > 0 {
+		result["aliases"] = node.Aliases
+	}
+	if len(node.Operators) > 0 {
+		result["operators"] = node.Operators
+	}
+	if len(node.Children) > 0 {
+		children := make(map[string]any, len(node.Children))
+		for key, child := range node.Children {
+			if converted := convertRelationNode(child); converted != nil {
+				children[key] = converted
+			}
+		}
+		if len(children) > 0 {
+			result["children"] = children
+		}
 	}
 	return result
 }

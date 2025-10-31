@@ -2,6 +2,7 @@ package router
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -21,12 +22,24 @@ var pluralizer = pluralize.NewClient()
 func GetResourceMetadata(typ reflect.Type) *ResourceMetadata {
 	resourceName, pluralName := GetResourceName(typ)
 
+	schema := ExtractSchemaFromType(
+		typ,
+		ExtractSchemaFromTypeOptions{
+			IncludeTagMetadata: true, // enables label selection; see docs/metadata_performance_guide.md
+		},
+	)
+	schema.LabelField = selectLabelField(&schema)
+
+	routes, parameterComponents := buildRoutesMetadata(typ)
+
 	metadata := ResourceMetadata{
-		Name:       resourceName,
-		PluralName: pluralName,
-		Tags:       []string{resourceName},
-		Schema:     ExtractSchemaFromType(typ),
-		Routes:     buildRoutesMetadata(typ),
+		Name:         resourceName,
+		PluralName:   pluralName,
+		Tags:         []string{resourceName},
+		ResourceType: typ,
+		Schema:       schema,
+		Routes:       routes,
+		Parameters:   parameterComponents,
 	}
 
 	return &metadata
@@ -80,7 +93,101 @@ func GetResourceTitle(typ reflect.Type) (string, string) {
 	return name, names
 }
 
-func buildRoutesMetadata(typ reflect.Type) []RouteDefinition {
+func selectLabelField(schema *SchemaMetadata) string {
+	if schema == nil || len(schema.Properties) == 0 {
+		return ""
+	}
+
+	propertyNames := make([]string, 0, len(schema.Properties))
+	for name := range schema.Properties {
+		propertyNames = append(propertyNames, name)
+	}
+	sort.Strings(propertyNames)
+
+	var (
+		labelField string
+		seen       bool
+	)
+
+	for _, propertyName := range propertyNames {
+		prop := schema.Properties[propertyName]
+		alias, ok := parseLabelDirective(prop.AllTags)
+		if !ok {
+			continue
+		}
+
+		candidate := propertyName
+		if alias != "" {
+			if _, exists := schema.Properties[alias]; exists {
+				candidate = alias
+			} else {
+				// TODO(goliatone): support cross-property aliases when repository hints become available.
+				candidate = propertyName
+			}
+		}
+
+		if !seen {
+			labelField = candidate
+			seen = true
+			continue
+		}
+
+		if candidate != labelField {
+			// Conflicting directives detected; avoid emitting ambiguous metadata.
+			return ""
+		}
+	}
+
+	if seen {
+		return labelField
+	}
+
+	// TODO(goliatone): fall back to repository/service hints when no explicit label tag is present.
+	return ""
+}
+
+func parseLabelDirective(allTags map[string]string) (string, bool) {
+	if len(allTags) == 0 {
+		return "", false
+	}
+
+	tagValue, ok := allTags[TAG_CRUD]
+	if !ok || tagValue == "" {
+		return "", false
+	}
+
+	directives := strings.Split(tagValue, ",")
+	for _, directive := range directives {
+		directive = strings.TrimSpace(directive)
+		if directive == "" {
+			continue
+		}
+
+		key, value := splitDirective(directive)
+		if key != "label" {
+			continue
+		}
+
+		value = strings.TrimSpace(value)
+		switch value {
+		case "", "-", "true":
+			return "", true
+		default:
+			return value, true
+		}
+	}
+
+	return "", false
+}
+
+func splitDirective(input string) (string, string) {
+	if idx := strings.IndexAny(input, ":="); idx != -1 {
+		return strings.TrimSpace(input[:idx]), strings.TrimSpace(input[idx+1:])
+	}
+	return strings.TrimSpace(input), ""
+}
+
+func buildRoutesMetadata(typ reflect.Type) ([]RouteDefinition, map[string]Parameter) {
 	resourceName, resourcePluralName := GetResourceName(typ)
 	resourceLabel, resourcePluralLabel := GetResourceTitle(typ)
 
@@ -93,126 +200,22 @@ func buildRoutesMetadata(typ reflect.Type) []RouteDefinition {
 		},
 	}
 
-	return []RouteDefinition{
+	commonParameters := buildCommonQueryParameters()
+
+	routes := []RouteDefinition{
 		{
 			Method:  "GET",
 			Path:    "/" + resourcePluralName,
 			Name:    resourceName + ":list",
 			Summary: "List " + resourcePluralLabel,
 			Tags:    []string{resourceLabel},
-			Parameters: []Parameter{
-				{
-					Name:     "limit",
-					In:       "query",
-					Required: false,
-					Schema:   map[string]any{"type": "integer", "default": 25},
-				},
-				{
-					Name:     "offset",
-					In:       "query",
-					Required: false,
-					Schema:   map[string]any{"type": "integer", "default": 0},
-				},
-				{
-					Name:        "include",
-					In:          "query",
-					Required:    false,
-					Description: "Related resources to include, comma separated (e.g. Company,Profile)",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "select",
-					In:          "query",
-					Required:    false,
-					Description: "Fields to include in the response, comma separated (e.g. id,name,email)",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "order",
-					In:          "query",
-					Required:    false,
-					Description: "Sort order, comma separated with direction (e.g. name asc,created_at desc)",
-					Schema:      map[string]any{"type": "string"},
-				},
-				// Field filtering parameters with operators
-				{
-					Name:        "{field}",
-					In:          "query",
-					Required:    false,
-					Description: "Filter by field value (e.g. name=John)",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__eq",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field equals value",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__ne",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field does not equal value",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__gt",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field is greater than value",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__lt",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field is less than value",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__gte",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field is greater than or equal to value",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__lte",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field is less than or equal to value",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__like",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field matches pattern (SQL LIKE)",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__ilike",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field matches pattern case insensitive (SQL ILIKE)",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__and",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field matches all values (comma separated)",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "{field}__or",
-					In:          "query",
-					Required:    false,
-					Description: "Filter where field matches any value (comma separated)",
-					Schema:      map[string]any{"type": "string"},
-				},
-			},
+			Parameters: append([]Parameter{
+				parameterRef("Limit"),
+				parameterRef("Offset"),
+				parameterRef("Include"),
+				parameterRef("Select"),
+				parameterRef("Order"),
+			}, buildFilterParameters()...),
 			Responses: []Response{
 				{
 					Code:        200,
@@ -246,20 +249,8 @@ func buildRoutesMetadata(typ reflect.Type) []RouteDefinition {
 					Description: "ID of the " + resourceLabel,
 					Schema:      map[string]any{"type": "string", "format": "uuid"},
 				},
-				{
-					Name:        "include",
-					In:          "query",
-					Required:    false,
-					Description: "Related resources to include, comma separated",
-					Schema:      map[string]any{"type": "string"},
-				},
-				{
-					Name:        "select",
-					In:          "query",
-					Required:    false,
-					Description: "Fields to include in the response, comma separated",
-					Schema:      map[string]any{"type": "string"},
-				},
+				parameterRef("Include"),
+				parameterRef("Select"),
 			},
 			Responses: []Response{
 				{
@@ -543,6 +534,146 @@ func buildRoutesMetadata(typ reflect.Type) []RouteDefinition {
 					},
 				},
 			},
+		},
+	}
+
+	return routes, commonParameters
+}
+
+func parameterRef(name string) Parameter {
+	return Parameter{Ref: "#/components/parameters/" + name}
+}
+
+func buildCommonQueryParameters() map[string]Parameter {
+	return map[string]Parameter{
+		"Limit": {
+			Name:        "limit",
+			In:          "query",
+			Required:    false,
+			Description: "Maximum number of records to return (default 25)",
+			Schema: map[string]any{
+				"type":    "integer",
+				"default": 25,
+			},
+		},
+		"Offset": {
+			Name:        "offset",
+			In:          "query",
+			Required:    false,
+			Description: "Number of records to skip before starting to return results (default 0)",
+			Schema: map[string]any{
+				"type":    "integer",
+				"default": 0,
+			},
+		},
+		"Include": {
+			Name:        "include",
+			In:          "query",
+			Required:    false,
+			Description: "Related resources to include, comma separated (e.g. Company,Profile)",
+			Schema: map[string]any{
+				"type": "string",
+			},
+		},
+		"Select": {
+			Name:        "select",
+			In:          "query",
+			Required:    false,
+			Description: "Fields to include in the response, comma separated (e.g. id,name,email)",
+			Schema: map[string]any{
+				"type": "string",
+			},
+		},
+		"Order": {
+			Name:        "order",
+			In:          "query",
+			Required:    false,
+			Description: "Sort order, comma separated with direction (e.g. name asc,created_at desc)",
+			Schema: map[string]any{
+				"type": "string",
+			},
+		},
+	}
+}
+
+func buildFilterParameters() []Parameter {
+	return []Parameter{
+		{
+			Name:        "{field}",
+			In:          "query",
+			Required:    false,
+			Description: "Filter by field value (e.g. name=John)",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__eq",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field equals value",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__ne",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field does not equal value",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__gt",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field is greater than value",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__lt",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field is less than value",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__gte",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field is greater than or equal to value",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__lte",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field is less than or equal to value",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__like",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field matches pattern (SQL LIKE)",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__ilike",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field matches pattern case insensitive (SQL ILIKE)",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__and",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field matches all values (comma separated)",
+			Schema:      map[string]any{"type": "string"},
+		},
+		{
+			Name:        "{field}__or",
+			In:          "query",
+			Required:    false,
+			Description: "Filter where field matches any value (comma separated)",
+			Schema:      map[string]any{"type": "string"},
 		},
 	}
 }

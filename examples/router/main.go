@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sync"
 	"syscall"
@@ -23,17 +24,34 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+type Company struct {
+	ID   string `json:"id" crud:"label:name"`
+	Name string `json:"name"`
+}
+
+type Profile struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name" crud:"label:display_name"`
+}
+
 type User struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
+	CompanyID string    `json:"company_id" bun:"company_id"`
+	Company   *Company  `json:"company,omitempty" bun:"rel:belongs-to,join:company_id=id"`
+	ProfileID string    `json:"profile_id" bun:"profile_id"`
+	Profile   *Profile  `json:"profile,omitempty" bun:"rel:belongs-to,join:profile_id=id" crud:"endpoint:/api/profiles,labelField:display_name,valueField:id,mode:search,searchParam:q"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type UserStore struct {
 	sync.RWMutex
-	users map[string]User
+	users            map[string]User
+	companies        map[string]*Company
+	profiles         map[string]*Profile
+	defaultCompanyID string
 }
 
 func NewUserStore() *UserStore {
@@ -46,31 +64,155 @@ func NewUserStore() *UserStore {
 	email3 := "brad.miles@example.com"
 	id3, _ := hashid.New(email3)
 
-	return &UserStore{
-		users: map[string]User{
-			id1: {
-				ID:        id1,
-				Name:      "Julie Smith",
-				Email:     email1,
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-			},
-			id2: {
-				ID:        id2,
-				Name:      "Jose Bates",
-				Email:     email2,
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-			},
-			id3: {
-				ID:        id3,
-				Name:      "Brad Miles",
-				Email:     email3,
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-			},
+	companies := map[string]*Company{
+		"acme": {
+			ID:   "acme",
+			Name: "Acme Incorporated",
+		},
+		"globex": {
+			ID:   "globex",
+			Name: "Globex Corporation",
 		},
 	}
+
+	profileJulie := &Profile{ID: id1 + "-profile", DisplayName: "Julie S."}
+	profileJose := &Profile{ID: id2 + "-profile", DisplayName: "Jose B."}
+	profileBrad := &Profile{ID: id3 + "-profile", DisplayName: "Brad M."}
+
+	profiles := map[string]*Profile{
+		profileJulie.ID: profileJulie,
+		profileJose.ID:  profileJose,
+		profileBrad.ID:  profileBrad,
+	}
+
+	now := time.Now()
+
+	users := map[string]User{
+		id1: {
+			ID:        id1,
+			Name:      "Julie Smith",
+			Email:     email1,
+			CompanyID: "acme",
+			Company:   companies["acme"],
+			ProfileID: profileJulie.ID,
+			Profile:   profileJulie,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		id2: {
+			ID:        id2,
+			Name:      "Jose Bates",
+			Email:     email2,
+			CompanyID: "globex",
+			Company:   companies["globex"],
+			ProfileID: profileJose.ID,
+			Profile:   profileJose,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		id3: {
+			ID:        id3,
+			Name:      "Brad Miles",
+			Email:     email3,
+			CompanyID: "acme",
+			Company:   companies["acme"],
+			ProfileID: profileBrad.ID,
+			Profile:   profileBrad,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	return &UserStore{
+		users:            users,
+		companies:        companies,
+		profiles:         profiles,
+		defaultCompanyID: "acme",
+	}
+}
+
+func (s *UserStore) defaultCompany() *Company {
+	if s == nil {
+		return nil
+	}
+	if s.defaultCompanyID != "" {
+		if company, ok := s.companies[s.defaultCompanyID]; ok {
+			return company
+		}
+	}
+	for _, company := range s.companies {
+		if company != nil {
+			return company
+		}
+	}
+	return nil
+}
+
+type metadataProviderFunc func() router.ResourceMetadata
+
+func (fn metadataProviderFunc) GetMetadata() router.ResourceMetadata {
+	return fn()
+}
+
+func newMetadataAggregator() *router.MetadataAggregator {
+	userMD := router.GetResourceMetadata(reflect.TypeOf(User{}))
+	companyMD := router.GetResourceMetadata(reflect.TypeOf(Company{}))
+	profileMD := router.GetResourceMetadata(reflect.TypeOf(Profile{}))
+
+	aggregator := router.NewMetadataAggregator().
+		WithRelationProvider(router.NewDefaultRelationProvider()).
+		WithUISchemaOptions(router.UISchemaOptions{
+			EndpointDefaults: func(resource *router.ResourceMetadata, relationName string, rel *router.RelationshipInfo) *router.EndpointHint {
+				if rel.Endpoint != nil {
+					return rel.Endpoint
+				}
+
+				switch relationName {
+				case "company":
+					return &router.EndpointHint{
+						URL:        "/api/companies",
+						Method:     "GET",
+						LabelField: "name",
+						ValueField: "id",
+						Params: map[string]string{
+							"select": "id,name",
+							"order":  "name asc",
+						},
+					}
+				case "profile":
+					return &router.EndpointHint{
+						URL:         "/api/profiles",
+						Method:      "GET",
+						LabelField:  "display_name",
+						ValueField:  "id",
+						Mode:        "search",
+						SearchParam: "q",
+					}
+				}
+
+				return nil
+			},
+			EndpointOverrides: map[string]map[string]*router.EndpointHint{
+				userMD.Name: {
+					"profile": {
+						URL:         "/api/profiles/search",
+						Method:      "GET",
+						LabelField:  "display_name",
+						ValueField:  "id",
+						Mode:        "search",
+						SearchParam: "query",
+					},
+				},
+			},
+		})
+
+	aggregator.AddProviders(
+		metadataProviderFunc(func() router.ResourceMetadata { return *userMD }),
+		metadataProviderFunc(func() router.ResourceMetadata { return *companyMD }),
+		metadataProviderFunc(func() router.ResourceMetadata { return *profileMD }),
+	)
+
+	return aggregator
 }
 
 func newFiberAdapter() router.Server[*fiber.App] {
@@ -204,6 +346,34 @@ This endpoint will create a new User, just for you
 		users.BuildAll()
 	}
 
+	companies := builder.Group("/companies")
+	{
+		companies.NewRoute().
+			GET().
+			Path("/").
+			Summary("List companies").
+			Description("Return all companies available to the demo").
+			Tags("Company").
+			Handler(listCompanies(store)).
+			Name("company.list")
+
+		companies.BuildAll()
+	}
+
+	profiles := builder.Group("/profiles")
+	{
+		profiles.NewRoute().
+			GET().
+			Path("/").
+			Summary("List profiles").
+			Description("Return user profiles including display names").
+			Tags("Profile").
+			Handler(listProfiles(store)).
+			Name("profile.list")
+
+		profiles.BuildAll()
+	}
+
 	private := api.Group("/secret")
 	{
 		private.Use(auth.AsMiddlware())
@@ -263,7 +433,7 @@ func main() {
 	createFrontEndRoutes(front, store)
 
 	// OpenAPI documentation
-	router.ServeOpenAPI(front, &router.OpenAPIRenderer{
+	openAPIRenderer := (&router.OpenAPIRenderer{
 		Title:   "My Test App",
 		Version: "v0.0.1",
 		Description: `## API Documentation
@@ -277,7 +447,9 @@ The API version: v0.0.0..
 			Name:  "Test Name",
 			URL:   "https://example.com",
 		},
-	})
+	}).WithMetadataProviders(newMetadataAggregator())
+
+	router.ServeOpenAPI(front, openAPIRenderer)
 
 	go func() {
 		if err := app.Serve(":9092"); err != nil {
@@ -356,15 +528,39 @@ func createUser(store *UserStore) router.HandlerFunc {
 			return router.NewBadRequestError("Invalid request body")
 		}
 
+		now := time.Now()
+
+		profileID, _ := hashid.New(fmt.Sprintf("%s:%d", req.Email, now.UnixNano()))
+		profile := &Profile{
+			ID:          profileID,
+			DisplayName: req.Name,
+		}
+
+		store.Lock()
+		if store.profiles == nil {
+			store.profiles = make(map[string]*Profile)
+		}
+		store.profiles[profileID] = profile
+
+		company := store.defaultCompany()
+
 		user := User{
 			ID:        id,
 			Name:      req.Name,
 			Email:     req.Email,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CompanyID: "",
+			Company:   nil,
+			ProfileID: profileID,
+			Profile:   profile,
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 
-		store.Lock()
+		if company != nil {
+			user.CompanyID = company.ID
+			user.Company = company
+		}
+
 		store.users[user.ID] = user
 		store.Unlock()
 
@@ -377,11 +573,47 @@ func listUsers(store *UserStore) router.HandlerFunc {
 		store.RLock()
 		users := make([]User, 0, len(store.users))
 		for _, user := range store.users {
+			if profile, ok := store.profiles[user.ProfileID]; ok {
+				user.Profile = profile
+			}
+			if company, ok := store.companies[user.CompanyID]; ok {
+				user.Company = company
+			}
 			users = append(users, user)
 		}
 		store.RUnlock()
 
 		return c.JSON(http.StatusOK, users)
+	}
+}
+
+func listCompanies(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		store.RLock()
+		companies := make([]Company, 0, len(store.companies))
+		for _, company := range store.companies {
+			if company != nil {
+				companies = append(companies, *company)
+			}
+		}
+		store.RUnlock()
+
+		return c.JSON(http.StatusOK, companies)
+	}
+}
+
+func listProfiles(store *UserStore) router.HandlerFunc {
+	return func(c router.Context) error {
+		store.RLock()
+		profiles := make([]Profile, 0, len(store.profiles))
+		for _, profile := range store.profiles {
+			if profile != nil {
+				profiles = append(profiles, *profile)
+			}
+		}
+		store.RUnlock()
+
+		return c.JSON(http.StatusOK, profiles)
 	}
 }
 
@@ -399,6 +631,13 @@ func getUser(store *UserStore) router.HandlerFunc {
 				Code:    http.StatusNotFound,
 				Message: "User not found",
 			}
+		}
+
+		if profile, ok := store.profiles[user.ProfileID]; ok {
+			user.Profile = profile
+		}
+		if company, ok := store.companies[user.CompanyID]; ok {
+			user.Company = company
 		}
 
 		return c.JSON(http.StatusOK, user)
@@ -497,6 +736,12 @@ func renderUserList(store *UserStore) router.HandlerFunc {
 		store.RLock()
 		users := make([]User, 0, len(store.users))
 		for _, user := range store.users {
+			if profile, ok := store.profiles[user.ProfileID]; ok {
+				user.Profile = profile
+			}
+			if company, ok := store.companies[user.CompanyID]; ok {
+				user.Company = company
+			}
 			users = append(users, user)
 		}
 		store.RUnlock()
@@ -531,6 +776,13 @@ func renderUserDetail(store *UserStore) router.HandlerFunc {
 			})
 		}
 
+		if profile, ok := store.profiles[user.ProfileID]; ok {
+			user.Profile = profile
+		}
+		if company, ok := store.companies[user.CompanyID]; ok {
+			user.Company = company
+		}
+
 		return c.Render("user-detail", map[string]any{
 			"user": user,
 		})
@@ -551,6 +803,13 @@ func renderEditForm(store *UserStore) router.HandlerFunc {
 				"error_title":   "User Not Found",
 				"error_message": fmt.Sprintf("The user with ID %s does not exist.", id),
 			})
+		}
+
+		if profile, ok := store.profiles[user.ProfileID]; ok {
+			user.Profile = profile
+		}
+		if company, ok := store.companies[user.CompanyID]; ok {
+			user.Company = company
 		}
 
 		return c.Render("user-form", map[string]any{
@@ -609,15 +868,35 @@ func handleCreateUser(store *UserStore) router.HandlerFunc {
 			})
 		}
 
+		now := time.Now()
+		profileID, _ := hashid.New(fmt.Sprintf("%s:%d", email, now.UnixNano()))
+		profile := &Profile{ID: profileID, DisplayName: name}
+
+		store.Lock()
+		if store.profiles == nil {
+			store.profiles = make(map[string]*Profile)
+		}
+		store.profiles[profileID] = profile
+
+		company := store.defaultCompany()
+
 		user := User{
 			ID:        id,
 			Name:      name,
 			Email:     email,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CompanyID: "",
+			Company:   nil,
+			ProfileID: profileID,
+			Profile:   profile,
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 
-		store.Lock()
+		if company != nil {
+			user.CompanyID = company.ID
+			user.Company = company
+		}
+
 		store.users[user.ID] = user
 		store.Unlock()
 

@@ -1009,6 +1009,71 @@ components:
 
 - Downstream packages (e.g., `go-crud`, `go-formgen`) can read the extension to drive include UIs, validation, and filter builders without duplicating repository logic.
 
+### Property-Level Relationship Metadata (`x-relationships`, `x-endpoint`)
+
+- Relation fields live in `SchemaMetadata.Properties`, and `SchemaMetadata.RelationAliases` ties scalar foreign keys (for example `author_id`) to their richer object counterparts (`author`).
+- During OpenAPI generation the aggregator emits `x-relationships` and `x-endpoint` blocks for both representations, so UI builders understand cardinality, schema targets, and where to fetch options.
+
+```yaml
+properties:
+  author:
+    type: object
+    allOf:
+      - $ref: '#/components/schemas/author'
+    x-relationships:
+      type: belongsTo
+      target: '#/components/schemas/author'
+      foreignKey: author_id
+      cardinality: one
+      sourceField: author_id
+    x-endpoint:
+      url: /api/authors
+      method: GET
+      labelField: full_name
+      valueField: id
+      params:
+        select: id,full_name
+        order: full_name asc
+  author_id:
+    type: string
+    x-relationships:
+      type: belongsTo
+      target: '#/components/schemas/author'
+      foreignKey: author_id
+      cardinality: one
+    x-endpoint:
+      url: /api/authors
+      method: GET
+```
+
+- Use `MetadataAggregator.WithUISchemaOptions` to supply sensible defaults, override individual relations, or filter metadata before it reaches the final schema:
+
+```go
+aggregator := router.NewMetadataAggregator().WithUISchemaOptions(router.UISchemaOptions{
+    EndpointDefaults: func(resource *router.ResourceMetadata, relationName string, rel *router.RelationshipInfo) *router.EndpointHint {
+        if relationName == "editor" {
+            return &router.EndpointHint{URL: "/api/editors", Method: "GET", LabelField: "name", ValueField: "id"}
+        }
+        return nil
+    },
+    EndpointOverrides: map[string]map[string]*router.EndpointHint{
+        "article": {
+            "author": {URL: "/override/authors", Method: "POST"},
+        },
+    },
+    RelationFilters: []router.RelationshipInfoFilter{
+        func(resource *router.ResourceMetadata, relationName string, rel *router.RelationshipInfo) *router.RelationshipInfo {
+            if relationName == "internal" {
+                return nil // drop this relation entirely
+            }
+            return rel
+        },
+    },
+})
+```
+
+- Downstream consumers can now render choice widgets or nested editors without additional lookups; scalar fields carry the same metadata as their object companions so either representation can be used interchangeably.
+
 ### Performance Considerations
 
 - **Default configuration** has minimal overhead and maintains backward compatibility

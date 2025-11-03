@@ -116,7 +116,50 @@
           },
           "publisher_id": {
             "format": "uuid",
-            "type": "string"
+            "type": "string",
+            "x-relationships": {
+              "type": "belongsTo",
+              "target": "#/components/schemas/publisher",
+              "foreignKey": "publisher_id",
+              "cardinality": "one"
+            },
+            "x-endpoint": {
+              "url": "/api/publishers",
+              "method": "GET",
+              "labelField": "name",
+              "valueField": "id",
+              "params": {
+                "select": "id,name",
+                "order": "name asc",
+                "format": "options"
+              }
+            }
+          },
+          "publisher": {
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/publisher"
+              }
+            ],
+            "x-relationships": {
+              "type": "belongsTo",
+              "target": "#/components/schemas/publisher",
+              "foreignKey": "publisher_id",
+              "cardinality": "one",
+              "sourceField": "publisher_id"
+            },
+            "x-endpoint": {
+              "url": "/api/publishers",
+              "method": "GET",
+              "labelField": "name",
+              "valueField": "id",
+              "params": {
+                "select": "id,name",
+                "order": "name asc",
+                "format": "options"
+              }
+            }
           },
           "updated_at": {
             "format": "date-time",
@@ -130,6 +173,19 @@
           "active"
         ],
         "type": "object"
+      },
+      "publisher": {
+        "description": "Publisher resource",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
       }
     }
   },

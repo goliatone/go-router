@@ -1,5 +1,26 @@
 # Changelog
 
+# [0.23.0](https://github.com/goliatone/go-router/compare/v0.22.0...v0.23.0) - (2025-11-03)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.23.0 ([8f53b15](https://github.com/goliatone/go-router/commit/8f53b15a92f15aa88d8dcd93e32dda5ae38cf09c))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Meta extract with x-endpoint ([ea474bd](https://github.com/goliatone/go-router/commit/ea474bdc69a2b0696f4144aa23556eae6fb107b3))  - (goliatone)
+- Expose schema options for UIs ([3d52ccc](https://github.com/goliatone/go-router/commit/3d52cccf59aff8f955214b5bd8c2d6af7e8bcbd5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.22.0 ([b8be30b](https://github.com/goliatone/go-router/commit/b8be30be02df9db7bba7622a7706ab4a119c4c77))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([c2cad2b](https://github.com/goliatone/go-router/commit/c2cad2ba5b02fb34cd8b38784a650276b64f5816))  - (goliatone)
+- Update renderers ([a7ebec5](https://github.com/goliatone/go-router/commit/a7ebec5361a2de5f97b08a27c0998613a7022027))  - (goliatone)
+- Update examples ([396f197](https://github.com/goliatone/go-router/commit/396f1979a76a7e9b0bd3aa90de0ce4afd8909dcc))  - (goliatone)
+
 # [0.22.0](https://github.com/goliatone/go-router/compare/v0.21.0...v0.22.0) - (2025-10-31)
 
 ## <!-- 13 -->📦 Bumps

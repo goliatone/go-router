@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -298,12 +299,17 @@ func (ma *MetadataAggregator) Compile() {
 	metadataList := make([]*ResourceMetadata, 0, len(ma.providers))
 	typeToSchema := make(map[reflect.Type]string, len(ma.providers))
 	typeNameToSchema := make(map[string]string, len(ma.providers))
+	resourceByName := make(map[string]*ResourceMetadata, len(ma.providers))
 
 	for _, provider := range ma.providers {
 		metadata := provider.GetMetadata()
 		md := metadata
 		metadataPtr := &md
 		metadataList = append(metadataList, metadataPtr)
+
+		if metadataPtr.Name != "" {
+			resourceByName[metadataPtr.Name] = metadataPtr
+		}
 
 		if metadata.ResourceType != nil {
 			baseType := indirectType(metadata.ResourceType)
@@ -325,7 +331,7 @@ func (ma *MetadataAggregator) Compile() {
 			continue
 		}
 
-		ma.prepareSchemaForCompilation(metadata, typeToSchema, typeNameToSchema)
+		ma.prepareSchemaForCompilation(metadata, typeToSchema, typeNameToSchema, resourceByName)
 
 		if descriptor := ma.buildRelationDescriptor(metadata); descriptor != nil {
 			relationDescriptors[metadata.Name] = descriptor
@@ -741,7 +747,7 @@ func formatRelationshipType(relType string) string {
 	return builder.String()
 }
 
-func (ma *MetadataAggregator) prepareSchemaForCompilation(metadata *ResourceMetadata, typeToSchema map[reflect.Type]string, typeNameToSchema map[string]string) {
+func (ma *MetadataAggregator) prepareSchemaForCompilation(metadata *ResourceMetadata, typeToSchema map[reflect.Type]string, typeNameToSchema map[string]string, resources map[string]*ResourceMetadata) {
 	if metadata == nil {
 		return
 	}
@@ -785,6 +791,12 @@ func (ma *MetadataAggregator) prepareSchemaForCompilation(metadata *ResourceMeta
 			}
 			if relInfo.RelatedSchema == "" && relInfo.RelatedTypeName != "" {
 				relInfo.RelatedSchema = ToKebabCase(relInfo.RelatedTypeName)
+			}
+		}
+
+		if relInfo.Endpoint == nil {
+			if hint := ma.deriveDefaultEndpointHint(metadata, relName, relInfo, resources); hint != nil {
+				relInfo.Endpoint = hint
 			}
 		}
 
@@ -878,6 +890,147 @@ func cloneEndpointHint(hint *EndpointHint) *EndpointHint {
 		}
 	}
 	return &clone
+}
+
+func (ma *MetadataAggregator) deriveDefaultEndpointHint(resource *ResourceMetadata, relationName string, rel *RelationshipInfo, resources map[string]*ResourceMetadata) *EndpointHint {
+	if resource == nil || rel == nil {
+		return nil
+	}
+
+	var target *ResourceMetadata
+	if resources != nil && rel.RelatedSchema != "" {
+		target = resources[rel.RelatedSchema]
+	}
+
+	labelField := ""
+	valueField := ""
+
+	if target != nil {
+		labelField = strings.TrimSpace(target.Schema.LabelField)
+		if labelField == "" {
+			labelField = firstMatchingStringProperty(target.Schema.Properties, []string{"label", "name", "title", "full_name", "display_name"})
+		}
+		if labelField == "" {
+			labelField = firstStringProperty(target.Schema.Properties)
+		}
+
+		if _, ok := target.Schema.Properties["id"]; ok {
+			valueField = "id"
+		}
+		if valueField == "" {
+			valueField = firstPropertyName(target.Schema.Properties)
+		}
+	}
+
+	if valueField == "" {
+		valueField = "id"
+	}
+
+	selectFields := valueField
+	if labelField != "" && labelField != valueField {
+		selectFields = selectFields + "," + labelField
+	}
+
+	params := map[string]string{
+		"limit":  "50",
+		"format": "options",
+	}
+	if selectFields != "" {
+		params["select"] = selectFields
+	}
+
+	orderField := labelField
+	if orderField == "" {
+		orderField = valueField
+	}
+	if orderField != "" {
+		params["order"] = orderField + " asc"
+	}
+
+	url := buildDefaultEndpointURL(relationName, rel, target)
+	if url == "" {
+		return nil
+	}
+
+	hint := &EndpointHint{
+		URL:         url,
+		Method:      "GET",
+		LabelField:  labelField,
+		ValueField:  valueField,
+		Params:      params,
+		Mode:        "search",
+		SearchParam: "q",
+		SubmitAs:    "json",
+	}
+
+	return hint
+}
+
+func buildDefaultEndpointURL(relationName string, rel *RelationshipInfo, target *ResourceMetadata) string {
+	segment := ""
+	if target != nil && target.PluralName != "" {
+		segment = target.PluralName
+	} else if rel != nil && rel.RelatedSchema != "" {
+		segment = rel.RelatedSchema
+	} else {
+		segment = relationName
+	}
+
+	segment = strings.TrimSpace(segment)
+	segment = strings.Trim(segment, "/")
+	if segment == "" {
+		return ""
+	}
+
+	return "/api/" + segment
+}
+
+func firstMatchingStringProperty(props map[string]PropertyInfo, candidates []string) string {
+	if len(props) == 0 || len(candidates) == 0 {
+		return ""
+	}
+
+	for _, candidate := range candidates {
+		if prop, ok := props[candidate]; ok {
+			if prop.Type == "" || prop.Type == "string" {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+func firstStringProperty(props map[string]PropertyInfo) string {
+	if len(props) == 0 {
+		return ""
+	}
+
+	names := make([]string, 0, len(props))
+	for name, prop := range props {
+		if prop.Type == "" || prop.Type == "string" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	if len(names) > 0 {
+		return names[0]
+	}
+	return firstPropertyName(props)
+}
+
+func firstPropertyName(props map[string]PropertyInfo) string {
+	if len(props) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(props))
+	for name := range props {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
 }
 
 func (ma *MetadataAggregator) ensureRelatedSchemas(metadataList []*ResourceMetadata, schemas map[string]any) {

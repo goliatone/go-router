@@ -114,6 +114,34 @@
           "pen_name": {
             "type": "string"
           },
+          "tags": {
+            "type": "array",
+            "description": "Tags applied to the article",
+            "items": {
+              "$ref": "#/components/schemas/tag"
+            },
+            "x-relationships": {
+              "type": "hasMany",
+              "target": "#/components/schemas/tag",
+              "inverse": "article",
+              "cardinality": "many"
+            },
+            "x-endpoint": {
+              "url": "/api/tags",
+              "method": "GET",
+              "labelField": "label",
+              "valueField": "id",
+              "params": {
+                "limit": "50",
+                "order": "label asc",
+                "select": "id,label",
+                "format": "options"
+              },
+              "mode": "search",
+              "searchParam": "q",
+              "submitAs": "json"
+            }
+          },
           "publisher_id": {
             "format": "uuid",
             "type": "string",
@@ -183,6 +211,19 @@
             "format": "uuid"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "tag": {
+        "description": "Tag resource",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
             "type": "string"
           }
         }

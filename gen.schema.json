@@ -1,0 +1,1040 @@
+{
+  "components": {
+    "parameters": {
+      "Include": {
+        "description": "Related resources to include, comma separated (e.g. Company,Profile)",
+        "in": "query",
+        "name": "include",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Limit": {
+        "description": "Maximum number of records to return (default 25)",
+        "in": "query",
+        "name": "limit",
+        "required": false,
+        "schema": {
+          "default": 25,
+          "type": "integer"
+        }
+      },
+      "Offset": {
+        "description": "Number of records to skip before starting to return results (default 0)",
+        "in": "query",
+        "name": "offset",
+        "required": false,
+        "schema": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "Order": {
+        "description": "Sort order, comma separated with direction (e.g. name asc,created_at desc)",
+        "in": "query",
+        "name": "order",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Select": {
+        "description": "Fields to include in the response, comma separated (e.g. id,name,email)",
+        "in": "query",
+        "name": "select",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "author": {
+        "description": "Schema for Author",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "hired_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "pen_name": {
+            "type": "string"
+          },
+          "publisher_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "publisher_id",
+          "full_name",
+          "email",
+          "active"
+        ],
+        "type": "object",
+        "x-formgen-relations": {
+          "includes": [
+            "books",
+            "books.author",
+            "books.chapters",
+            "books.chapters.book",
+            "books.publisher",
+            "books.publisher.authors",
+            "books.publisher.books",
+            "books.publisher.headquarters",
+            "books.publisher.headquarters.publisher",
+            "profile",
+            "profile.author",
+            "publisher",
+            "publisher.authors",
+            "publisher.books",
+            "publisher.books.author",
+            "publisher.books.chapters",
+            "publisher.books.chapters.book",
+            "publisher.books.publisher",
+            "publisher.headquarters",
+            "publisher.headquarters.publisher"
+          ],
+          "tree": {
+            "children": {
+              "books": {
+                "children": {
+                  "author": {
+                    "display": "Author",
+                    "fields": [
+                      "active",
+                      "books",
+                      "created_at",
+                      "email",
+                      "full_name",
+                      "hired_at",
+                      "id",
+                      "pen_name",
+                      "profile",
+                      "publisher",
+                      "publisher_id",
+                      "updated_at"
+                    ],
+                    "name": "author",
+                    "typeName": "main.Author"
+                  },
+                  "chapters": {
+                    "children": {
+                      "book": {
+                        "display": "Book",
+                        "fields": [
+                          "author",
+                          "author_id",
+                          "chapters",
+                          "created_at",
+                          "id",
+                          "isbn",
+                          "last_reprint_at",
+                          "publisher",
+                          "publisher_id",
+                          "release_date",
+                          "status",
+                          "tags",
+                          "title",
+                          "updated_at"
+                        ],
+                        "name": "book",
+                        "typeName": "main.Book"
+                      }
+                    },
+                    "display": "Chapters",
+                    "fields": [
+                      "book",
+                      "book_id",
+                      "chapter_index",
+                      "id",
+                      "title",
+                      "word_count"
+                    ],
+                    "name": "chapters",
+                    "typeName": "main.Chapter"
+                  },
+                  "publisher": {
+                    "children": {
+                      "authors": {
+                        "display": "Authors",
+                        "fields": [
+                          "active",
+                          "books",
+                          "created_at",
+                          "email",
+                          "full_name",
+                          "hired_at",
+                          "id",
+                          "pen_name",
+                          "profile",
+                          "publisher",
+                          "publisher_id",
+                          "updated_at"
+                        ],
+                        "name": "authors",
+                        "typeName": "main.Author"
+                      },
+                      "books": {
+                        "display": "Books",
+                        "fields": [
+                          "author",
+                          "author_id",
+                          "chapters",
+                          "created_at",
+                          "id",
+                          "isbn",
+                          "last_reprint_at",
+                          "publisher",
+                          "publisher_id",
+                          "release_date",
+                          "status",
+                          "tags",
+                          "title",
+                          "updated_at"
+                        ],
+                        "name": "books",
+                        "typeName": "main.Book"
+                      },
+                      "headquarters": {
+                        "children": {
+                          "publisher": {
+                            "display": "Publisher",
+                            "fields": [
+                              "authors",
+                              "books",
+                              "created_at",
+                              "established_at",
+                              "headquarters",
+                              "id",
+                              "imprint_prefix",
+                              "name",
+                              "updated_at"
+                            ],
+                            "name": "publisher",
+                            "typeName": "main.PublishingHouse"
+                          }
+                        },
+                        "display": "Headquarters",
+                        "fields": [
+                          "address_line1",
+                          "address_line2",
+                          "city",
+                          "country",
+                          "id",
+                          "opened_at",
+                          "publisher",
+                          "publisher_id"
+                        ],
+                        "name": "headquarters",
+                        "typeName": "main.Headquarters"
+                      }
+                    },
+                    "display": "Publisher",
+                    "fields": [
+                      "authors",
+                      "books",
+                      "created_at",
+                      "established_at",
+                      "headquarters",
+                      "id",
+                      "imprint_prefix",
+                      "name",
+                      "updated_at"
+                    ],
+                    "name": "publisher",
+                    "typeName": "main.PublishingHouse"
+                  }
+                },
+                "display": "Books",
+                "fields": [
+                  "author",
+                  "author_id",
+                  "chapters",
+                  "created_at",
+                  "id",
+                  "isbn",
+                  "last_reprint_at",
+                  "publisher",
+                  "publisher_id",
+                  "release_date",
+                  "status",
+                  "tags",
+                  "title",
+                  "updated_at"
+                ],
+                "name": "books",
+                "typeName": "main.Book"
+              },
+              "profile": {
+                "children": {
+                  "author": {
+                    "display": "Author",
+                    "fields": [
+                      "active",
+                      "books",
+                      "created_at",
+                      "email",
+                      "full_name",
+                      "hired_at",
+                      "id",
+                      "pen_name",
+                      "profile",
+                      "publisher",
+                      "publisher_id",
+                      "updated_at"
+                    ],
+                    "name": "author",
+                    "typeName": "main.Author"
+                  }
+                },
+                "display": "Profile",
+                "fields": [
+                  "author",
+                  "author_id",
+                  "biography",
+                  "favorite_genre",
+                  "id",
+                  "writing_style"
+                ],
+                "name": "profile",
+                "typeName": "main.AuthorProfile"
+              },
+              "publisher": {
+                "children": {
+                  "authors": {
+                    "display": "Authors",
+                    "fields": [
+                      "active",
+                      "books",
+                      "created_at",
+                      "email",
+                      "full_name",
+                      "hired_at",
+                      "id",
+                      "pen_name",
+                      "profile",
+                      "publisher",
+                      "publisher_id",
+                      "updated_at"
+                    ],
+                    "name": "authors",
+                    "typeName": "main.Author"
+                  },
+                  "books": {
+                    "children": {
+                      "author": {
+                        "display": "Author",
+                        "fields": [
+                          "active",
+                          "books",
+                          "created_at",
+                          "email",
+                          "full_name",
+                          "hired_at",
+                          "id",
+                          "pen_name",
+                          "profile",
+                          "publisher",
+                          "publisher_id",
+                          "updated_at"
+                        ],
+                        "name": "author",
+                        "typeName": "main.Author"
+                      },
+                      "chapters": {
+                        "children": {
+                          "book": {
+                            "display": "Book",
+                            "fields": [
+                              "author",
+                              "author_id",
+                              "chapters",
+                              "created_at",
+                              "id",
+                              "isbn",
+                              "last_reprint_at",
+                              "publisher",
+                              "publisher_id",
+                              "release_date",
+                              "status",
+                              "tags",
+                              "title",
+                              "updated_at"
+                            ],
+                            "name": "book",
+                            "typeName": "main.Book"
+                          }
+                        },
+                        "display": "Chapters",
+                        "fields": [
+                          "book",
+                          "book_id",
+                          "chapter_index",
+                          "id",
+                          "title",
+                          "word_count"
+                        ],
+                        "name": "chapters",
+                        "typeName": "main.Chapter"
+                      },
+                      "publisher": {
+                        "display": "Publisher",
+                        "fields": [
+                          "authors",
+                          "books",
+                          "created_at",
+                          "established_at",
+                          "headquarters",
+                          "id",
+                          "imprint_prefix",
+                          "name",
+                          "updated_at"
+                        ],
+                        "name": "publisher",
+                        "typeName": "main.PublishingHouse"
+                      }
+                    },
+                    "display": "Books",
+                    "fields": [
+                      "author",
+                      "author_id",
+                      "chapters",
+                      "created_at",
+                      "id",
+                      "isbn",
+                      "last_reprint_at",
+                      "publisher",
+                      "publisher_id",
+                      "release_date",
+                      "status",
+                      "tags",
+                      "title",
+                      "updated_at"
+                    ],
+                    "name": "books",
+                    "typeName": "main.Book"
+                  },
+                  "headquarters": {
+                    "children": {
+                      "publisher": {
+                        "display": "Publisher",
+                        "fields": [
+                          "authors",
+                          "books",
+                          "created_at",
+                          "established_at",
+                          "headquarters",
+                          "id",
+                          "imprint_prefix",
+                          "name",
+                          "updated_at"
+                        ],
+                        "name": "publisher",
+                        "typeName": "main.PublishingHouse"
+                      }
+                    },
+                    "display": "Headquarters",
+                    "fields": [
+                      "address_line1",
+                      "address_line2",
+                      "city",
+                      "country",
+                      "id",
+                      "opened_at",
+                      "publisher",
+                      "publisher_id"
+                    ],
+                    "name": "headquarters",
+                    "typeName": "main.Headquarters"
+                  }
+                },
+                "display": "Publisher",
+                "fields": [
+                  "authors",
+                  "books",
+                  "created_at",
+                  "established_at",
+                  "headquarters",
+                  "id",
+                  "imprint_prefix",
+                  "name",
+                  "updated_at"
+                ],
+                "name": "publisher",
+                "typeName": "main.PublishingHouse"
+              }
+            },
+            "display": "Author",
+            "fields": [
+              "active",
+              "books",
+              "created_at",
+              "email",
+              "full_name",
+              "hired_at",
+              "id",
+              "pen_name",
+              "profile",
+              "publisher",
+              "publisher_id",
+              "updated_at"
+            ],
+            "name": "author",
+            "typeName": "main.Author"
+          }
+        }
+      }
+    }
+  },
+  "info": {
+    "description": "",
+    "termsOfService": "",
+    "title": "API Documentation",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/author": {
+      "post": {
+        "description": "Creates a new Author record",
+        "operationId": "post-author:create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/author"
+              }
+            }
+          },
+          "description": "New Author data",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/author"
+                }
+              }
+            },
+            "description": "Author created successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid input"
+          }
+        },
+        "summary": "Create new Author",
+        "tags": [
+          "Author"
+        ]
+      }
+    },
+    "/author/batch": {
+      "delete": {
+        "description": "Deletes multiple Author records in a single request",
+        "operationId": "delete-author:delete:batch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/author"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "description": "Array of Author IDs to delete",
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Records deleted successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid input"
+          }
+        },
+        "summary": "Delete multiple Authors",
+        "tags": [
+          "Author"
+        ]
+      },
+      "post": {
+        "description": "Creates multiple Author records in a single request",
+        "operationId": "post-author:create:batch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/author"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "description": "Array of new Author data",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/author"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Records created successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid input"
+          }
+        },
+        "summary": "Create multiple Authors",
+        "tags": [
+          "Author"
+        ]
+      },
+      "put": {
+        "description": "Updates multiple Author records in a single request",
+        "operationId": "put-author:update:batch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/author"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "description": "Array of Author updates",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/author"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Records updated successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid input"
+          }
+        },
+        "summary": "Update multiple Authors",
+        "tags": [
+          "Author"
+        ]
+      }
+    },
+    "/author/{id}": {
+      "delete": {
+        "description": "Deletes a Author record",
+        "operationId": "delete-author:delete",
+        "parameters": [
+          {
+            "description": "ID of the Author to delete",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Author deleted successfully"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Author not found"
+          }
+        },
+        "summary": "Delete Author by ID",
+        "tags": [
+          "Author"
+        ]
+      },
+      "get": {
+        "description": "Retrieves a single Author by its ID",
+        "operationId": "get-author:read",
+        "parameters": [
+          {
+            "description": "ID of the Author",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Include"
+          },
+          {
+            "$ref": "#/components/parameters/Select"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/author"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Author not found"
+          }
+        },
+        "summary": "Get Author by ID",
+        "tags": [
+          "Author"
+        ]
+      },
+      "put": {
+        "description": "Updates an existing Author record",
+        "operationId": "put-author:update",
+        "parameters": [
+          {
+            "description": "ID of the Author to update",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/author"
+              }
+            }
+          },
+          "description": "Updated Author data",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/author"
+                }
+              }
+            },
+            "description": "Author updated successfully"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Author not found"
+          }
+        },
+        "summary": "Update Author by ID",
+        "tags": [
+          "Author"
+        ]
+      }
+    },
+    "/authors": {
+      "get": {
+        "description": "",
+        "operationId": "get-author:list",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/Include"
+          },
+          {
+            "$ref": "#/components/parameters/Select"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          },
+          {
+            "description": "Filter by field value (e.g. name=John)",
+            "in": "query",
+            "name": "{field}",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field equals value",
+            "in": "query",
+            "name": "{field}__eq",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field does not equal value",
+            "in": "query",
+            "name": "{field}__ne",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field is greater than value",
+            "in": "query",
+            "name": "{field}__gt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field is less than value",
+            "in": "query",
+            "name": "{field}__lt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field is greater than or equal to value",
+            "in": "query",
+            "name": "{field}__gte",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field is less than or equal to value",
+            "in": "query",
+            "name": "{field}__lte",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field matches pattern (SQL LIKE)",
+            "in": "query",
+            "name": "{field}__like",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field matches pattern case insensitive (SQL ILIKE)",
+            "in": "query",
+            "name": "{field}__ilike",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field matches all values (comma separated)",
+            "in": "query",
+            "name": "{field}__and",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter where field matches any value (comma separated)",
+            "in": "query",
+            "name": "{field}__or",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/author"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful response"
+          }
+        },
+        "summary": "List Authors",
+        "tags": [
+          "Author"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "author"
+    }
+  ]
+}

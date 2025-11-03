@@ -147,13 +147,11 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 		// get bun tags with additional metadata
 		bunTag := field.Tag.Get(TAG_BUN)
 		isRequired := strings.Contains(bunTag, "notnull")
-		lowerFieldName := strings.ToLower(fieldName)
 		columnName := parseBunColumn(bunTag)
-		if columnToProperty == nil {
-			columnToProperty = make(map[string]string)
-		}
-		columnToProperty[lowerFieldName] = fieldName
 		if columnName != "" {
+			if columnToProperty == nil {
+				columnToProperty = make(map[string]string)
+			}
 			columnToProperty[strings.ToLower(columnName)] = fieldName
 		}
 
@@ -376,22 +374,6 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 
 		properties[fieldName] = prop
 
-		if expectedSourceColumns != nil {
-			if pending, ok := expectedSourceColumns[lowerFieldName]; ok {
-				if relationAliases == nil {
-					relationAliases = make(map[string]string)
-				}
-				relationAliases[fieldName] = pending.relation
-				if pending.info != nil {
-					pending.info.SourceField = fieldName
-					if pending.info.ForeignKey == "" {
-						pending.info.ForeignKey = pending.info.SourceColumn
-					}
-				}
-				delete(expectedSourceColumns, lowerFieldName)
-			}
-		}
-
 		if isRelationshipField && relInfo != nil {
 			if relInfo.ForeignKey == "" {
 				switch relInfo.RelationType {
@@ -514,8 +496,26 @@ func applyCrudRelationDirectives(relInfo *RelationshipInfo, crudTag string) {
 		return
 	}
 
-	parts := strings.Split(crudTag, ",")
-	for _, raw := range parts {
+	rawParts := strings.Split(crudTag, ",")
+	directives := make([]string, 0, len(rawParts))
+	for _, fragment := range rawParts {
+		fragment = strings.TrimSpace(fragment)
+		if fragment == "" {
+			continue
+		}
+		if len(directives) == 0 || strings.Contains(fragment, ":") {
+			directives = append(directives, fragment)
+			continue
+		}
+		last := directives[len(directives)-1]
+		if strings.HasPrefix(last, "param:") || strings.HasPrefix(last, "dynamicParam:") {
+			directives[len(directives)-1] = last + "," + fragment
+			continue
+		}
+		directives = append(directives, fragment)
+	}
+
+	for _, raw := range directives {
 		directive := strings.TrimSpace(raw)
 		if directive == "" {
 			continue

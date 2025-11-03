@@ -136,7 +136,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 
 				// Check has-one
 				rel, ok := got.Relationships["profile"]
-				if !ok {
+				if !ok || rel == nil {
 					t.Errorf("expected 'profile' relationship, not found")
 				} else {
 					if rel.RelationType != "has-one" {
@@ -152,7 +152,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 
 				// Check has-many
 				relPosts, ok := got.Relationships["posts"]
-				if !ok {
+				if !ok || relPosts == nil {
 					t.Errorf("expected 'posts' relationship, not found")
 				} else {
 					if relPosts.RelationType != "has-many" {
@@ -168,7 +168,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 
 				// Check belongs-to
 				relCompany, ok := got.Relationships["company"]
-				if !ok {
+				if !ok || relCompany == nil {
 					t.Errorf("expected 'company' relationship, not found")
 				} else {
 					if relCompany.RelationType != "belongs-to" {
@@ -187,9 +187,12 @@ func TestExtractSchemaFromType(t *testing.T) {
 			name:   "order with m2m relationship",
 			inType: reflect.TypeOf(Order{}),
 			checkFn: func(t *testing.T, got router.SchemaMetadata) {
-				// Check properties: just ID
-				if len(got.Properties) != 1 {
-					t.Errorf("expected 1 property (ID), got %d", len(got.Properties))
+				// Check properties: id plus relation field
+				if len(got.Properties) != 2 {
+					t.Errorf("expected properties to include id and items, got %d", len(got.Properties))
+				}
+				if _, ok := got.Properties["items"]; !ok {
+					t.Error("expected relation field 'items' to remain in properties")
 				}
 				// Check relationships - expect 1
 				if len(got.Relationships) != 1 {
@@ -223,7 +226,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 			inType: reflect.TypeOf(BugTestM2M{}),
 			checkFn: func(t *testing.T, got router.SchemaMetadata) {
 				// Verify simple_pivot (no comma) is preserved
-				if rel, ok := got.Relationships["simple_items"]; ok {
+				if rel, ok := got.Relationships["simple_items"]; ok && rel != nil {
 					if rel.PivotTable != "simple_pivot" {
 						t.Errorf("expected PivotTable=simple_pivot, got %s", rel.PivotTable)
 					}
@@ -232,7 +235,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 				}
 
 				// Verify complex_pivot (with comma) still works
-				if rel, ok := got.Relationships["complex_items"]; ok {
+				if rel, ok := got.Relationships["complex_items"]; ok && rel != nil {
 					if rel.PivotTable != "complex_pivot" {
 						t.Errorf("expected PivotTable=complex_pivot, got %s", rel.PivotTable)
 					}
@@ -586,7 +589,7 @@ func TestBackwardCompatibility(t *testing.T) {
 		}
 
 		// Check specific relationship types still work
-		if rel, ok := result.Relationships["profile"]; ok {
+		if rel, ok := result.Relationships["profile"]; ok && rel != nil {
 			if rel.RelationType != "has-one" {
 				t.Errorf("Expected profile relation type=has-one, got %s", rel.RelationType)
 			}
@@ -594,7 +597,7 @@ func TestBackwardCompatibility(t *testing.T) {
 			t.Error("Expected profile relationship to exist")
 		}
 
-		if rel, ok := result.Relationships["posts"]; ok {
+		if rel, ok := result.Relationships["posts"]; ok && rel != nil {
 			if rel.RelationType != "has-many" {
 				t.Errorf("Expected posts relation type=has-many, got %s", rel.RelationType)
 			}
@@ -602,7 +605,7 @@ func TestBackwardCompatibility(t *testing.T) {
 			t.Error("Expected posts relationship to exist")
 		}
 
-		if rel, ok := result.Relationships["company"]; ok {
+		if rel, ok := result.Relationships["company"]; ok && rel != nil {
 			if rel.RelationType != "belongs-to" {
 				t.Errorf("Expected company relation type=belongs-to, got %s", rel.RelationType)
 			}

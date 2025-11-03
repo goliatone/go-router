@@ -54,7 +54,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 			inType: reflect.TypeOf(TestOrder{}),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["user"]
-				if !exists {
+				if !exists || rel == nil {
 					t.Fatal("expected 'user' relationship")
 				}
 
@@ -80,7 +80,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 			inType: reflect.TypeOf(TestOrder{}),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["items"]
-				if !exists {
+				if !exists || rel == nil {
 					t.Fatal("expected 'items' relationship")
 				}
 
@@ -109,7 +109,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 			inType: reflect.TypeOf(TestProductCategory{}),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["products"]
-				if !exists {
+				if !exists || rel == nil {
 					t.Fatal("expected 'products' relationship")
 				}
 
@@ -138,7 +138,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 			inType: reflect.TypeOf(TestProduct{}),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["categories"]
-				if !exists {
+				if !exists || rel == nil {
 					t.Fatal("expected 'categories' relationship")
 				}
 
@@ -159,7 +159,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 			inType: reflect.TypeOf(TestComplexRelation{}),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["custom_user"]
-				if !exists {
+				if !exists || rel == nil {
 					t.Fatal("expected 'custom_user' relationship")
 				}
 

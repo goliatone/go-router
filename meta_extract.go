@@ -100,7 +100,13 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 
 	required := make([]string, 0)
 	properties := make(map[string]PropertyInfo)
-	relationships := make(map[string]RelationshipInfo)
+	relationships := make(map[string]*RelationshipInfo)
+	var relationAliases map[string]string
+	var columnToProperty map[string]string
+	var expectedSourceColumns map[string]struct {
+		relation string
+		info     *RelationshipInfo
+	}
 
 	for i := range t.NumField() {
 		field := t.Field(i)
@@ -141,19 +147,35 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 		// get bun tags with additional metadata
 		bunTag := field.Tag.Get(TAG_BUN)
 		isRequired := strings.Contains(bunTag, "notnull")
+		lowerFieldName := strings.ToLower(fieldName)
+		columnName := parseBunColumn(bunTag)
+		if columnToProperty == nil {
+			columnToProperty = make(map[string]string)
+		}
+		columnToProperty[lowerFieldName] = fieldName
+		if columnName != "" {
+			columnToProperty[strings.ToLower(columnName)] = fieldName
+		}
+
+		var (
+			relInfo             *RelationshipInfo
+			isRelationshipField bool
+		)
 
 		if idx := strings.Index(bunTag, "m2m:"); idx != -1 {
 			pivotStr := bunTag[idx+len("m2m:"):]
 			pname, remain := splitByComa(pivotStr)
 
-			// Get source and target table names
-			sourceTable := opt.GetTableName(t)          // Current struct type
-			targetTable := opt.GetTableName(field.Type) // Related struct type
+			sourceTable := opt.GetTableName(t)
+			targetTable := opt.GetTableName(field.Type)
+			relatedBaseType := baseReflectType(field.Type)
 
-			relInfo := RelationshipInfo{
+			relInfo = &RelationshipInfo{
 				RelationType:    "many-to-many",
-				RelatedTypeName: getBaseTypeName(field.Type),
-				IsSlice:         (field.Type.Kind() == reflect.Slice),
+				Cardinality:     "many",
+				RelatedTypeName: relatedBaseType.Name(),
+				RelatedType:     relatedBaseType,
+				IsSlice:         isSliceType(field.Type),
 				PivotTable:      pname,
 				SourceTable:     sourceTable,
 				TargetTable:     targetTable,
@@ -164,58 +186,43 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 				relInfo.JoinClause = joinClause
 				relInfo.PivotJoin = joinClause
 
-				// Parse pivot columns from join clause
 				sourceCol, targetCol := parseM2MJoinClause(joinClause)
 				relInfo.SourcePivotColumn = sourceCol
 				relInfo.TargetPivotColumn = targetCol
 			} else {
-				// Default M2M column names when no explicit join clause
 				relInfo.SourcePivotColumn = opt.ToSingular(sourceTable) + "_id"
 				relInfo.TargetPivotColumn = opt.ToSingular(targetTable) + "_id"
 			}
 
-			// Check for supplemental crud tag overrides
-			if crudTag := field.Tag.Get(TAG_CRUD); crudTag != "" && crudTag != "-" {
-				parts := strings.Split(crudTag, ",")
-				for _, part := range parts {
-					part = strings.TrimSpace(part)
-					if strings.HasPrefix(part, "source_table=") {
-						relInfo.SourceTable = strings.TrimPrefix(part, "source_table=")
-					} else if strings.HasPrefix(part, "target_table=") {
-						relInfo.TargetTable = strings.TrimPrefix(part, "target_table=")
-					} else if strings.HasPrefix(part, "source_pivot_column=") {
-						relInfo.SourcePivotColumn = strings.TrimPrefix(part, "source_pivot_column=")
-					} else if strings.HasPrefix(part, "target_pivot_column=") {
-						relInfo.TargetPivotColumn = strings.TrimPrefix(part, "target_pivot_column=")
-					}
-				}
-			}
+			isRelationshipField = true
+			applyCrudRelationDirectives(relInfo, field.Tag.Get(TAG_CRUD))
+		} else if strings.Contains(bunTag, "rel:") {
+			sourceTable := opt.GetTableName(t)
+			targetTable := opt.GetTableName(field.Type)
+			relatedBaseType := baseReflectType(field.Type)
 
-			relationships[fieldName] = relInfo
-			continue
-		}
-
-		if strings.Contains(bunTag, "rel:") {
-			// Get source and target table names
-			sourceTable := opt.GetTableName(t)          // Current struct type
-			targetTable := opt.GetTableName(field.Type) // Related struct type
-
-			relInfo := RelationshipInfo{
-				SourceTable: sourceTable,
-				TargetTable: targetTable,
+			relInfo = &RelationshipInfo{
+				SourceTable:     sourceTable,
+				TargetTable:     targetTable,
+				RelatedTypeName: relatedBaseType.Name(),
+				RelatedType:     relatedBaseType,
+				IsSlice:         isSliceType(field.Type),
 			}
 
 			switch {
 			case strings.Contains(bunTag, "has-one"):
 				relInfo.RelationType = "has-one"
+				relInfo.Cardinality = "one"
 			case strings.Contains(bunTag, "has-many"):
 				relInfo.RelationType = "has-many"
+				relInfo.Cardinality = "many"
 			case strings.Contains(bunTag, "belongs-to"):
 				relInfo.RelationType = "belongs-to"
+				relInfo.Cardinality = "one"
 			}
 
-			if field.Type.Kind() == reflect.Slice {
-				relInfo.IsSlice = true
+			if relInfo.IsSlice {
+				relInfo.Cardinality = "many"
 			}
 
 			if idx := strings.Index(bunTag, "join:"); idx != -1 {
@@ -226,26 +233,20 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 				relInfo.JoinKey = sourceCol
 				relInfo.PrimaryKey = targetCol
 
-				// Populate new fields based on relationship type
 				switch relInfo.RelationType {
 				case "belongs-to":
-					// For belongs-to: source has FK pointing to target's PK
 					relInfo.SourceColumn = sourceCol
 					relInfo.TargetColumn = targetCol
 				case "has-one", "has-many":
-					// For has-one/has-many: source's PK is referenced by target's FK
-					relInfo.SourceColumn = sourceCol // Source PK
-					relInfo.TargetColumn = targetCol // Target FK
+					relInfo.SourceColumn = sourceCol
+					relInfo.TargetColumn = targetCol
 				}
 			} else {
-				// Default column names when no explicit join clause
 				switch relInfo.RelationType {
 				case "belongs-to":
-					// Default: source has "{target_singular}_id" pointing to target's "id"
 					relInfo.SourceColumn = opt.ToSingular(targetTable) + "_id"
 					relInfo.TargetColumn = "id"
 				case "has-one", "has-many":
-					// Default: target has "{source_singular}_id" pointing to source's "id"
 					relInfo.SourceColumn = "id"
 					relInfo.TargetColumn = opt.ToSingular(sourceTable) + "_id"
 				}
@@ -253,34 +254,8 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 				relInfo.PrimaryKey = relInfo.TargetColumn
 			}
 
-			relInfo.RelatedTypeName = getBaseTypeName(field.Type)
-
-			// Check for supplemental crud tag overrides
-			if crudTag := field.Tag.Get(TAG_CRUD); crudTag != "" && crudTag != "-" {
-				parts := strings.Split(crudTag, ",")
-				for _, part := range parts {
-					part = strings.TrimSpace(part)
-					if strings.HasPrefix(part, "source_table=") {
-						relInfo.SourceTable = strings.TrimPrefix(part, "source_table=")
-					} else if strings.HasPrefix(part, "target_table=") {
-						relInfo.TargetTable = strings.TrimPrefix(part, "target_table=")
-					} else if strings.HasPrefix(part, "source_column=") {
-						relInfo.SourceColumn = strings.TrimPrefix(part, "source_column=")
-					} else if strings.HasPrefix(part, "target_column=") {
-						relInfo.TargetColumn = strings.TrimPrefix(part, "target_column=")
-					} else if strings.HasPrefix(part, "source_pivot_column=") {
-						relInfo.SourcePivotColumn = strings.TrimPrefix(part, "source_pivot_column=")
-					} else if strings.HasPrefix(part, "target_pivot_column=") {
-						relInfo.TargetPivotColumn = strings.TrimPrefix(part, "target_pivot_column=")
-					}
-				}
-			}
-
-			relationships[fieldName] = relInfo
-
-			// relationship wont appear in properties
-			//TODO: decide if this is what we want
-			continue
+			isRelationshipField = true
+			applyCrudRelationDirectives(relInfo, field.Tag.Get(TAG_CRUD))
 		}
 
 		var prop PropertyInfo
@@ -380,16 +355,278 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 			required = append(required, fieldName)
 		}
 
+		if isRelationshipField && relInfo != nil {
+			prop.RelationName = fieldName
+			prop.RelatedSchema = relInfo.RelatedTypeName
+			if relInfo.IsSlice {
+				prop.Type = "array"
+				if prop.Items == nil {
+					prop.Items = &PropertyInfo{Type: "object"}
+				} else {
+					prop.Items.Type = "object"
+				}
+				if prop.Items != nil {
+					prop.Items.RelationName = fieldName
+					prop.Items.RelatedSchema = relInfo.RelatedTypeName
+				}
+			} else {
+				prop.Type = "object"
+			}
+		}
+
 		properties[fieldName] = prop
+
+		if expectedSourceColumns != nil {
+			if pending, ok := expectedSourceColumns[lowerFieldName]; ok {
+				if relationAliases == nil {
+					relationAliases = make(map[string]string)
+				}
+				relationAliases[fieldName] = pending.relation
+				if pending.info != nil {
+					pending.info.SourceField = fieldName
+					if pending.info.ForeignKey == "" {
+						pending.info.ForeignKey = pending.info.SourceColumn
+					}
+				}
+				delete(expectedSourceColumns, lowerFieldName)
+			}
+		}
+
+		if isRelationshipField && relInfo != nil {
+			if relInfo.ForeignKey == "" {
+				switch relInfo.RelationType {
+				case "belongs-to":
+					relInfo.ForeignKey = relInfo.SourceColumn
+				default:
+					relInfo.ForeignKey = relInfo.TargetColumn
+				}
+			}
+
+			relationships[fieldName] = relInfo
+
+			if relInfo.SourceColumn != "" {
+				colKey := strings.ToLower(relInfo.SourceColumn)
+				if columnToProperty != nil {
+					if aliasField, ok := columnToProperty[colKey]; ok {
+						if relationAliases == nil {
+							relationAliases = make(map[string]string)
+						}
+						relationAliases[aliasField] = fieldName
+						relInfo.SourceField = aliasField
+					} else {
+						if expectedSourceColumns == nil {
+							expectedSourceColumns = make(map[string]struct {
+								relation string
+								info     *RelationshipInfo
+							})
+						}
+						expectedSourceColumns[colKey] = struct {
+							relation string
+							info     *RelationshipInfo
+						}{
+							relation: fieldName,
+							info:     relInfo,
+						}
+					}
+				} else {
+					if expectedSourceColumns == nil {
+						expectedSourceColumns = make(map[string]struct {
+							relation string
+							info     *RelationshipInfo
+						})
+					}
+					expectedSourceColumns[colKey] = struct {
+						relation string
+						info     *RelationshipInfo
+					}{
+						relation: fieldName,
+						info:     relInfo,
+					}
+				}
+			}
+		} else if columnName != "" {
+			colKey := strings.ToLower(columnName)
+			if pending, ok := expectedSourceColumns[colKey]; ok {
+				if relationAliases == nil {
+					relationAliases = make(map[string]string)
+				}
+				relationAliases[fieldName] = pending.relation
+				if pending.info != nil {
+					pending.info.SourceField = fieldName
+					if pending.info.ForeignKey == "" {
+						pending.info.ForeignKey = pending.info.SourceColumn
+					}
+				}
+				delete(expectedSourceColumns, colKey)
+			}
+		}
+	}
+
+	var aliases map[string]string
+	if len(relationAliases) > 0 {
+		aliases = relationAliases
 	}
 
 	return SchemaMetadata{
-		Name:          t.Name(),
-		Description:   "Schema for " + t.Name(),
-		Required:      required,
-		Properties:    properties,
-		Relationships: relationships,
+		Name:            t.Name(),
+		Description:     "Schema for " + t.Name(),
+		Required:        required,
+		Properties:      properties,
+		Relationships:   relationships,
+		RelationAliases: aliases,
 	}
+}
+
+func parseBunColumn(tag string) string {
+	if tag == "" {
+		return ""
+	}
+
+	end := len(tag)
+	for i, r := range tag {
+		if r == ',' {
+			end = i
+			break
+		}
+		if r == ':' {
+			return ""
+		}
+	}
+
+	if end == 0 {
+		return ""
+	}
+
+	value := strings.TrimSpace(tag[:end])
+	if value == "" || strings.ContainsRune(value, ':') {
+		return ""
+	}
+	return value
+}
+
+func applyCrudRelationDirectives(relInfo *RelationshipInfo, crudTag string) {
+	if relInfo == nil {
+		return
+	}
+
+	crudTag = strings.TrimSpace(crudTag)
+	if crudTag == "" || crudTag == "-" {
+		return
+	}
+
+	parts := strings.Split(crudTag, ",")
+	for _, raw := range parts {
+		directive := strings.TrimSpace(raw)
+		if directive == "" {
+			continue
+		}
+
+		key, value := splitDirective(directive)
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+
+		switch key {
+		case "source_table":
+			if value != "" {
+				relInfo.SourceTable = value
+			}
+		case "target_table":
+			if value != "" {
+				relInfo.TargetTable = value
+			}
+		case "source_column":
+			if value != "" {
+				relInfo.SourceColumn = value
+			}
+		case "target_column":
+			if value != "" {
+				relInfo.TargetColumn = value
+			}
+		case "source_pivot_column":
+			if value != "" {
+				relInfo.SourcePivotColumn = value
+			}
+		case "target_pivot_column":
+			if value != "" {
+				relInfo.TargetPivotColumn = value
+			}
+		case "inverse":
+			relInfo.Inverse = value
+		case "endpoint":
+			hint := ensureEndpointHint(relInfo)
+			hint.URL = value
+		case "method":
+			if value != "" {
+				hint := ensureEndpointHint(relInfo)
+				hint.Method = strings.ToUpper(value)
+			}
+		case "labelField":
+			ensureEndpointHint(relInfo).LabelField = value
+		case "valueField":
+			ensureEndpointHint(relInfo).ValueField = value
+		case "mode":
+			ensureEndpointHint(relInfo).Mode = value
+		case "searchParam":
+			ensureEndpointHint(relInfo).SearchParam = value
+		case "submitAs":
+			ensureEndpointHint(relInfo).SubmitAs = value
+		case "param":
+			if value != "" {
+				hint := ensureEndpointHint(relInfo)
+				hint.Params = addKeyValueDirective(hint.Params, value)
+			}
+		case "dynamicParam":
+			if value != "" {
+				hint := ensureEndpointHint(relInfo)
+				hint.DynamicParams = addKeyValueDirective(hint.DynamicParams, value)
+			}
+		default:
+			// No-op for directives handled elsewhere (e.g., label)
+		}
+	}
+}
+
+func ensureEndpointHint(relInfo *RelationshipInfo) *EndpointHint {
+	if relInfo.Endpoint == nil {
+		relInfo.Endpoint = &EndpointHint{
+			Method: "GET",
+		}
+	} else if relInfo.Endpoint.Method == "" {
+		relInfo.Endpoint.Method = "GET"
+	}
+	return relInfo.Endpoint
+}
+
+func addKeyValueDirective(target map[string]string, directive string) map[string]string {
+	if target == nil {
+		target = make(map[string]string)
+	}
+
+	if directive == "" {
+		return target
+	}
+
+	var (
+		key string
+		val string
+	)
+
+	if kv := strings.SplitN(directive, "=", 2); len(kv) == 2 {
+		key = strings.TrimSpace(kv[0])
+		val = strings.TrimSpace(kv[1])
+	} else if kv := strings.SplitN(directive, ":", 2); len(kv) == 2 {
+		key = strings.TrimSpace(kv[0])
+		val = strings.TrimSpace(kv[1])
+	} else {
+		key = strings.TrimSpace(directive)
+		val = ""
+	}
+
+	if key != "" {
+		target[key] = val
+	}
+
+	return target
 }
 
 func splitByComa(s string) (before, after string) {
@@ -408,10 +645,25 @@ func extractSubAfter(s, prefix string) string {
 }
 
 func getBaseTypeName(t reflect.Type) string {
+	return baseReflectType(t).Name()
+}
+
+func baseReflectType(t reflect.Type) reflect.Type {
 	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 		t = t.Elem()
 	}
-	return t.Name()
+	return t
+}
+
+func isSliceType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Slice, reflect.Array:
+		return true
+	case reflect.Ptr:
+		return isSliceType(t.Elem())
+	default:
+		return false
+	}
 }
 
 // extractPropertyInfoWithPath extracts property info and tracks transformation path

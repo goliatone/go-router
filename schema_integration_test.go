@@ -442,7 +442,7 @@ func TestRealWorldModels(t *testing.T) {
 		}
 
 		for relName, expectedType := range expectedRelationships {
-			if rel, ok := result.Relationships[relName]; ok {
+			if rel, ok := result.Relationships[relName]; ok && rel != nil {
 				if rel.RelationType != expectedType {
 					t.Errorf("Relationship %s: expected type=%s, got %s", relName, expectedType, rel.RelationType)
 				}

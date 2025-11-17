@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.24.0](https://github.com/goliatone/go-router/compare/v0.23.0...v0.24.0) - (2025-11-17)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Http router ws conneciton ([a7ea9de](https://github.com/goliatone/go-router/commit/a7ea9de09f616d42c99d841646040311256dca54))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.24.0 ([1cb5862](https://github.com/goliatone/go-router/commit/1cb5862ca5efb10a0604d535102658ea033625ea))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Auto register the init ([7b81c28](https://github.com/goliatone/go-router/commit/7b81c28dae5df6878ed3356fe85e50f75aad5ec0))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.23.0 ([3187944](https://github.com/goliatone/go-router/commit/318794446852a88939215501db8cad33e6302673))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update examples ([9b682bd](https://github.com/goliatone/go-router/commit/9b682bdbf91bca83c9732053e8753ce83bbb60b2))  - (goliatone)
+- Update tests ([2240ed0](https://github.com/goliatone/go-router/commit/2240ed06ddf830f8b012f94a95ad9b642ed92504))  - (goliatone)
+
 # [0.23.0](https://github.com/goliatone/go-router/compare/v0.22.0...v0.23.0) - (2025-11-03)
 
 ## <!-- 13 -->📦 Bumps

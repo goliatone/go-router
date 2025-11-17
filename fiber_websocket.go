@@ -425,8 +425,16 @@ func (f *FiberWebSocketFactory) AdapterName() string {
 
 // RegisterFiberWebSocketFactory registers the Fiber WebSocket factory globally
 func RegisterFiberWebSocketFactory(logger Logger) {
+	if logger == nil {
+		logger = &defaultLogger{}
+	}
 	factory := NewFiberWebSocketFactory(logger)
 	RegisterWebSocketFactory("fiber", factory)
+}
+
+func init() {
+	// Ensure Fiber adapters have a WebSocket factory available without manual registration.
+	RegisterFiberWebSocketFactory(nil)
 }
 
 // FiberWebSocketHandler creates a Fiber-specific WebSocket handler using contrib/websocket

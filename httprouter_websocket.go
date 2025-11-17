@@ -507,15 +507,11 @@ func validateHTTPOrigin(r *http.Request, allowedOrigins []string) bool {
 }
 
 // HTTPRouterWebSocketFactory implements WebSocketContextFactory for HTTPRouter
-type HTTPRouterWebSocketFactory struct {
-	views Views
-}
+type HTTPRouterWebSocketFactory struct{}
 
 // NewHTTPRouterWebSocketFactory creates a new HTTPRouter WebSocket factory
-func NewHTTPRouterWebSocketFactory(views Views) *HTTPRouterWebSocketFactory {
-	return &HTTPRouterWebSocketFactory{
-		views: views,
-	}
+func NewHTTPRouterWebSocketFactory(_ Views) *HTTPRouterWebSocketFactory {
+	return &HTTPRouterWebSocketFactory{}
 }
 
 // CreateWebSocketContext creates an HTTPRouter-specific WebSocket context
@@ -526,8 +522,8 @@ func (f *HTTPRouterWebSocketFactory) CreateWebSocketContext(c Context, config We
 		return nil, fmt.Errorf("expected httpRouterContext, got %T", c)
 	}
 
-	// Create WebSocket context
-	wsCtx, err := NewHTTPRouterWebSocketContext(httpCtx.w, httpCtx.r, httpCtx.params, config, f.views)
+	// Create WebSocket context using the views already attached to the HTTP context
+	wsCtx, err := NewHTTPRouterWebSocketContext(httpCtx.w, httpCtx.r, httpCtx.params, config, httpCtx.views)
 	if err != nil {
 		return nil, err
 	}
@@ -554,6 +550,11 @@ func (f *HTTPRouterWebSocketFactory) AdapterName() string {
 func RegisterHTTPRouterWebSocketFactory(views Views) {
 	factory := NewHTTPRouterWebSocketFactory(views)
 	RegisterWebSocketFactory("httprouter", factory)
+}
+
+func init() {
+	// Ensure the HTTPRouter factory is always available so middleware-based upgrades work out of the box.
+	RegisterHTTPRouterWebSocketFactory(nil)
 }
 
 // HTTPRouterWebSocketHandler creates an HTTPRouter-specific WebSocket handler

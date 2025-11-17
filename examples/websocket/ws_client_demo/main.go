@@ -463,16 +463,6 @@ func main() {
 }
 
 func setupWebSocketRoutes[T any](app router.Server[T], wsServer *WebSocketServer) {
-	// Register appropriate WebSocket factory
-	switch app := any(app).(type) {
-	case *router.FiberAdapter:
-		router.RegisterFiberWebSocketFactory(wsServer.logger)
-	case *router.HTTPServer:
-		router.RegisterHTTPRouterWebSocketFactory(nil)
-	default:
-		log.Printf("Unknown adapter type: %T", app)
-	}
-
 	// WebSocket configuration using OnPreUpgrade hook
 	config := router.WebSocketConfig{
 		Origins: []string{"*"},

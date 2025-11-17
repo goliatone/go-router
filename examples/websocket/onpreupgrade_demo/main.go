@@ -2,29 +2,16 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/goliatone/go-router"
 )
-
-// Simple logger implementation
-type defaultLogger struct{}
-
-func (l *defaultLogger) Info(msg string, args ...any)  { log.Printf("[INFO] %s %v", msg, args) }
-func (l *defaultLogger) Error(msg string, args ...any) { log.Printf("[ERROR] %s %v", msg, args) }
-func (l *defaultLogger) Debug(msg string, args ...any) { log.Printf("[DEBUG] %s %v", msg, args) }
-func (l *defaultLogger) Warn(msg string, args ...any)  { log.Printf("[WARN] %s %v", msg, args) }
 
 func main() {
 	fmt.Println("🚀 OnPreUpgrade Hook Demo")
 
 	// Create a Fiber application
 	app := router.NewFiberAdapter()
-
-	// Register the WebSocket factory
-	logger := &defaultLogger{}
-	router.RegisterFiberWebSocketFactory(logger)
 
 	// WebSocket configuration with OnPreUpgrade hook
 	config := router.WebSocketConfig{

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goliatone/go-router"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )
@@ -342,6 +343,69 @@ func TestConcurrentWebSocketConnections(t *testing.T) {
 	// Verify concurrent connections
 	if maxConn < 2 {
 		t.Error("Should have had multiple concurrent connections")
+	}
+}
+
+// TestHTTPRouterWebSocketMiddlewareIntegration ensures middleware-based upgrades succeed.
+func TestHTTPRouterWebSocketMiddlewareIntegration(t *testing.T) {
+	app := router.NewHTTPServer().(*router.HTTPServer)
+
+	config := router.DefaultWebSocketConfig()
+	config.Origins = []string{"*"}
+
+	messageCh := make(chan string, 1)
+
+	app.Router().Get("/ws/middleware", func(ctx router.Context) error {
+		wsCtx, ok := ctx.(router.WebSocketContext)
+		if !ok {
+			return fmt.Errorf("context did not upgrade to websocket")
+		}
+
+		msgType, data, err := wsCtx.ReadMessage()
+		if err != nil {
+			return err
+		}
+
+		select {
+		case messageCh <- string(data):
+		default:
+		}
+
+		return wsCtx.WriteMessage(msgType, data)
+	}, router.WebSocketUpgrade(config))
+
+	server := httptest.NewServer(app.WrappedRouter())
+	defer server.Close()
+
+	wsURL := strings.Replace(server.URL, "http", "ws", 1) + "/ws/middleware"
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect via middleware route: %v", err)
+	}
+	defer conn.Close()
+
+	payload := "middleware-regression"
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(payload)); err != nil {
+		t.Fatalf("Failed to write message: %v", err)
+	}
+
+	_, response, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("Failed to read echoed message: %v", err)
+	}
+
+	if string(response) != payload {
+		t.Fatalf("Expected echoed payload %q, got %q", payload, string(response))
+	}
+
+	select {
+	case received := <-messageCh:
+		if received != payload {
+			t.Fatalf("Handler saw %q, expected %q", received, payload)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Handler never received payload through middleware route")
 	}
 }
 

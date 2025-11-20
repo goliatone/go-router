@@ -194,6 +194,8 @@ func RegisterWSHandlers[T any](app Router[T], cfgs ...WSClientHandlerConfig) {
 		app.Get("/client/client.js.map", WebsocketClientMinMapHandler())
 	} else {
 		app.Get("/client/client.js", WebSocketClientHandler(false))
+		// Serve source map even when using the non-minified build to keep devtools quiet
+		app.Get("/client/client.js.map", WebsocketClientMinMapHandler())
 	}
 
 	app.Get("/client/client.d.ts", WSClientTypesHandler())

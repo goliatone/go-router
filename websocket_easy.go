@@ -16,7 +16,6 @@ import (
 func NewWSHandler(handler func(context.Context, WSClient) error) func(Context) error {
 	hub := NewWSHub()
 
-	// Set up the connection handler
 	hub.OnConnect(func(ctx context.Context, client WSClient, _ any) error {
 		return handler(ctx, client)
 	})

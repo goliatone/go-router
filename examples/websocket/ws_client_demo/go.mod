@@ -25,7 +25,7 @@ require (
 	github.com/gofiber/template/django/v3 v3.1.13 // indirect
 	github.com/gofiber/utils v1.1.0 // indirect
 	github.com/goliatone/go-composite-fs v0.0.1 // indirect
-	github.com/goliatone/go-errors v0.5.2 // indirect
+	github.com/goliatone/go-errors v0.9.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect

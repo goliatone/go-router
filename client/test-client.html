@@ -148,9 +148,6 @@
             <input type="text" id="serverUrl" value="ws://localhost:3000/ws" placeholder="WebSocket URL">
             <select id="tokenSelect">
                 <option value="">Select Demo Token</option>
-                <option value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWRtaW4tMDAxIiwidXNlcm5hbWUiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc1NzU3MzQ0NCwiaWF0IjoxNzU3NDg3MDQ0fQ.VrkukIvZfJkBYKAEdGwxdTLJMndGGqF4oGYSwBTbdfA">Admin</option>
-                <option value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoidXNlci0wMDEiLCJ1c2VybmFtZSI6ImpvaG5fZG9lIiwicm9sZSI6InVzZXIiLCJleHAiOjE3NTc1NzM0NDQsImlhdCI6MTc1NzQ4NzA0NH0.4bRLMbQ7T9jYCAwqCG-NugWHAo77aQl2kcY2HIL_Y-4">User</option>
-                <option value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoibW9kLTAwMSIsInVzZXJuYW1lIjoiamFuZV9zbWl0aCIsInJvbGUiOiJtb2RlcmF0b3IiLCJleHAiOjE3NTc1NzM0NDQsImlhdCI6MTc1NzQ4NzA0NH0.r5DsawnXUA4zuSVzrOGwk32zr0OqaqZhVlBq7vPYNAE">Moderator</option>
             </select>
             <button onclick="connect()">Connect</button>
             <button onclick="disconnect()">Disconnect</button>
@@ -227,13 +224,36 @@
         </div>
     </div>
 
-    <!-- Load the WebSocket Client Library -->
-    <script src="client.js"></script>
+    <!-- Load the WebSocket Client Library (minified build registered by the server) -->
+    <script src="/client/client.min.js"></script>
 
     <script>
         let client = null;
         let logEntries = [];
         let metricsInterval = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTokens();
+        });
+
+        async function loadTokens() {
+            const select = document.getElementById('tokenSelect');
+            // Clear existing (leave placeholder)
+            select.innerHTML = '<option value=\"\">Select Demo Token</option>';
+            try {
+                const res = await fetch('/api/tokens');
+                if (!res.ok) throw new Error('Failed to fetch tokens');
+                const { tokens } = await res.json();
+                Object.entries(tokens).forEach(([label, value]) => {
+                    const opt = document.createElement('option');
+                    opt.value = value;
+                    opt.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                log('error', 'Could not load demo tokens: ' + err.message);
+            }
+        }
 
         function log(level, message, data = null) {
             const timestamp = new Date().toLocaleTimeString();

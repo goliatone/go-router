@@ -25,6 +25,7 @@ type httpRouterWebSocketContext struct {
 	pingHandler    func(appData string) error
 	pongHandler    func(appData string) error
 	messageHandler func(messageType int, data []byte) error
+	upgradeData    UpgradeData
 }
 
 // Ensure httpRouterWebSocketContext implements WebSocketContext
@@ -454,9 +455,12 @@ func (c *httpRouterWebSocketContext) ConnectionID() string {
 }
 
 // UpgradeData returns pre-upgrade data, if available
-// Direct adapter contexts don't have upgrade data - use the WebSocket middleware for that
 func (c *httpRouterWebSocketContext) UpgradeData(key string) (any, bool) {
-	return nil, false
+	if c.upgradeData == nil {
+		return nil, false
+	}
+	val, ok := c.upgradeData[key]
+	return val, ok
 }
 
 // RouteName returns the route name from context
@@ -559,6 +563,9 @@ func init() {
 
 // HTTPRouterWebSocketHandler creates an HTTPRouter-specific WebSocket handler
 func HTTPRouterWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext) error, views Views) httprouter.Handle {
+	// Apply defaults to config
+	config.ApplyDefaults()
+
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		// Check if it's a WebSocket request
 		if r.Header.Get("Upgrade") != "websocket" {
@@ -573,10 +580,30 @@ func HTTPRouterWebSocketHandler(config WebSocketConfig, handler func(WebSocketCo
 			return
 		}
 
+		// Handle OnPreUpgrade if configured
+		if config.OnPreUpgrade != nil {
+			data, err := config.OnPreUpgrade(wsCtx)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			wsCtx.upgradeData = data
+		}
+
 		// Perform the upgrade
 		if err := wsCtx.WebSocketUpgrade(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+
+		// Call OnConnect if configured
+		if config.OnConnect != nil {
+			if err := config.OnConnect(wsCtx); err != nil {
+				// Log error (connection already upgraded, can't send HTTP error)
+				fmt.Printf("OnConnect handler error: %v\n", err)
+				wsCtx.Close()
+				return
+			}
 		}
 
 		// Call the handler

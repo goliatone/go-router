@@ -22,6 +22,7 @@ type fiberWebSocketContext struct {
 	pingHandler    func(data []byte) error
 	pongHandler    func(data []byte) error
 	messageHandler func(messageType int, data []byte) error
+	upgradeData    UpgradeData
 }
 
 // Ensure fiberWebSocketContext implements WebSocketContext
@@ -372,9 +373,12 @@ func (c *fiberWebSocketContext) ConnectionID() string {
 }
 
 // UpgradeData returns pre-upgrade data, if available
-// Direct adapter contexts don't have upgrade data - use the WebSocket middleware for that
 func (c *fiberWebSocketContext) UpgradeData(key string) (any, bool) {
-	return nil, false
+	if c.upgradeData == nil {
+		return nil, false
+	}
+	val, ok := c.upgradeData[key]
+	return val, ok
 }
 
 // FiberWebSocketFactory implements WebSocketContextFactory for Fiber
@@ -444,6 +448,21 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 
 	// Return a wrapper function that delegates to WebSocket
 	return func(c *fiber.Ctx) error {
+		// 1. Handle OnPreUpgrade if configured
+		var upgradeData UpgradeData
+		if config.OnPreUpgrade != nil {
+			// Create a temporary context for the hook
+			logger := &defaultLogger{}
+			ctx := NewFiberContext(c, logger)
+
+			// Execute the hook
+			var err error
+			upgradeData, err = config.OnPreUpgrade(ctx)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+			}
+		}
+
 		// Create websocket upgrader config
 		wsConfig := websocket.Config{
 			ReadBufferSize:  config.ReadBufferSize,
@@ -465,7 +484,7 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 		}
 
 		// Create WebSocket handler with access to upgradeData via closure
-		wsHandler := createFiberWSHandler(config, handler, nil)
+		wsHandler := createFiberWSHandler(config, handler, upgradeData)
 
 		// Execute the WebSocket handler
 		return wsHandler(c)
@@ -509,13 +528,13 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 				isUpgraded:    true,
 				connectionID:  fmt.Sprintf("fiber-ws-%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano()),
 				closeHandlers: make([]func(code int, text string) error, 0),
+				upgradeData:   upgradeData,
 			}
 
-			// Create enhanced WebSocket context
-			wsCtx := &enhancedWebSocketContext{
-				WebSocketContext: baseWsCtx,
-				upgradeData:      nil, // Upgrade data is handled by middleware
-			}
+			// Create enhanced WebSocket context (legacy support, or if we want to keep the wrapper)
+			// Since we added upgradeData to fiberWebSocketContext, we can use it directly.
+			// But for compatibility with existing code that might check for enhancedWebSocketContext (unlikely but possible),
+			// we will just use baseWsCtx as it implements WebSocketContext.
 
 			if config.MaxMessageSize > 0 {
 				conn.SetReadLimit(config.MaxMessageSize)
@@ -565,8 +584,17 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 			// Store negotiated subprotocol
 			baseWsCtx.subprotocol = conn.Subprotocol()
 
+			// Call OnConnect if configured (NOW handled here since we bypassed middleware)
+			if config.OnConnect != nil {
+				if err := config.OnConnect(baseWsCtx); err != nil {
+					logger.Info("OnConnect handler error", "error", err)
+					conn.Close()
+					return
+				}
+			}
+
 			// Call the main handler
-			if err := handler(wsCtx); err != nil {
+			if err := handler(baseWsCtx); err != nil {
 				logger.Info("WebSocket handler error", "error", err)
 			}
 		}, wsConfig)

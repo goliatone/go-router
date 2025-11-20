@@ -552,7 +552,8 @@ func setupWebSocketRoutes[T any](app router.Server[T], wsServer *WebSocketServer
 
 func setupClientRoutes[T any](app router.Server[T], wsServer *WebSocketServer, adminToken, userToken, moderatorToken string) {
 	router.RegisterWSHandlers(app.Router(), router.WSClientHandlerConfig{
-		Debug: true,
+		Debug:    true,
+		Minified: true,
 	})
 
 	// If you want to register all WebSocket client routes manually:
@@ -571,6 +572,12 @@ func setupClientRoutes[T any](app router.Server[T], wsServer *WebSocketServer, a
 		html := createIndexHTML()
 		c.SetHeader("Content-Type", "text/html; charset=utf-8")
 		return c.Status(200).Send([]byte(html))
+	})
+
+	// Serve a small placeholder favicon to avoid 404 noise in browsers
+	app.Router().Get("/favicon.ico", func(c router.Context) error {
+		c.SetHeader("Content-Type", "image/x-icon")
+		return c.Status(204).Send(nil)
 	})
 
 	// API endpoint to get current connected users
@@ -595,6 +602,11 @@ func setupClientRoutes[T any](app router.Server[T], wsServer *WebSocketServer, a
 
 	// API endpoint to get demo tokens
 	app.Router().Get("/api/tokens", func(c router.Context) error {
+		// Mint fresh demo tokens on each request so they don't expire during long-running sessions
+		adminToken, _ := wsServer.authenticator.CreateToken("admin-001", "admin", "admin")
+		userToken, _ := wsServer.authenticator.CreateToken("user-001", "john_doe", "user")
+		moderatorToken, _ := wsServer.authenticator.CreateToken("mod-001", "jane_smith", "moderator")
+
 		return c.JSON(200, map[string]any{
 			"tokens": map[string]string{
 				"admin":     adminToken,
@@ -602,6 +614,12 @@ func setupClientRoutes[T any](app router.Server[T], wsServer *WebSocketServer, a
 				"moderator": moderatorToken,
 			},
 		})
+	})
+
+	// Quiet service worker lookups from the test page
+	app.Router().Get("/sw.js", func(c router.Context) error {
+		c.SetHeader("Content-Type", "application/javascript")
+		return c.Status(200).SendString("// no-op service worker for demo\n")
 	})
 
 	wsServer.logger.Info("Client routes configured with embedded WebSocket client library")

@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.25.0](https://github.com/goliatone/go-router/compare/v0.24.0...v0.25.0) - (2025-11-20)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Pull tokens from API ([ad5ef66](https://github.com/goliatone/go-router/commit/ad5ef66e42c50c5999105ce43abc234d09ee75b3))  - (goliatone)
+- Fiber handle WS connect data ([dbbda7d](https://github.com/goliatone/go-router/commit/dbbda7d9ff45fbc860e653a156ea73e3322c5a58))  - (goliatone)
+- Httprouter handle WS connect data ([3efab91](https://github.com/goliatone/go-router/commit/3efab91a832c80964a6f62d78248f3c220768a01))  - (goliatone)
+- Serve client js map ([f4af371](https://github.com/goliatone/go-router/commit/f4af37169f38793640df0621666a937f5f348cd0))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.25.0 ([e0caa3f](https://github.com/goliatone/go-router/commit/e0caa3f93b8475d8f6d9b02ab8b1d56d82731222))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.24.0 ([c9494dd](https://github.com/goliatone/go-router/commit/c9494dd6df1279256c9db94c528e7bc4d3fa702a))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update examples ([75d8161](https://github.com/goliatone/go-router/commit/75d8161c33e07a1b5e6659c5a2a7fa7d9d00db2d))  - (goliatone)
+- Update tests ([0e85a1c](https://github.com/goliatone/go-router/commit/0e85a1cb44c78cdb8e4dce8bd35734b08eac1c7c))  - (goliatone)
+
 # [0.24.0](https://github.com/goliatone/go-router/compare/v0.23.0...v0.24.0) - (2025-11-17)
 
 ## <!-- 1 -->🐛 Bug Fixes

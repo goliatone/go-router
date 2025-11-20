@@ -326,3 +326,91 @@ func BenchmarkUnifiedWebSocketRegistration(b *testing.B) {
 		}
 	}
 }
+
+// TestOnPreUpgradeAndConnectFlow tests that the full authentication flow works
+// correctly with the unified WebSocket interface (httprouter adapter)
+func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
+	app := router.NewHTTPServer()
+
+	config := router.DefaultWebSocketConfig()
+	config.Origins = []string{"*"}
+
+	var onPreUpgradeCalled bool
+	var onConnectCalled bool
+	var tokenSeen string
+
+	// 1. Set up OnPreUpgrade hook
+	config.OnPreUpgrade = func(c router.Context) (router.UpgradeData, error) {
+		onPreUpgradeCalled = true
+
+		// Extract token from query
+		token := c.Query("token")
+		if token == "" {
+			return nil, fmt.Errorf("missing token")
+		}
+
+		return router.UpgradeData{
+			"token": token,
+			"user":  "testuser",
+		}, nil
+	}
+
+	// 2. Set up OnConnect hook
+	config.OnConnect = func(ws router.WebSocketContext) error {
+		onConnectCalled = true
+
+		// Verify UpgradeData is accessible
+		if val, ok := ws.UpgradeData("token"); ok {
+			tokenSeen = val.(string)
+		}
+
+		// Also check helper
+		user := router.GetUpgradeDataWithDefault(ws, "user", "unknown").(string)
+		if user != "testuser" {
+			return fmt.Errorf("wrong user: %s", user)
+		}
+
+		return nil
+	}
+
+	// 3. Define handler
+	handler := func(ws router.WebSocketContext) error {
+		// Echo
+		for {
+			mt, msg, err := ws.ReadMessage()
+			if err != nil {
+				break
+			}
+			if err := ws.WriteMessage(mt, msg); err != nil {
+				break
+			}
+		}
+		return nil
+	}
+
+	// 4. Register route
+	app.Router().WebSocket("/ws-auth", config, handler)
+
+	// 5. Start server
+	server := httptest.NewServer(app.WrappedRouter())
+	defer server.Close()
+
+	// 6. Connect with valid token
+	wsURL := strings.Replace(server.URL, "http://", "ws://", 1) + "/ws-auth?token=secret123"
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	defer ws.Close()
+
+	// 7. Verify hooks were called
+	assert.True(t, onPreUpgradeCalled, "OnPreUpgrade should have been called")
+	assert.True(t, onConnectCalled, "OnConnect should have been called")
+	assert.Equal(t, "secret123", tokenSeen, "Token should have been passed to OnConnect")
+
+	// 8. Verify communication
+	err = ws.WriteMessage(websocket.TextMessage, []byte("ping"))
+	require.NoError(t, err)
+
+	_, msg, err := ws.ReadMessage()
+	require.NoError(t, err)
+	assert.Equal(t, "ping", string(msg))
+}

@@ -1,6 +1,7 @@
 module ws-auth-example
 
-go 1.23.4
+go 1.23
+toolchain go1.23.4
 
 replace github.com/goliatone/go-router => ../../..
 

@@ -22,6 +22,11 @@ PATH=$(pwd)/node_modules/.bin:$PATH
 # This will make all scripts available in the ./src/bin directory
 PATH=$(pwd)/src/bin:$PATH
 
+# Default Go toolchain to use for module-aware commands.
+# Override with GO_TOOLCHAIN in your shell if you want a different patch.
+GO_TOOLCHAIN=${GO_TOOLCHAIN:-go1.23.4}
+GO_CMD="GOTOOLCHAIN=${GO_TOOLCHAIN} go"
+
 
 #################################################
 # Development dependencies
@@ -91,6 +96,30 @@ function dev:env:load {
 
 function dev:test {
     lgr exec -- go test -v ./...
+}
+
+##########################################
+# Go helpers (toolchain-pinned)
+##########################################
+
+function go:tidy {
+    eval "${GO_CMD} mod tidy"
+}
+
+function go:test {
+    eval "${GO_CMD} test -v ./..."
+}
+
+function go:race {
+    eval "${GO_CMD} test -race -v ./..."
+}
+
+function go:vet {
+    eval "${GO_CMD} vet ./..."
+}
+
+function go:fmt {
+    gofmt -s -w .
 }
 
 ##

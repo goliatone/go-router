@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.26.0](https://github.com/goliatone/go-router/compare/v0.25.0...v0.26.0) - (2025-12-04)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Setup tasks to handle go toolchain sillyness ([ee44277](https://github.com/goliatone/go-router/commit/ee44277bd9d6439fef106110de0bf1c9c389d89c))  - (goliatone)
+- Build process ([90f30e3](https://github.com/goliatone/go-router/commit/90f30e3a21f6f9d11913b710226deb30d0d82048))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.26.0 ([3a783f9](https://github.com/goliatone/go-router/commit/3a783f9def2196e3e3b6aa67bbb44090ad7530f5))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Default fiber error handler implementation ([7ab7779](https://github.com/goliatone/go-router/commit/7ab7779b4f85c0e28e2d98fea5430da8fdbe172d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.25.0 ([16699f1](https://github.com/goliatone/go-router/commit/16699f1a449cab16a293be128be57f0c20aec04f))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([849d76e](https://github.com/goliatone/go-router/commit/849d76e4c640ac039d2236c759a9dc17f543bba4))  - (goliatone)
+
 # [0.25.0](https://github.com/goliatone/go-router/compare/v0.24.0...v0.25.0) - (2025-11-20)
 
 ## <!-- 1 -->🐛 Bug Fixes

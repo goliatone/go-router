@@ -14,7 +14,6 @@ import (
 )
 
 type FiberAdapter struct {
-	// BaseAdapter
 	mu          sync.Mutex
 	app         *fiber.App
 	initialized bool
@@ -28,6 +27,7 @@ func newFiberInstance() *fiber.App {
 		EnablePrintRoutes: true,
 		StrictRouting:     false,
 		PassLocalsToViews: true,
+		ErrorHandler:      DefaultFiberErrorHandler(DefaultFiberErrorHandlerConfig()),
 	})
 }
 

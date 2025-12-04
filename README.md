@@ -444,7 +444,7 @@ func main() {
 ```
 This will render `<link href="/css/main-a1b2c3d4.css">` in the final HTML, which is served by `app.Static`.
 
-### Pro-Tip: Generating Configuration
+### Pro Tip: Generating Configuration
 
 Manually implementing the `ViewConfigProvider` interface for every project can be repetitive. You can accelerate this process by defining your configuration in a JSON or YAML file and using the **[go-generators](https://github.com/goliatone/go-generators?tab=readme-ov-file#app-config)** tool to automatically generate the required Go struct and methods.
 
@@ -526,7 +526,7 @@ app.Router().Get("/ws", router.NewWSHandler(func(ctx context.Context, client rou
 
 ### Features
 
-- **Event-driven architecture** with connect/disconnect/message handlers
+- **Event driven architecture** with connect/disconnect/message handlers
 - **Room management** with join/leave and targeted broadcasting
 - **Middleware system** including authentication, logging, metrics, rate limiting, and panic recovery
 - **Context support** throughout the API for cancellation and request scoped data
@@ -1009,7 +1009,7 @@ components:
 
 - Downstream packages (e.g., `go-crud`, `go-formgen`) can read the extension to drive include UIs, validation, and filter builders without duplicating repository logic.
 
-### Property-Level Relationship Metadata (`x-relationships`, `x-endpoint`)
+### Property Level Relationship Metadata (`x-relationships`, `x-endpoint`)
 
 - Relation fields live in `SchemaMetadata.Properties`, and `SchemaMetadata.RelationAliases` ties scalar foreign keys (for example `author_id`) to their richer object counterparts (`author`).
 - During OpenAPI generation the aggregator emits `x-relationships` and `x-endpoint` blocks for both representations, so UI builders understand cardinality, schema targets, and where to fetch options.
@@ -1107,4 +1107,4 @@ For complete examples and advanced usage patterns, see the test files in the rep
 
 ## License
 
-MIT
+MIT Goliatone

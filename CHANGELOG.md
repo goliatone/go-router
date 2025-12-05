@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.27.0](https://github.com/goliatone/go-router/compare/v0.26.0...v0.27.0) - (2025-12-05)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Implement path normalization in view init ([616d59b](https://github.com/goliatone/go-router/commit/616d59b1dc95d0051ce610222b068e5ab5e2cfb3))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.27.0 ([7acf86a](https://github.com/goliatone/go-router/commit/7acf86a7d54d82d1111279363b16a940580036fb))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.26.0 ([f8387d3](https://github.com/goliatone/go-router/commit/f8387d3f93210267209eef46abbc053ec6378dd8))  - (goliatone)
+
 # [0.26.0](https://github.com/goliatone/go-router/compare/v0.25.0...v0.26.0) - (2025-12-04)
 
 ## <!-- 1 -->🐛 Bug Fixes

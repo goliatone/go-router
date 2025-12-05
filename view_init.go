@@ -49,6 +49,7 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 		return nil, fmt.Errorf("view engine config validation failed: %w", err)
 	}
 
+	ext := strings.TrimSpace(cfg.GetExt())
 	lgr := getLogger(lgrs...)
 	lgr.Debug("Initializing view engine...")
 
@@ -86,6 +87,11 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 		}
 		finalTemplateFS = subFS
 
+		// Wrap with extension-aware fallback for embedded loaders.
+		finalTemplateFS = fallbackFS{
+			fsys: finalTemplateFS,
+			ext:  ext,
+		}
 	} else {
 		// --- LIVE MODE LOGIC ---
 		lgr.Debug("Running in Live (Non-Embedded) Mode")
@@ -103,10 +109,10 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 		engine = django.NewPathForwardingFileSystem(
 			http.FS(finalTemplateFS),
 			".", // embedded filesystems expect clean root
-			cfg.GetExt(),
+			ext,
 		)
 	} else {
-		engine = django.New(cfg.GetDirOS(), cfg.GetExt())
+		engine = django.New(cfg.GetDirOS(), ext)
 	}
 
 	pongo2.DefaultSet.Options.TrimBlocks = true
@@ -244,6 +250,54 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 	d.AddFunc("either", eitherCmp)
 
 	return viewEngine, nil
+}
+
+type fallbackFS struct {
+	fsys fs.FS
+	ext  string
+}
+
+func (f fallbackFS) Open(name string) (fs.File, error) {
+	clean := cleanTemplatePath(name)
+
+	file, err := f.fsys.Open(clean)
+	if err == nil || f.ext == "" || !errors.Is(err, fs.ErrNotExist) {
+		return file, err
+	}
+
+	if strings.HasSuffix(clean, f.ext) {
+		altName := strings.TrimSuffix(clean, f.ext)
+		if altName == "" {
+			altName = "."
+		}
+		if alt, altErr := f.fsys.Open(altName); altErr == nil {
+			return alt, nil
+		}
+	} else {
+		if alt, altErr := f.fsys.Open(clean + f.ext); altErr == nil {
+			return alt, nil
+		}
+	}
+
+	return file, err
+}
+
+func (f fallbackFS) Stat(name string) (fs.FileInfo, error) {
+	clean := cleanTemplatePath(name)
+
+	if sfs, ok := f.fsys.(fs.StatFS); ok {
+		return sfs.Stat(clean)
+	}
+	return fs.Stat(f.fsys, clean)
+}
+
+func (f fallbackFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	clean := cleanTemplatePath(name)
+
+	if rdfs, ok := f.fsys.(fs.ReadDirFS); ok {
+		return rdfs.ReadDir(clean)
+	}
+	return fs.ReadDir(f.fsys, clean)
 }
 
 // autoSubFS is a key helper function. It inspects an fs.FS to find a
@@ -399,6 +453,13 @@ func conditionalStr(arg any, ok, ko string) string {
 func ValidateConfig(cfg ViewConfigProvider) error {
 	var errors []string
 
+	ext := strings.TrimSpace(cfg.GetExt())
+	if ext == "" {
+		errors = append(errors, "Template extension cannot be empty")
+	} else if !strings.HasPrefix(ext, ".") {
+		errors = append(errors, fmt.Sprintf("Template extension must start with '.': %s", cfg.GetExt()))
+	}
+
 	if cfg.GetEmbed() {
 		if strings.HasPrefix(cfg.GetCSSPath(), "/") {
 			errors = append(errors, "CSS path should not start with '/' when embed is true")
@@ -449,6 +510,22 @@ func NormalizePath(path string) string {
 
 	if path == "." {
 		return ""
+	}
+	return path
+}
+
+func cleanTemplatePath(path string) string {
+	if path == "" {
+		return "."
+	}
+
+	path = filepath.ToSlash(path)
+	path = strings.TrimPrefix(path, "/")
+	path = strings.TrimPrefix(path, "./")
+	path = ppath.Clean(path)
+
+	if path == "" {
+		return "."
 	}
 	return path
 }

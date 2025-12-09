@@ -42,6 +42,28 @@ func main() {
     // Start server
     app.Serve(":3000")
 }
+
+### Controlling view/locals merge
+
+When `PassLocalsToViews` is enabled, go-router merges handler locals into the view bind. By default the view bind wins on key collisions and a warning is logged. You can override this with a custom strategy:
+
+```go
+app := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
+    MergeStrategy: func(key string, viewVal, localVal any, logger router.Logger) (any, bool) {
+        return localVal, true // prefer locals for this app
+    },
+})
+```
+
+Plain Fiber handlers can reuse the merge logic without a go-router context:
+
+```go
+merged, err := router.MergeLocalsWithViewData(c, myLogger, nil, router.ViewContext{"status": 404})
+if err != nil {
+    return err
+}
+return c.Render("error", merged)
+```
 ```
 
 ### Route Groups

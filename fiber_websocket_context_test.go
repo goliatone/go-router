@@ -94,3 +94,21 @@ func TestFiberWebSocketContextSetContextAfterUpgrade(t *testing.T) {
 		t.Fatalf("expected stored context to be returned after upgrade")
 	}
 }
+
+// Ensures fiberContext.Context() gracefully falls back when the underlying fiber
+// context is absent or nil (e.g., after hijack).
+func TestFiberContextContextFallback(t *testing.T) {
+	fc := &fiberContext{}
+
+	if got := fc.Context(); got == nil {
+		t.Fatal("expected background context when none set")
+	}
+
+	expected := context.WithValue(context.Background(), "key", "value")
+	fc.SetContext(expected)
+
+	// Simulate post-hijack by leaving fc.ctx nil; should return cached context.
+	if got := fc.Context(); got != expected {
+		t.Fatalf("expected cached context after hijack-safe fallback")
+	}
+}

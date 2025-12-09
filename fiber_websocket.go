@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type fiberWebSocketContext struct {
 	pongHandler    func(data []byte) error
 	messageHandler func(messageType int, data []byte) error
 	upgradeData    UpgradeData
+	userCtx        context.Context
 }
 
 // Ensure fiberWebSocketContext implements WebSocketContext
@@ -41,6 +43,7 @@ func NewFiberWebSocketContext(c *fiber.Ctx, config WebSocketConfig, logger Logge
 		config:        config,
 		connectionID:  connID,
 		closeHandlers: make([]func(code int, text string) error, 0),
+		userCtx:       baseCtx.Context(),
 	}, nil
 }
 
@@ -49,6 +52,41 @@ func (c *fiberWebSocketContext) IsWebSocket() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.isUpgraded
+}
+
+// Context returns a safe per-connection context even after the fasthttp
+// request context has been hijacked by the websocket upgrader.
+func (c *fiberWebSocketContext) Context() context.Context {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.isUpgraded {
+		if c.userCtx != nil {
+			return c.userCtx
+		}
+		return context.Background()
+	}
+
+	return c.fiberContext.Context()
+}
+
+// SetContext stores user context without touching the hijacked fasthttp
+// RequestCtx after the websocket upgrade.
+func (c *fiberWebSocketContext) SetContext(ctx context.Context) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if c.isUpgraded {
+		c.userCtx = ctx
+		return
+	}
+
+	c.fiberContext.SetContext(ctx)
+	c.userCtx = ctx
 }
 
 // WebSocketUpgrade upgrades the HTTP connection to WebSocket
@@ -529,6 +567,7 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 				connectionID:  fmt.Sprintf("fiber-ws-%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano()),
 				closeHandlers: make([]func(code int, text string) error, 0),
 				upgradeData:   upgradeData,
+				userCtx:       capturedFiberCtx.Context(),
 			}
 
 			// Create enhanced WebSocket context (legacy support, or if we want to keep the wrapper)

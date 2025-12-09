@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.28.0](https://github.com/goliatone/go-router/compare/v0.27.0...v0.28.0) - (2025-12-09)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.28.0 ([be7cd3d](https://github.com/goliatone/go-router/commit/be7cd3d0dad6ccd576a93fb9b27f7ed171f61fb9))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- MergeStrategy for fiber config ([87bbb28](https://github.com/goliatone/go-router/commit/87bbb288e59123ffb842376957f0c63e6c9eac07))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.27.0 ([da38c31](https://github.com/goliatone/go-router/commit/da38c31e08f103fcfd9689514da806245cfce33c))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([942abfc](https://github.com/goliatone/go-router/commit/942abfc0762312ea299d873bd472581dfef27563))  - (goliatone)
+- Update readme ([9e0e1ab](https://github.com/goliatone/go-router/commit/9e0e1ab99781ac4ffa87760fd7fbaed0ed670423))  - (goliatone)
+
 # [0.27.0](https://github.com/goliatone/go-router/compare/v0.26.0...v0.27.0) - (2025-12-05)
 
 ## <!-- 1 -->🐛 Bug Fixes

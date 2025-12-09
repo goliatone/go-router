@@ -553,9 +553,17 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 
 	// Return a handler that captures the fiber context during upgrade
 	return func(c *fiber.Ctx) error {
+		// Capture a safe context before hijack so post-upgrade handlers have a stable context.
+		safeCtx := c.UserContext()
+		if safeCtx == nil {
+			safeCtx = context.Background()
+		}
+
 		// Capture the fiber context before the upgrade
 		logger := &defaultLogger{} // Use default logger if not available
 		capturedFiberCtx := NewFiberContext(c, logger).(*fiberContext)
+		// Seed cached context so later calls don't touch a hijacked fasthttp ctx.
+		capturedFiberCtx.SetContext(safeCtx)
 
 		wsHandler := websocket.New(func(conn *websocket.Conn) {
 			// Create base WebSocket context with properly initialized fiber context
@@ -567,7 +575,7 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 				connectionID:  fmt.Sprintf("fiber-ws-%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano()),
 				closeHandlers: make([]func(code int, text string) error, 0),
 				upgradeData:   upgradeData,
-				userCtx:       capturedFiberCtx.Context(),
+				userCtx:       safeCtx,
 			}
 
 			// Create enhanced WebSocket context (legacy support, or if we want to keep the wrapper)

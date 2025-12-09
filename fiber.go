@@ -14,11 +14,34 @@ import (
 )
 
 type FiberAdapter struct {
-	mu          sync.Mutex
-	app         *fiber.App
-	initialized bool
-	router      *FiberRouter
-	opts        []func(*fiber.App) *fiber.App
+	mu            sync.Mutex
+	app           *fiber.App
+	initialized   bool
+	router        *FiberRouter
+	mergeStrategy RenderMergeStrategy
+	opts          []func(*fiber.App) *fiber.App
+}
+
+type FiberAdapterConfig struct {
+	MergeStrategy RenderMergeStrategy
+}
+
+func (cfg FiberAdapterConfig) withDefaults() FiberAdapterConfig {
+	if cfg.MergeStrategy == nil {
+		cfg.MergeStrategy = defaultRenderMergeStrategy
+	}
+	return cfg
+}
+
+// RenderMergeStrategy resolves collisions between view bind data and Fiber locals.
+// The bool return controls whether the resolved value should be written.
+type RenderMergeStrategy func(key string, viewVal, localVal any, logger Logger) (resolved any, set bool)
+
+func defaultRenderMergeStrategy(key string, viewVal, localVal any, logger Logger) (any, bool) {
+	if logger != nil {
+		logger.Warn("render locals overwritten by view context", "key", key, "local_value", localVal, "view_value", viewVal)
+	}
+	return viewVal, true
 }
 
 func newFiberInstance() *fiber.App {
@@ -34,6 +57,12 @@ func newFiberInstance() *fiber.App {
 // TODO: We should make this asynchronous so that we can gather options in our
 // app before we call fiber.New (since at that point it calls init and we are done)
 func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
+	return NewFiberAdapterWithConfig(FiberAdapterConfig{}, opts...)
+}
+
+// NewFiberAdapterWithConfig allows callers to override adapter-level settings, including render merge strategy.
+func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
+	cfg = cfg.withDefaults()
 	app := newFiberInstance()
 
 	if len(opts) == 0 {
@@ -45,8 +74,9 @@ func NewFiberAdapter(opts ...func(*fiber.App) *fiber.App) Server[*fiber.App] {
 	}
 
 	return &FiberAdapter{
-		app:  app,
-		opts: opts,
+		app:           app,
+		opts:          opts,
+		mergeStrategy: cfg.MergeStrategy,
 	}
 }
 
@@ -59,7 +89,8 @@ func DefaultFiberOptions(app *fiber.App) *fiber.App {
 func (a *FiberAdapter) Router() Router[*fiber.App] {
 	if a.router == nil {
 		a.router = &FiberRouter{
-			app: a.app,
+			app:           a.app,
+			mergeStrategy: a.mergeStrategy,
 			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
 				root:   &routerRoot{},
@@ -72,7 +103,11 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 	// Wrap a HandlerFunc into a fiber handler
 	return func(c *fiber.Ctx) error {
-		ctx := NewFiberContext(c, a.router.logger)
+		router := a.Router()
+		ctx := NewFiberContext(c, router.(*FiberRouter).logger)
+		if fc, ok := ctx.(*fiberContext); ok {
+			fc.setMergeStrategy(a.mergeStrategy)
+		}
 
 		// Get path pattern from Fiber and inject route context
 		if c.Route() != nil {
@@ -156,7 +191,8 @@ func (a *FiberAdapter) WrappedRouter() *fiber.App {
 
 type FiberRouter struct {
 	BaseRouter
-	app *fiber.App
+	app           *fiber.App
+	mergeStrategy RenderMergeStrategy
 }
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
@@ -164,7 +200,8 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	r.logger.Debug("creating route group", "prefix", fullPrefix)
 
 	return &FiberRouter{
-		app: r.app,
+		app:           r.app,
+		mergeStrategy: r.mergeStrategy,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
 			// middlewares: append([]namedMiddleware{}, r.middlewares...),
@@ -180,7 +217,8 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 // return r.routers[prefix]
 func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
-		app: r.app,
+		app:           r.app,
+		mergeStrategy: r.mergeStrategy,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
 			// middlewares: append([]namedMiddleware{}, r.middlewares...),
@@ -233,6 +271,7 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c, r.logger)
 		if fc, ok := ctx.(*fiberContext); ok {
+			fc.setMergeStrategy(r.mergeStrategy)
 			fc.setHandlers(route.Handlers)
 			fc.index = -1 // reset index to ensure proper chain execution
 
@@ -316,19 +355,32 @@ func (r *FiberRouter) WithLogger(logger Logger) Router[*fiber.App] {
 }
 
 type fiberContext struct {
-	ctx      *fiber.Ctx
-	handlers []NamedHandler
-	index    int
-	store    ContextStore
-	logger   Logger
+	ctx           *fiber.Ctx
+	mergeStrategy RenderMergeStrategy
+	handlers      []NamedHandler
+	index         int
+	store         ContextStore
+	logger        Logger
 }
 
 func NewFiberContext(c *fiber.Ctx, logger Logger) Context {
-	return &fiberContext{ctx: c, index: -1, store: NewContextStore(), logger: logger}
+	return &fiberContext{
+		ctx:           c,
+		mergeStrategy: defaultRenderMergeStrategy,
+		index:         -1,
+		store:         NewContextStore(),
+		logger:        logger,
+	}
 }
 
 func (c *fiberContext) setHandlers(h []NamedHandler) {
 	c.handlers = h
+}
+
+func (c *fiberContext) setMergeStrategy(strategy RenderMergeStrategy) {
+	if strategy != nil {
+		c.mergeStrategy = strategy
+	}
 }
 
 // Context methods
@@ -360,20 +412,48 @@ func (c *fiberContext) LocalsMerge(key any, value map[string]any) map[string]any
 }
 
 func (c *fiberContext) Render(name string, bind any, layouts ...string) error {
-	data, err := SerializeAsContext(bind)
+	merged, err := MergeLocalsWithViewData(c.ctx, c.logger, c.mergeStrategy, bind)
 	if err != nil {
-		return fmt.Errorf("render: error serializing vars: %w", err)
+		return err
 	}
 
-	if c.ctx.App().Config().PassLocalsToViews {
-		c.ctx.Context().VisitUserValues(func(key []byte, val any) {
-			if _, ok := data[string(key)]; !ok {
-				data[string(key)] = val
+	return c.ctx.Render(name, merged, layouts...)
+}
+
+// MergeLocalsWithViewData combines a render bind value with Fiber locals using the provided strategy.
+func MergeLocalsWithViewData(ctx *fiber.Ctx, logger Logger, strategy RenderMergeStrategy, bind any) (fiber.Map, error) {
+	if strategy == nil {
+		strategy = defaultRenderMergeStrategy
+	}
+
+	var data map[string]any
+	if bind == nil {
+		data = map[string]any{}
+	} else {
+		serialized, err := SerializeAsContext(bind)
+		if err != nil {
+			return nil, fmt.Errorf("render: error serializing vars: %w", err)
+		}
+		data = serialized
+		if data == nil {
+			data = map[string]any{}
+		}
+	}
+
+	if ctx != nil && ctx.App().Config().PassLocalsToViews {
+		ctx.Context().VisitUserValues(func(key []byte, val any) {
+			k := string(key)
+			if existing, ok := data[k]; ok {
+				if resolved, set := strategy(k, existing, val, logger); set {
+					data[k] = resolved
+				}
+				return
 			}
+			data[k] = val
 		})
 	}
 
-	return c.ctx.Render(name, data, layouts...)
+	return fiber.Map(data), nil
 }
 
 func (c *fiberContext) Body() []byte { return c.ctx.Body() }

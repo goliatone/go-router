@@ -361,6 +361,7 @@ type fiberContext struct {
 	index         int
 	store         ContextStore
 	logger        Logger
+	cachedCtx     context.Context
 }
 
 func NewFiberContext(c *fiber.Ctx, logger Logger) Context {
@@ -567,11 +568,26 @@ func (c *fiberContext) Bind(v any) error {
 }
 
 func (c *fiberContext) Context() context.Context {
-	return c.ctx.UserContext()
+	if c.ctx != nil {
+		if uc := c.ctx.UserContext(); uc != nil {
+			c.cachedCtx = uc
+			return uc
+		}
+	}
+	if c.cachedCtx != nil {
+		return c.cachedCtx
+	}
+	return context.Background()
 }
 
 func (c *fiberContext) SetContext(ctx context.Context) {
-	c.ctx.SetUserContext(ctx)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c.cachedCtx = ctx
+	if c.ctx != nil {
+		c.ctx.SetUserContext(ctx)
+	}
 }
 
 func (c *fiberContext) Header(key string) string {

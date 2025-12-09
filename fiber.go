@@ -421,7 +421,7 @@ func (c *fiberContext) Render(name string, bind any, layouts ...string) error {
 }
 
 // MergeLocalsWithViewData combines a render bind value with Fiber locals using the provided strategy.
-func MergeLocalsWithViewData(ctx *fiber.Ctx, logger Logger, strategy RenderMergeStrategy, bind any) (fiber.Map, error) {
+func MergeLocalsWithViewData(ctx *fiber.Ctx, logger Logger, strategy RenderMergeStrategy, bind any) (map[string]any, error) {
 	if strategy == nil {
 		strategy = defaultRenderMergeStrategy
 	}
@@ -453,7 +453,7 @@ func MergeLocalsWithViewData(ctx *fiber.Ctx, logger Logger, strategy RenderMerge
 		})
 	}
 
-	return fiber.Map(data), nil
+	return data, nil
 }
 
 func (c *fiberContext) Body() []byte { return c.ctx.Body() }

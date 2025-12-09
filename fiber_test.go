@@ -891,6 +891,135 @@ func TestFiberContext_LocalsAndRender(t *testing.T) {
 
 }
 
+func TestFiberContext_RenderMergeDefaultViewWins(t *testing.T) {
+	logger := &captureLogger{}
+	engine := &captureViewEngine{}
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			UnescapePath:      true,
+			EnablePrintRoutes: true,
+			StrictRouting:     false,
+			PassLocalsToViews: true,
+			Views:             engine,
+		})
+	})
+
+	r := adapter.Router()
+	r.WithLogger(logger)
+
+	r.Get("/merge-default", func(ctx router.Context) error {
+		ctx.Locals("status", "from-local")
+		return ctx.Render("tpl", router.ViewContext{"status": "from-view"})
+	})
+
+	app := adapter.WrappedRouter()
+	req := httptest.NewRequest("GET", "/merge-default", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if engine.last["status"] != "from-view" {
+		t.Fatalf("expected view value to win, got %v", engine.last["status"])
+	}
+	if len(logger.warns) != 1 {
+		t.Fatalf("expected one warning for overwritten local, got %d", len(logger.warns))
+	}
+}
+
+func TestFiberContext_RenderMergeLocalsFirstStrategy(t *testing.T) {
+	logger := &captureLogger{}
+	engine := &captureViewEngine{}
+	localsFirst := func(key string, viewVal, localVal any, _ router.Logger) (any, bool) {
+		return localVal, true
+	}
+
+	adapter := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
+		MergeStrategy: localsFirst,
+	}, func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			UnescapePath:      true,
+			EnablePrintRoutes: true,
+			StrictRouting:     false,
+			PassLocalsToViews: true,
+			Views:             engine,
+		})
+	})
+
+	r := adapter.Router()
+	r.WithLogger(logger)
+
+	r.Get("/merge-locals", func(ctx router.Context) error {
+		ctx.Locals("status", "from-local")
+		return ctx.Render("tpl", router.ViewContext{"status": "from-view"})
+	})
+
+	app := adapter.WrappedRouter()
+	req := httptest.NewRequest("GET", "/merge-locals", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if engine.last["status"] != "from-local" {
+		t.Fatalf("expected local value to win, got %v", engine.last["status"])
+	}
+	if len(logger.warns) != 0 {
+		t.Fatalf("expected no warnings when locals win, got %d", len(logger.warns))
+	}
+}
+
+func TestFiberContext_RenderMergeAddsLocalsWithoutCollision(t *testing.T) {
+	logger := &captureLogger{}
+	engine := &captureViewEngine{}
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			UnescapePath:      true,
+			EnablePrintRoutes: true,
+			StrictRouting:     false,
+			PassLocalsToViews: true,
+			Views:             engine,
+		})
+	})
+
+	r := adapter.Router()
+	r.WithLogger(logger)
+
+	r.Get("/merge-no-collision", func(ctx router.Context) error {
+		ctx.Locals("status", "from-local")
+		return ctx.Render("tpl", router.ViewContext{"title": "from-view"})
+	})
+
+	app := adapter.WrappedRouter()
+	req := httptest.NewRequest("GET", "/merge-no-collision", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error testing request: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if engine.last["status"] != "from-local" {
+		t.Fatalf("expected local value to be merged, got %v", engine.last["status"])
+	}
+	if engine.last["title"] != "from-view" {
+		t.Fatalf("expected view value to persist, got %v", engine.last["title"])
+	}
+	if len(logger.warns) != 0 {
+		t.Fatalf("expected no warnings without collisions, got %d", len(logger.warns))
+	}
+}
+
 func ReadGolFile(path string, t *testing.T) []byte {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -909,6 +1038,48 @@ func (m *mockViewEngine) Load() error {
 
 func (m *mockViewEngine) Render(w io.Writer, name string, bind any, layouts ...string) error {
 	return m.renderFunc(w, name, bind, layouts...)
+}
+
+type captureViewEngine struct {
+	last map[string]any
+}
+
+func (m *captureViewEngine) Load() error { return nil }
+
+func (m *captureViewEngine) Render(w io.Writer, name string, bind any, layouts ...string) error {
+	switch data := bind.(type) {
+	case map[string]any:
+		m.last = data
+	case fiber.Map:
+		m.last = map[string]any(data)
+	default:
+		return fmt.Errorf("unexpected bind type %T", bind)
+	}
+	_, err := w.Write([]byte("<h1>ok</h1>"))
+	return err
+}
+
+type captureLogger struct {
+	debugs []string
+	infos  []string
+	warns  []string
+	errors []string
+}
+
+func (l *captureLogger) Debug(format string, args ...any) {
+	l.debugs = append(l.debugs, fmt.Sprintf(format, args...))
+}
+
+func (l *captureLogger) Info(format string, args ...any) {
+	l.infos = append(l.infos, fmt.Sprintf(format, args...))
+}
+
+func (l *captureLogger) Warn(format string, args ...any) {
+	l.warns = append(l.warns, fmt.Sprintf(format, args...))
+}
+
+func (l *captureLogger) Error(format string, args ...any) {
+	l.errors = append(l.errors, fmt.Sprintf(format, args...))
 }
 
 func TestFiberContext_MockRender(t *testing.T) {

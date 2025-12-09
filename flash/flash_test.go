@@ -27,9 +27,14 @@ func (m *mockViewEngine) Render(w io.Writer, name string, bind any, layouts ...s
 func TestFlashMiddleware(t *testing.T) {
 	mockEngine := &mockViewEngine{
 		renderFunc: func(w io.Writer, name string, bind any, layout ...string) error {
-			data, ok := bind.(map[string]any)
-			if !ok {
-				t.Error("Expected bind data to be ViewContext")
+			var data map[string]any
+			switch v := bind.(type) {
+			case map[string]any:
+				data = v
+			case fiber.Map:
+				data = map[string]any(v)
+			default:
+				t.Errorf("Expected bind data to be map[string]any, got %T", bind)
 				return nil
 			}
 			return json.NewEncoder(w).Encode(data)

@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.29.0](https://github.com/goliatone/go-router/compare/v0.28.0...v0.29.0) - (2025-12-09)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Websocket fiber context ([cde00e4](https://github.com/goliatone/go-router/commit/cde00e438f771c021f2601161e21e34b91f8df91))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.29.0 ([28b9cbc](https://github.com/goliatone/go-router/commit/28b9cbc5eeacd20a08c235b8fa6d34a09d4194b6))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.28.0 ([e84b959](https://github.com/goliatone/go-router/commit/e84b9594f20978c38ad589802c3b1ae131fa8be1))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([9f4aefa](https://github.com/goliatone/go-router/commit/9f4aefaa663120a7a658a41f603c4a6323efe532))  - (goliatone)
+- Update gitignore ([764b24e](https://github.com/goliatone/go-router/commit/764b24eff82fe6c412b0c6e5a4854b38d741f693))  - (goliatone)
+
 # [0.28.0](https://github.com/goliatone/go-router/compare/v0.27.0...v0.28.0) - (2025-12-09)
 
 ## <!-- 13 -->📦 Bumps

@@ -1,9 +1,8 @@
-package router_test
+package router
 
 import (
+	"context"
 	"testing"
-
-	"github.com/goliatone/go-router"
 )
 
 // TestFiberWebSocketContextFixVerification verifies that the nil pointer bug in
@@ -13,10 +12,10 @@ import (
 // without panics and that the handler properly sets up context capture
 func TestFiberWebSocketContextFixVerification(t *testing.T) {
 	// Create a WebSocket config
-	config := router.DefaultWebSocketConfig()
+	config := DefaultWebSocketConfig()
 
 	// Create a simple handler - the key is that this won't panic during creation
-	handler := func(ws router.WebSocketContext) error {
+	handler := func(ws WebSocketContext) error {
 		// In the original bug, these calls would panic with:
 		// "runtime error: invalid memory address or nil pointer dereference"
 		// because fiberContext was set to nil in createFiberWSHandler
@@ -29,7 +28,7 @@ func TestFiberWebSocketContextFixVerification(t *testing.T) {
 	}
 
 	// Create the WebSocket handler function - this tests the fix
-	fiberHandler := router.FiberWebSocketHandler(config, handler)
+	fiberHandler := FiberWebSocketHandler(config, handler)
 	if fiberHandler == nil {
 		t.Fatal("FiberWebSocketHandler returned nil")
 	}
@@ -49,10 +48,10 @@ func TestFiberWebSocketContextStructureVerification(t *testing.T) {
 	// to capture the fiber.Ctx before WebSocket upgrade and use it to create
 	// a properly initialized fiberContext instead of setting it to nil
 
-	config := router.DefaultWebSocketConfig()
+	config := DefaultWebSocketConfig()
 
 	// Handler that would trigger the original nil pointer bug
-	handler := func(ws router.WebSocketContext) error {
+	handler := func(ws WebSocketContext) error {
 		// These methods depend on the embedded fiberContext not being nil
 		ws.Query("param")
 		ws.Method()
@@ -67,10 +66,31 @@ func TestFiberWebSocketContextStructureVerification(t *testing.T) {
 	}
 
 	// Verify handler creation succeeds
-	wsHandler := router.FiberWebSocketHandler(config, handler)
+	wsHandler := FiberWebSocketHandler(config, handler)
 	if wsHandler == nil {
 		t.Fatal("WebSocket handler creation failed")
 	}
 
 	t.Log("WebSocket context structure verification passed - fix maintains proper context initialization")
+}
+
+// Ensures SetContext/Context on a Fiber websocket after upgrade don't touch the
+// hijacked fasthttp.RequestCtx (which would be nil) and safely roundtrip the
+// stored context.
+func TestFiberWebSocketContextSetContextAfterUpgrade(t *testing.T) {
+	wsCtx := &fiberWebSocketContext{
+		fiberContext: &fiberContext{},
+		isUpgraded:   true,
+	}
+
+	if got := wsCtx.Context(); got == nil {
+		t.Fatal("expected non-nil background context when none set")
+	}
+
+	expectedCtx := context.WithValue(context.Background(), "key", "value")
+	wsCtx.SetContext(expectedCtx)
+
+	if got := wsCtx.Context(); got != expectedCtx {
+		t.Fatalf("expected stored context to be returned after upgrade")
+	}
 }

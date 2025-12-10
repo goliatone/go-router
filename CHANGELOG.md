@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.32.0](https://github.com/goliatone/go-router/compare/v0.31.0...v0.32.0) - (2025-12-10)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Fiber context nil issues with cached ctx ([7449dd0](https://github.com/goliatone/go-router/commit/7449dd066b9db84fee7d2c401c034d468eeac7d3))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.32.0 ([2325647](https://github.com/goliatone/go-router/commit/2325647fa4598ed6e704ffea9f38860a42494a4a))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.31.0 ([8d2f3d8](https://github.com/goliatone/go-router/commit/8d2f3d8d00ea17ce716be168edaff8fc712bc678))  - (goliatone)
+
 # [0.31.0](https://github.com/goliatone/go-router/compare/v0.30.0...v0.31.0) - (2025-12-10)
 
 ## <!-- 13 -->📦 Bumps

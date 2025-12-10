@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/gofiber/fiber/v2"
@@ -362,6 +363,21 @@ type fiberContext struct {
 	store         ContextStore
 	logger        Logger
 	cachedCtx     context.Context
+	meta          *fiberRequestMeta
+}
+
+// fiberRequestMeta caches request data needed after fasthttp hijacks the connection.
+type fiberRequestMeta struct {
+	method      string
+	path        string
+	originalURL string
+	ip          string
+	host        string
+	port        string
+	headers     map[string]string
+	queries     map[string]string
+	params      map[string]string
+	cookies     map[string]string
 }
 
 func NewFiberContext(c *fiber.Ctx, logger Logger) Context {
@@ -382,6 +398,57 @@ func (c *fiberContext) setMergeStrategy(strategy RenderMergeStrategy) {
 	if strategy != nil {
 		c.mergeStrategy = strategy
 	}
+}
+
+// captureRequestMeta stores request data before fasthttp hijacks the connection
+// so websocket handlers can safely access metadata later.
+func (c *fiberContext) captureRequestMeta() {
+	if c.meta != nil {
+		return
+	}
+
+	meta := &fiberRequestMeta{
+		headers: make(map[string]string),
+		queries: make(map[string]string),
+		params:  make(map[string]string),
+		cookies: make(map[string]string),
+	}
+	c.meta = meta
+
+	if c.ctx == nil {
+		return
+	}
+
+	meta.method = c.ctx.Method()
+	meta.path = c.ctx.Path()
+	meta.originalURL = c.ctx.OriginalURL()
+	meta.ip = c.ctx.IP()
+	meta.host = c.ctx.Hostname()
+	meta.port = c.ctx.Port()
+
+	c.ctx.Request().Header.VisitAll(func(key, value []byte) {
+		meta.headers[string(key)] = string(value)
+	})
+
+	args := c.ctx.Request().URI().QueryArgs()
+	args.VisitAll(func(key, value []byte) {
+		meta.queries[string(key)] = string(value)
+	})
+
+	for k, v := range c.ctx.AllParams() {
+		meta.params[k] = v
+	}
+
+	c.ctx.Request().Header.VisitAllCookie(func(key, value []byte) {
+		meta.cookies[string(key)] = string(value)
+	})
+}
+
+func (c *fiberContext) getMeta() *fiberRequestMeta {
+	if c.meta == nil {
+		c.captureRequestMeta()
+	}
+	return c.meta
 }
 
 // Context methods
@@ -457,20 +524,61 @@ func MergeLocalsWithViewData(ctx *fiber.Ctx, logger Logger, strategy RenderMerge
 	return data, nil
 }
 
-func (c *fiberContext) Body() []byte { return c.ctx.Body() }
+func (c *fiberContext) Body() []byte {
+	if c.ctx != nil {
+		return c.ctx.Body()
+	}
+	return nil
+}
 
-func (c *fiberContext) Method() string { return c.ctx.Method() }
-func (c *fiberContext) Path() string   { return c.ctx.Path() }
+func (c *fiberContext) Method() string {
+	if c.ctx != nil {
+		return c.ctx.Method()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.method
+	}
+	return ""
+}
+func (c *fiberContext) Path() string {
+	if c.ctx != nil {
+		return c.ctx.Path()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.path
+	}
+	return ""
+}
 
 func (c *fiberContext) Param(name string, defaultValue ...string) string {
-	return c.ctx.Params(name, defaultValue...)
+	if c.ctx != nil {
+		return c.ctx.Params(name, defaultValue...)
+	}
+	if meta := c.getMeta(); meta != nil {
+		if val, ok := meta.params[name]; ok {
+			return val
+		}
+	}
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return ""
 }
 
 func (c *fiberContext) IP() string {
-	return c.ctx.IP()
+	if c.ctx != nil {
+		return c.ctx.IP()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.ip
+	}
+	return ""
 }
 
 func (c *fiberContext) Cookie(cookie *Cookie) {
+	if c.ctx == nil {
+		return
+	}
 	c.ctx.Cookie(&fiber.Cookie{
 		Name:        cookie.Name,
 		Value:       cookie.Value,
@@ -486,10 +594,24 @@ func (c *fiberContext) Cookie(cookie *Cookie) {
 }
 
 func (c *fiberContext) Cookies(key string, defaultValue ...string) string {
-	return c.ctx.Cookies(key, defaultValue...)
+	if c.ctx != nil {
+		return c.ctx.Cookies(key, defaultValue...)
+	}
+	if meta := c.getMeta(); meta != nil {
+		if val, ok := meta.cookies[key]; ok {
+			return val
+		}
+	}
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return ""
 }
 
 func (c *fiberContext) CookieParser(out any) error {
+	if c.ctx == nil {
+		return fmt.Errorf("context unavailable")
+	}
 	return c.ctx.CookieParser(out)
 }
 
@@ -511,8 +633,10 @@ func (c *fiberContext) RedirectBack(fallback string, status ...int) error {
 }
 
 func (c *fiberContext) ParamsInt(name string, defaultValue int) int {
-	if out, err := c.ctx.ParamsInt(name, defaultValue); err == nil {
-		return out
+	if c.ctx != nil {
+		if out, err := c.ctx.ParamsInt(name, defaultValue); err == nil {
+			return out
+		}
 	}
 	return defaultValue
 }
@@ -522,20 +646,48 @@ func (c *fiberContext) Query(name string, defaultValue ...string) string {
 	if len(defaultValue) > 0 {
 		def = defaultValue[0]
 	}
-	return c.ctx.Query(name, def)
+	if c.ctx != nil {
+		return c.ctx.Query(name, def)
+	}
+	if meta := c.getMeta(); meta != nil {
+		if val, ok := meta.queries[name]; ok {
+			return val
+		}
+	}
+	return def
 }
 
 func (c *fiberContext) QueryInt(name string, defaultValue int) int {
-	return c.ctx.QueryInt(name, defaultValue)
+	if c.ctx != nil {
+		return c.ctx.QueryInt(name, defaultValue)
+	}
+	if meta := c.getMeta(); meta != nil {
+		if val, ok := meta.queries[name]; ok {
+			if out, err := strconv.Atoi(val); err == nil {
+				return out
+			}
+		}
+	}
+	return defaultValue
 }
 
 func (c *fiberContext) Queries() map[string]string {
-	queries := make(map[string]string)
-	args := c.ctx.Request().URI().QueryArgs()
-	args.VisitAll(func(key, value []byte) {
-		queries[string(key)] = string(value)
-	})
-	return queries
+	if c.ctx != nil {
+		queries := make(map[string]string)
+		args := c.ctx.Request().URI().QueryArgs()
+		args.VisitAll(func(key, value []byte) {
+			queries[string(key)] = string(value)
+		})
+		return queries
+	}
+	if meta := c.getMeta(); meta != nil && meta.queries != nil {
+		out := make(map[string]string, len(meta.queries))
+		for k, v := range meta.queries {
+			out[k] = v
+		}
+		return out
+	}
+	return map[string]string{}
 }
 
 func (c *fiberContext) Status(code int) Context {
@@ -591,7 +743,15 @@ func (c *fiberContext) SetContext(ctx context.Context) {
 }
 
 func (c *fiberContext) Header(key string) string {
-	return c.ctx.Get(key)
+	if c.ctx != nil {
+		return c.ctx.Get(key)
+	}
+	if meta := c.getMeta(); meta != nil {
+		if val, ok := meta.headers[key]; ok {
+			return val
+		}
+	}
+	return ""
 }
 
 func (c *fiberContext) Referer() string {
@@ -602,15 +762,30 @@ func (c *fiberContext) Referer() string {
 }
 
 func (c *fiberContext) OriginalURL() string {
-	return c.ctx.OriginalURL()
+	if c.ctx != nil {
+		return c.ctx.OriginalURL()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.originalURL
+	}
+	return ""
 }
 
 func (c *fiberContext) FormFile(key string) (*multipart.FileHeader, error) {
+	if c.ctx == nil {
+		return nil, fmt.Errorf("context unavailable")
+	}
 	return c.ctx.FormFile(key)
 }
 
 func (c *fiberContext) FormValue(key string, defaultValues ...string) string {
-	return c.ctx.FormValue(key, defaultValues...)
+	if c.ctx != nil {
+		return c.ctx.FormValue(key, defaultValues...)
+	}
+	if len(defaultValues) > 0 {
+		return defaultValues[0]
+	}
+	return ""
 }
 
 func (c *fiberContext) SetHeader(key string, value string) Context {

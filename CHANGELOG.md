@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.31.0](https://github.com/goliatone/go-router/compare/v0.30.0...v0.31.0) - (2025-12-10)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.31.0 ([305318c](https://github.com/goliatone/go-router/commit/305318c89317e468e41d480e0a07fb9eda74a8bb))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Fiber request meta ([965b393](https://github.com/goliatone/go-router/commit/965b3930ec0af2857b9f1b9c4892fcdc07c1fbf5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.30.0 ([c4e63bb](https://github.com/goliatone/go-router/commit/c4e63bbdb4b3e85a57d4810de75bd877e3b4f073))  - (goliatone)
+
 # [0.30.0](https://github.com/goliatone/go-router/compare/v0.29.0...v0.30.0) - (2025-12-09)
 
 ## <!-- 1 -->🐛 Bug Fixes

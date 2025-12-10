@@ -98,6 +98,10 @@ func (c *fiberWebSocketContext) WebSocketUpgrade() error {
 		return nil // Already upgraded
 	}
 
+	if c.ctx == nil {
+		return ErrWebSocketUpgradeFailed(fmt.Errorf("context unavailable"))
+	}
+
 	// Check if this is a WebSocket request
 	if c.ctx.Get("Upgrade") != "websocket" {
 		return fmt.Errorf("not a WebSocket upgrade request")
@@ -390,12 +394,26 @@ func (c *fiberWebSocketContext) Extensions() []string {
 
 // RemoteAddr returns the remote address of the connection
 func (c *fiberWebSocketContext) RemoteAddr() string {
-	return c.ctx.IP()
+	if c.ctx != nil {
+		return c.ctx.IP()
+	}
+	if c.fiberContext != nil {
+		return c.fiberContext.IP()
+	}
+	return ""
 }
 
 // LocalAddr returns the local address of the connection
 func (c *fiberWebSocketContext) LocalAddr() string {
-	return fmt.Sprintf("%s:%s", c.ctx.Hostname(), c.ctx.Port())
+	if c.ctx != nil {
+		return fmt.Sprintf("%s:%s", c.ctx.Hostname(), c.ctx.Port())
+	}
+	if c.fiberContext != nil {
+		if meta := c.fiberContext.getMeta(); meta != nil {
+			return fmt.Sprintf("%s:%s", meta.host, meta.port)
+		}
+	}
+	return ""
 }
 
 // IsConnected returns true if the WebSocket is connected
@@ -564,6 +582,7 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 		capturedFiberCtx := NewFiberContext(c, logger).(*fiberContext)
 		// Seed cached context so later calls don't touch a hijacked fasthttp ctx.
 		capturedFiberCtx.SetContext(safeCtx)
+		capturedFiberCtx.captureRequestMeta()
 
 		wsHandler := websocket.New(func(conn *websocket.Conn) {
 			// Create base WebSocket context with properly initialized fiber context

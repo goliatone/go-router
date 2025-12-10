@@ -112,3 +112,71 @@ func TestFiberContextContextFallback(t *testing.T) {
 		t.Fatalf("expected cached context after hijack-safe fallback")
 	}
 }
+
+// Ensures metadata is served from cache when the underlying fiber.Ctx is nil (post-hijack).
+func TestFiberContextMetadataCacheFallback(t *testing.T) {
+	fc := &fiberContext{
+		meta: &fiberRequestMeta{
+			method:      "GET",
+			path:        "/ws",
+			originalURL: "/ws?foo=bar",
+			ip:          "1.2.3.4",
+			host:        "example.com",
+			port:        "8080",
+			headers: map[string]string{
+				"X-Test": "value",
+			},
+			queries: map[string]string{
+				"foo": "bar",
+			},
+			params: map[string]string{
+				"id": "123",
+			},
+			cookies: map[string]string{
+				"session": "abc",
+			},
+		},
+	}
+
+	if got := fc.Method(); got != "GET" {
+		t.Fatalf("expected method from cache, got %q", got)
+	}
+	if got := fc.Path(); got != "/ws" {
+		t.Fatalf("expected path from cache, got %q", got)
+	}
+	if got := fc.Param("id"); got != "123" {
+		t.Fatalf("expected param from cache, got %q", got)
+	}
+	if got := fc.IP(); got != "1.2.3.4" {
+		t.Fatalf("expected ip from cache, got %q", got)
+	}
+	if got := fc.Cookies("session"); got != "abc" {
+		t.Fatalf("expected cookie from cache, got %q", got)
+	}
+	if got := fc.Query("foo"); got != "bar" {
+		t.Fatalf("expected query from cache, got %q", got)
+	}
+	if got := fc.QueryInt("foo", 0); got != 0 {
+		t.Fatalf("expected QueryInt fallback default for non-int value, got %d", got)
+	}
+	if got := fc.Header("X-Test"); got != "value" {
+		t.Fatalf("expected header from cache, got %q", got)
+	}
+	if got := fc.OriginalURL(); got != "/ws?foo=bar" {
+		t.Fatalf("expected original URL from cache, got %q", got)
+	}
+	if _, err := fc.FormFile("file"); err == nil {
+		t.Fatalf("expected error when accessing form file without ctx")
+	}
+
+	wsCtx := &fiberWebSocketContext{
+		fiberContext: fc,
+	}
+
+	if got := wsCtx.RemoteAddr(); got != "1.2.3.4" {
+		t.Fatalf("expected remote addr from cache, got %q", got)
+	}
+	if got := wsCtx.LocalAddr(); got != "example.com:8080" {
+		t.Fatalf("expected local addr from cache, got %q", got)
+	}
+}

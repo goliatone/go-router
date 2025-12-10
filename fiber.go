@@ -400,10 +400,29 @@ func (c *fiberContext) setMergeStrategy(strategy RenderMergeStrategy) {
 	}
 }
 
+// liveCtx returns the underlying fiber.Ctx only when the fasthttp.RequestCtx
+// is still attached (i.e., before websocket hijack). This prevents nil
+// dereferences when fiber has upgraded the connection and cleared the
+// RequestCtx.
+func (c *fiberContext) liveCtx() *fiber.Ctx {
+	if c == nil || c.ctx == nil {
+		return nil
+	}
+	if c.ctx.Context() == nil {
+		return nil
+	}
+	return c.ctx
+}
+
 // captureRequestMeta stores request data before fasthttp hijacks the connection
 // so websocket handlers can safely access metadata later.
 func (c *fiberContext) captureRequestMeta() {
 	if c.meta != nil {
+		return
+	}
+
+	ctx := c.liveCtx()
+	if ctx == nil {
 		return
 	}
 
@@ -415,31 +434,27 @@ func (c *fiberContext) captureRequestMeta() {
 	}
 	c.meta = meta
 
-	if c.ctx == nil {
-		return
-	}
+	meta.method = ctx.Method()
+	meta.path = ctx.Path()
+	meta.originalURL = ctx.OriginalURL()
+	meta.ip = ctx.IP()
+	meta.host = ctx.Hostname()
+	meta.port = ctx.Port()
 
-	meta.method = c.ctx.Method()
-	meta.path = c.ctx.Path()
-	meta.originalURL = c.ctx.OriginalURL()
-	meta.ip = c.ctx.IP()
-	meta.host = c.ctx.Hostname()
-	meta.port = c.ctx.Port()
-
-	c.ctx.Request().Header.VisitAll(func(key, value []byte) {
+	ctx.Request().Header.VisitAll(func(key, value []byte) {
 		meta.headers[string(key)] = string(value)
 	})
 
-	args := c.ctx.Request().URI().QueryArgs()
+	args := ctx.Request().URI().QueryArgs()
 	args.VisitAll(func(key, value []byte) {
 		meta.queries[string(key)] = string(value)
 	})
 
-	for k, v := range c.ctx.AllParams() {
+	for k, v := range ctx.AllParams() {
 		meta.params[k] = v
 	}
 
-	c.ctx.Request().Header.VisitAllCookie(func(key, value []byte) {
+	ctx.Request().Header.VisitAllCookie(func(key, value []byte) {
 		meta.cookies[string(key)] = string(value)
 	})
 }
@@ -454,14 +469,22 @@ func (c *fiberContext) getMeta() *fiberRequestMeta {
 // Context methods
 
 func (c *fiberContext) Locals(key any, value ...any) any {
-	return c.ctx.Locals(key, value...)
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Locals(key, value...)
+	}
+	return nil
 }
 
 func (c *fiberContext) LocalsMerge(key any, value map[string]any) map[string]any {
-	existing := c.ctx.Locals(key)
+	ctx := c.liveCtx()
+	if ctx == nil {
+		return value
+	}
+
+	existing := ctx.Locals(key)
 
 	if existing == nil {
-		c.ctx.Locals(key, value)
+		ctx.Locals(key, value)
 		return value
 	}
 
@@ -470,22 +493,27 @@ func (c *fiberContext) LocalsMerge(key any, value map[string]any) map[string]any
 		merged := make(map[string]any)
 		maps.Copy(merged, existingMap)
 		maps.Copy(merged, value)
-		c.ctx.Locals(key, merged)
+		ctx.Locals(key, merged)
 		return merged
 	}
 
 	// existing value is not a map -> replace
-	c.ctx.Locals(key, value)
+	ctx.Locals(key, value)
 	return value
 }
 
 func (c *fiberContext) Render(name string, bind any, layouts ...string) error {
-	merged, err := MergeLocalsWithViewData(c.ctx, c.logger, c.mergeStrategy, bind)
+	ctx := c.liveCtx()
+	if ctx == nil {
+		return fmt.Errorf("context unavailable")
+	}
+
+	merged, err := MergeLocalsWithViewData(ctx, c.logger, c.mergeStrategy, bind)
 	if err != nil {
 		return err
 	}
 
-	return c.ctx.Render(name, merged, layouts...)
+	return ctx.Render(name, merged, layouts...)
 }
 
 // MergeLocalsWithViewData combines a render bind value with Fiber locals using the provided strategy.
@@ -525,39 +553,39 @@ func MergeLocalsWithViewData(ctx *fiber.Ctx, logger Logger, strategy RenderMerge
 }
 
 func (c *fiberContext) Body() []byte {
-	if c.ctx != nil {
-		return c.ctx.Body()
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Body()
 	}
 	return nil
 }
 
 func (c *fiberContext) Method() string {
-	if c.ctx != nil {
-		return c.ctx.Method()
-	}
 	if meta := c.getMeta(); meta != nil {
 		return meta.method
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Method()
 	}
 	return ""
 }
 func (c *fiberContext) Path() string {
-	if c.ctx != nil {
-		return c.ctx.Path()
-	}
 	if meta := c.getMeta(); meta != nil {
 		return meta.path
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Path()
 	}
 	return ""
 }
 
 func (c *fiberContext) Param(name string, defaultValue ...string) string {
-	if c.ctx != nil {
-		return c.ctx.Params(name, defaultValue...)
-	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.params[name]; ok {
 			return val
 		}
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Params(name, defaultValue...)
 	}
 	if len(defaultValue) > 0 {
 		return defaultValue[0]
@@ -566,20 +594,21 @@ func (c *fiberContext) Param(name string, defaultValue ...string) string {
 }
 
 func (c *fiberContext) IP() string {
-	if c.ctx != nil {
-		return c.ctx.IP()
-	}
 	if meta := c.getMeta(); meta != nil {
 		return meta.ip
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.IP()
 	}
 	return ""
 }
 
 func (c *fiberContext) Cookie(cookie *Cookie) {
-	if c.ctx == nil {
+	ctx := c.liveCtx()
+	if ctx == nil {
 		return
 	}
-	c.ctx.Cookie(&fiber.Cookie{
+	ctx.Cookie(&fiber.Cookie{
 		Name:        cookie.Name,
 		Value:       cookie.Value,
 		Path:        cookie.Path,
@@ -594,13 +623,13 @@ func (c *fiberContext) Cookie(cookie *Cookie) {
 }
 
 func (c *fiberContext) Cookies(key string, defaultValue ...string) string {
-	if c.ctx != nil {
-		return c.ctx.Cookies(key, defaultValue...)
-	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.cookies[key]; ok {
 			return val
 		}
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Cookies(key, defaultValue...)
 	}
 	if len(defaultValue) > 0 {
 		return defaultValue[0]
@@ -609,32 +638,51 @@ func (c *fiberContext) Cookies(key string, defaultValue ...string) string {
 }
 
 func (c *fiberContext) CookieParser(out any) error {
-	if c.ctx == nil {
-		return fmt.Errorf("context unavailable")
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.CookieParser(out)
 	}
-	return c.ctx.CookieParser(out)
+	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) Redirect(location string, status ...int) error {
+	ctx := c.liveCtx()
+	if ctx == nil {
+		return fmt.Errorf("context unavailable")
+	}
 	code := http.StatusFound // default 302
 	if len(status) > 0 {
 		code = status[0]
 	}
 	c.logger.Info("redirect request", "location", location, "code", code)
-	return c.ctx.Redirect(location, code)
+	return ctx.Redirect(location, code)
 }
 
 func (c *fiberContext) RedirectToRoute(routeName string, params ViewContext, status ...int) error {
-	return c.ctx.RedirectToRoute(routeName, params.asFiberMap(), status...)
+	ctx := c.liveCtx()
+	if ctx == nil {
+		return fmt.Errorf("context unavailable")
+	}
+	return ctx.RedirectToRoute(routeName, params.asFiberMap(), status...)
 }
 
 func (c *fiberContext) RedirectBack(fallback string, status ...int) error {
-	return c.ctx.RedirectBack(fallback, status...)
+	ctx := c.liveCtx()
+	if ctx == nil {
+		return fmt.Errorf("context unavailable")
+	}
+	return ctx.RedirectBack(fallback, status...)
 }
 
 func (c *fiberContext) ParamsInt(name string, defaultValue int) int {
-	if c.ctx != nil {
-		if out, err := c.ctx.ParamsInt(name, defaultValue); err == nil {
+	if meta := c.getMeta(); meta != nil {
+		if val, ok := meta.params[name]; ok {
+			if out, err := strconv.Atoi(val); err == nil {
+				return out
+			}
+		}
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		if out, err := ctx.ParamsInt(name, defaultValue); err == nil {
 			return out
 		}
 	}
@@ -646,21 +694,18 @@ func (c *fiberContext) Query(name string, defaultValue ...string) string {
 	if len(defaultValue) > 0 {
 		def = defaultValue[0]
 	}
-	if c.ctx != nil {
-		return c.ctx.Query(name, def)
-	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.queries[name]; ok {
 			return val
 		}
 	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Query(name, def)
+	}
 	return def
 }
 
 func (c *fiberContext) QueryInt(name string, defaultValue int) int {
-	if c.ctx != nil {
-		return c.ctx.QueryInt(name, defaultValue)
-	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.queries[name]; ok {
 			if out, err := strconv.Atoi(val); err == nil {
@@ -668,18 +713,13 @@ func (c *fiberContext) QueryInt(name string, defaultValue int) int {
 			}
 		}
 	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.QueryInt(name, defaultValue)
+	}
 	return defaultValue
 }
 
 func (c *fiberContext) Queries() map[string]string {
-	if c.ctx != nil {
-		queries := make(map[string]string)
-		args := c.ctx.Request().URI().QueryArgs()
-		args.VisitAll(func(key, value []byte) {
-			queries[string(key)] = string(value)
-		})
-		return queries
-	}
 	if meta := c.getMeta(); meta != nil && meta.queries != nil {
 		out := make(map[string]string, len(meta.queries))
 		for k, v := range meta.queries {
@@ -687,16 +727,29 @@ func (c *fiberContext) Queries() map[string]string {
 		}
 		return out
 	}
+	if ctx := c.liveCtx(); ctx != nil {
+		queries := make(map[string]string)
+		args := ctx.Request().URI().QueryArgs()
+		args.VisitAll(func(key, value []byte) {
+			queries[string(key)] = string(value)
+		})
+		return queries
+	}
 	return map[string]string{}
 }
 
 func (c *fiberContext) Status(code int) Context {
-	c.ctx.Status(code)
+	if ctx := c.liveCtx(); ctx != nil {
+		ctx.Status(code)
+	}
 	return c
 }
 
 func (c *fiberContext) SendStatus(code int) error {
-	return c.ctx.SendStatus(code)
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.SendStatus(code)
+	}
+	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) SendString(body string) error {
@@ -704,30 +757,42 @@ func (c *fiberContext) SendString(body string) error {
 }
 
 func (c *fiberContext) Send(body []byte) error {
-	return c.ctx.Send(body)
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Send(body)
+	}
+	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) JSON(code int, v any) error {
-	return c.ctx.Status(code).JSON(v)
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Status(code).JSON(v)
+	}
+	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) NoContent(code int) error {
-	return c.ctx.SendStatus(code)
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.SendStatus(code)
+	}
+	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) Bind(v any) error {
-	return c.ctx.BodyParser(v)
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.BodyParser(v)
+	}
+	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) Context() context.Context {
-	if c.ctx != nil {
-		if uc := c.ctx.UserContext(); uc != nil {
+	if c.cachedCtx != nil {
+		return c.cachedCtx
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		if uc := ctx.UserContext(); uc != nil {
 			c.cachedCtx = uc
 			return uc
 		}
-	}
-	if c.cachedCtx != nil {
-		return c.cachedCtx
 	}
 	return context.Background()
 }
@@ -737,19 +802,19 @@ func (c *fiberContext) SetContext(ctx context.Context) {
 		ctx = context.Background()
 	}
 	c.cachedCtx = ctx
-	if c.ctx != nil {
-		c.ctx.SetUserContext(ctx)
+	if live := c.liveCtx(); live != nil {
+		live.SetUserContext(ctx)
 	}
 }
 
 func (c *fiberContext) Header(key string) string {
-	if c.ctx != nil {
-		return c.ctx.Get(key)
-	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.headers[key]; ok {
 			return val
 		}
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Get(key)
 	}
 	return ""
 }
@@ -762,25 +827,25 @@ func (c *fiberContext) Referer() string {
 }
 
 func (c *fiberContext) OriginalURL() string {
-	if c.ctx != nil {
-		return c.ctx.OriginalURL()
-	}
 	if meta := c.getMeta(); meta != nil {
 		return meta.originalURL
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.OriginalURL()
 	}
 	return ""
 }
 
 func (c *fiberContext) FormFile(key string) (*multipart.FileHeader, error) {
-	if c.ctx == nil {
-		return nil, fmt.Errorf("context unavailable")
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.FormFile(key)
 	}
-	return c.ctx.FormFile(key)
+	return nil, fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) FormValue(key string, defaultValues ...string) string {
-	if c.ctx != nil {
-		return c.ctx.FormValue(key, defaultValues...)
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.FormValue(key, defaultValues...)
 	}
 	if len(defaultValues) > 0 {
 		return defaultValues[0]
@@ -789,7 +854,9 @@ func (c *fiberContext) FormValue(key string, defaultValues ...string) string {
 }
 
 func (c *fiberContext) SetHeader(key string, value string) Context {
-	c.ctx.Set(key, value)
+	if ctx := c.liveCtx(); ctx != nil {
+		ctx.Set(key, value)
+	}
 	return c
 }
 

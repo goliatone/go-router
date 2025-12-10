@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // TestFiberWebSocketContextFixVerification verifies that the nil pointer bug in
@@ -110,6 +112,81 @@ func TestFiberContextContextFallback(t *testing.T) {
 	// Simulate post-hijack by leaving fc.ctx nil; should return cached context.
 	if got := fc.Context(); got != expected {
 		t.Fatalf("expected cached context after hijack-safe fallback")
+	}
+}
+
+// Ensures fiberContext prefers cached meta and context even when ctx is non-nil
+// but its underlying RequestCtx has been detached (post-hijack scenario).
+func TestFiberContextUsesCacheWhenRequestCtxDetached(t *testing.T) {
+	cached := context.WithValue(context.Background(), "key", "value")
+	fc := &fiberContext{
+		ctx:       new(fiber.Ctx), // non-nil pointer, but RequestCtx is nil
+		cachedCtx: cached,
+		meta: &fiberRequestMeta{
+			method:      "GET",
+			path:        "/ws",
+			originalURL: "/ws?foo=bar",
+			ip:          "1.2.3.4",
+			host:        "example.com",
+			port:        "8080",
+			headers: map[string]string{
+				"X-Test": "value",
+			},
+			queries: map[string]string{
+				"foo": "1",
+			},
+			params: map[string]string{
+				"id": "123",
+			},
+			cookies: map[string]string{
+				"session": "abc",
+			},
+		},
+	}
+
+	if got := fc.Context(); got != cached {
+		t.Fatalf("expected cached context when RequestCtx is detached")
+	}
+	if got := fc.Method(); got != "GET" {
+		t.Fatalf("expected method from meta cache, got %q", got)
+	}
+	if got := fc.Path(); got != "/ws" {
+		t.Fatalf("expected path from meta cache, got %q", got)
+	}
+	if got := fc.OriginalURL(); got != "/ws?foo=bar" {
+		t.Fatalf("expected originalURL from meta cache, got %q", got)
+	}
+	if got := fc.IP(); got != "1.2.3.4" {
+		t.Fatalf("expected IP from meta cache, got %q", got)
+	}
+	if got := fc.Header("X-Test"); got != "value" {
+		t.Fatalf("expected header from meta cache, got %q", got)
+	}
+	if got := fc.Query("foo", "fallback"); got != "1" {
+		t.Fatalf("expected query from meta cache, got %q", got)
+	}
+	if got := fc.QueryInt("foo", 0); got != 1 {
+		t.Fatalf("expected query int from meta cache, got %d", got)
+	}
+	if got := fc.Param("id"); got != "123" {
+		t.Fatalf("expected param from meta cache, got %q", got)
+	}
+	if got := fc.Cookies("session"); got != "abc" {
+		t.Fatalf("expected cookie from meta cache, got %q", got)
+	}
+
+	// Accessors that rely on a live Fiber ctx should degrade gracefully
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("Locals should not panic when RequestCtx is detached: %v", r)
+			}
+		}()
+		_ = fc.Locals("foo")
+	}()
+
+	if err := fc.Redirect("/other"); err == nil {
+		t.Fatalf("expected redirect to fail without live context")
 	}
 }
 

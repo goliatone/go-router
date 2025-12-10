@@ -560,32 +560,32 @@ func (c *fiberContext) Body() []byte {
 }
 
 func (c *fiberContext) Method() string {
-	if meta := c.getMeta(); meta != nil {
-		return meta.method
-	}
 	if ctx := c.liveCtx(); ctx != nil {
 		return ctx.Method()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.method
 	}
 	return ""
 }
 func (c *fiberContext) Path() string {
-	if meta := c.getMeta(); meta != nil {
-		return meta.path
-	}
 	if ctx := c.liveCtx(); ctx != nil {
 		return ctx.Path()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.path
 	}
 	return ""
 }
 
 func (c *fiberContext) Param(name string, defaultValue ...string) string {
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Params(name, defaultValue...)
+	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.params[name]; ok {
 			return val
 		}
-	}
-	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.Params(name, defaultValue...)
 	}
 	if len(defaultValue) > 0 {
 		return defaultValue[0]
@@ -594,11 +594,11 @@ func (c *fiberContext) Param(name string, defaultValue ...string) string {
 }
 
 func (c *fiberContext) IP() string {
-	if meta := c.getMeta(); meta != nil {
-		return meta.ip
-	}
 	if ctx := c.liveCtx(); ctx != nil {
 		return ctx.IP()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.ip
 	}
 	return ""
 }
@@ -623,13 +623,13 @@ func (c *fiberContext) Cookie(cookie *Cookie) {
 }
 
 func (c *fiberContext) Cookies(key string, defaultValue ...string) string {
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Cookies(key, defaultValue...)
+	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.cookies[key]; ok {
 			return val
 		}
-	}
-	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.Cookies(key, defaultValue...)
 	}
 	if len(defaultValue) > 0 {
 		return defaultValue[0]
@@ -674,16 +674,16 @@ func (c *fiberContext) RedirectBack(fallback string, status ...int) error {
 }
 
 func (c *fiberContext) ParamsInt(name string, defaultValue int) int {
+	if ctx := c.liveCtx(); ctx != nil {
+		if out, err := ctx.ParamsInt(name, defaultValue); err == nil {
+			return out
+		}
+	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.params[name]; ok {
 			if out, err := strconv.Atoi(val); err == nil {
 				return out
 			}
-		}
-	}
-	if ctx := c.liveCtx(); ctx != nil {
-		if out, err := ctx.ParamsInt(name, defaultValue); err == nil {
-			return out
 		}
 	}
 	return defaultValue
@@ -694,18 +694,21 @@ func (c *fiberContext) Query(name string, defaultValue ...string) string {
 	if len(defaultValue) > 0 {
 		def = defaultValue[0]
 	}
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Query(name, def)
+	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.queries[name]; ok {
 			return val
 		}
 	}
-	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.Query(name, def)
-	}
 	return def
 }
 
 func (c *fiberContext) QueryInt(name string, defaultValue int) int {
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.QueryInt(name, defaultValue)
+	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.queries[name]; ok {
 			if out, err := strconv.Atoi(val); err == nil {
@@ -713,20 +716,10 @@ func (c *fiberContext) QueryInt(name string, defaultValue int) int {
 			}
 		}
 	}
-	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.QueryInt(name, defaultValue)
-	}
 	return defaultValue
 }
 
 func (c *fiberContext) Queries() map[string]string {
-	if meta := c.getMeta(); meta != nil && meta.queries != nil {
-		out := make(map[string]string, len(meta.queries))
-		for k, v := range meta.queries {
-			out[k] = v
-		}
-		return out
-	}
 	if ctx := c.liveCtx(); ctx != nil {
 		queries := make(map[string]string)
 		args := ctx.Request().URI().QueryArgs()
@@ -734,6 +727,13 @@ func (c *fiberContext) Queries() map[string]string {
 			queries[string(key)] = string(value)
 		})
 		return queries
+	}
+	if meta := c.getMeta(); meta != nil && meta.queries != nil {
+		out := make(map[string]string, len(meta.queries))
+		for k, v := range meta.queries {
+			out[k] = v
+		}
+		return out
 	}
 	return map[string]string{}
 }
@@ -808,13 +808,13 @@ func (c *fiberContext) SetContext(ctx context.Context) {
 }
 
 func (c *fiberContext) Header(key string) string {
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.Get(key)
+	}
 	if meta := c.getMeta(); meta != nil {
 		if val, ok := meta.headers[key]; ok {
 			return val
 		}
-	}
-	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.Get(key)
 	}
 	return ""
 }
@@ -827,11 +827,11 @@ func (c *fiberContext) Referer() string {
 }
 
 func (c *fiberContext) OriginalURL() string {
-	if meta := c.getMeta(); meta != nil {
-		return meta.originalURL
-	}
 	if ctx := c.liveCtx(); ctx != nil {
 		return ctx.OriginalURL()
+	}
+	if meta := c.getMeta(); meta != nil {
+		return meta.originalURL
 	}
 	return ""
 }

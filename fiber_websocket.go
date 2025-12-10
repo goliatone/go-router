@@ -394,24 +394,22 @@ func (c *fiberWebSocketContext) Extensions() []string {
 
 // RemoteAddr returns the remote address of the connection
 func (c *fiberWebSocketContext) RemoteAddr() string {
-	if c.ctx != nil {
-		return c.ctx.IP()
+	if c.fiberContext == nil {
+		return ""
 	}
-	if c.fiberContext != nil {
-		return c.fiberContext.IP()
-	}
-	return ""
+	return c.fiberContext.IP()
 }
 
 // LocalAddr returns the local address of the connection
 func (c *fiberWebSocketContext) LocalAddr() string {
-	if c.ctx != nil {
-		return fmt.Sprintf("%s:%s", c.ctx.Hostname(), c.ctx.Port())
+	if c.fiberContext == nil {
+		return ""
 	}
-	if c.fiberContext != nil {
-		if meta := c.fiberContext.getMeta(); meta != nil {
-			return fmt.Sprintf("%s:%s", meta.host, meta.port)
-		}
+	if meta := c.fiberContext.getMeta(); meta != nil {
+		return fmt.Sprintf("%s:%s", meta.host, meta.port)
+	}
+	if ctx := c.fiberContext.liveCtx(); ctx != nil {
+		return fmt.Sprintf("%s:%s", ctx.Hostname(), ctx.Port())
 	}
 	return ""
 }

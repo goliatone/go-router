@@ -187,6 +187,7 @@ func (a *FiberAdapter) Shutdown(ctx context.Context) error {
 }
 
 func (a *FiberAdapter) WrappedRouter() *fiber.App {
+	a.Init()
 	return a.app
 }
 

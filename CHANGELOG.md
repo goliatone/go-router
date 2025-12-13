@@ -1,5 +1,20 @@
 # Changelog
 
+# [0.33.0](https://github.com/goliatone/go-router/compare/v0.32.0...v0.33.0) - (2025-12-13)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Validate composite fs by using stat ([44d1cda](https://github.com/goliatone/go-router/commit/44d1cda18cd33584e0f14645bdc59766c5e5d399))  - (goliatone)
+- Initialize router adapter ([4fdeb10](https://github.com/goliatone/go-router/commit/4fdeb106a1612c9d7647a7a37abada0fa52f5b19))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.33.0 ([46dada3](https://github.com/goliatone/go-router/commit/46dada368f1ab8d17e895d37bc6c58ef3f8821b7))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.32.0 ([680d6d1](https://github.com/goliatone/go-router/commit/680d6d1a275f1215c7af6c597dd428b271deea84))  - (goliatone)
+
 # [0.32.0](https://github.com/goliatone/go-router/compare/v0.31.0...v0.32.0) - (2025-12-10)
 
 ## <!-- 1 -->🐛 Bug Fixes

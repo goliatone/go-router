@@ -164,6 +164,11 @@ func (a *FiberAdapter) Init() {
 		return
 	}
 
+	// Ensure router is initialized even when callers only use WrappedRouter().
+	if a.router == nil {
+		a.Router()
+	}
+
 	for _, route := range a.router.lateRoutes {
 		a.router.Handle(
 			route.method,
@@ -187,6 +192,8 @@ func (a *FiberAdapter) Shutdown(ctx context.Context) error {
 }
 
 func (a *FiberAdapter) WrappedRouter() *fiber.App {
+	// Ensure go-router late routes (e.g., Static) are registered even if the
+	// returned Fiber app is started with app.Listen directly.
 	a.Init()
 	return a.app
 }

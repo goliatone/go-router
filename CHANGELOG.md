@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.34.0](https://github.com/goliatone/go-router/compare/v0.33.0...v0.34.0) - (2025-12-13)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Ensure router is intialized even when wrapped router is used ([22a8d95](https://github.com/goliatone/go-router/commit/22a8d95f4a3ef015c7841497c8c02cdbfb7ce1f1))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.34.0 ([04a83ae](https://github.com/goliatone/go-router/commit/04a83aeb9d34ffe101c19164e2096d28348e6d56))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.33.0 ([eac786d](https://github.com/goliatone/go-router/commit/eac786dda1f256111e5f08983da3e7ab0a3cd52a))  - (goliatone)
+
 # [0.33.0](https://github.com/goliatone/go-router/compare/v0.32.0...v0.33.0) - (2025-12-13)
 
 ## <!-- 1 -->🐛 Bug Fixes

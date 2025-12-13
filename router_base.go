@@ -320,15 +320,20 @@ func (r *BaseRouter) prepareStaticFilesystem(prefix string, cfg Static) (fs.FS, 
 	if cfg.FS != nil {
 		root := normalizeFSRoot(cfg.Root)
 		fsToUse := cfg.FS
+
+		// Avoid validating embedded/composite filesystems via fs.Stat(".", ...)
+		// because many fs.FS implementations don't expose a "." entry but do
+		// correctly serve files via Open(name). When a non-dot root is provided,
+		// validate it against the original filesystem instead.
 		if root != "." {
-			sub, err := fs.Sub(fsToUse, root)
+			if _, err := fs.Stat(cfg.FS, root); err != nil {
+				return nil, fmt.Errorf("filesystem root validation failed for %q: %w", root, err)
+			}
+			sub, err := fs.Sub(cfg.FS, root)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve filesystem root %q: %w", root, err)
 			}
 			fsToUse = sub
-		}
-		if _, err := fs.Stat(fsToUse, "."); err != nil {
-			return nil, fmt.Errorf("filesystem root validation failed: %w", err)
 		}
 		return fsToUse, nil
 	}

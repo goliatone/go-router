@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.37.0](https://github.com/goliatone/go-router/compare/v0.36.0...v0.37.0) - (2025-12-15)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Register routes immediately for static ([00bc161](https://github.com/goliatone/go-router/commit/00bc1619ffae3ee4b151d91798bfad6bdcc26832))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.37.0 ([e6e2272](https://github.com/goliatone/go-router/commit/e6e2272f496bb20735103da34e634dfb3e5fd58c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.36.0 ([43c5898](https://github.com/goliatone/go-router/commit/43c5898cb7e350efec9a903a6ec18fed5907f1e0))  - (goliatone)
+
 # [0.36.0](https://github.com/goliatone/go-router/compare/v0.35.0...v0.36.0) - (2025-12-15)
 
 ## <!-- 1 -->🐛 Bug Fixes

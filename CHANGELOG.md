@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.35.0](https://github.com/goliatone/go-router/compare/v0.34.0...v0.35.0) - (2025-12-15)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Register late route for static server ([ed3a8a9](https://github.com/goliatone/go-router/commit/ed3a8a96ca4b5ff4eba5d904d4793b034b5ec7f9))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.35.0 ([2c6bbe1](https://github.com/goliatone/go-router/commit/2c6bbe1b935f425f20b3a75a98bfb0ff16b84abf))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.34.0 ([3ed9a18](https://github.com/goliatone/go-router/commit/3ed9a186f9d80dd5441cfed57eba5de6db5fb020))  - (goliatone)
+
 # [0.34.0](https://github.com/goliatone/go-router/compare/v0.33.0...v0.34.0) - (2025-12-13)
 
 ## <!-- 1 -->🐛 Bug Fixes

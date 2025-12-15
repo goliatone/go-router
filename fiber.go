@@ -129,8 +129,11 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 }
 
 func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
-	path, handler := r.makeStaticHandler(prefix, root, config...)
+	fullPrefix := r.joinPath(r.prefix, prefix)
+	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
+	r.addLateRoute(GET, path, handler, "static.get")
 	r.addLateRoute(GET, path+"/*", handler, "static.get")
+	r.addLateRoute(HEAD, path, handler, "static.head")
 	r.addLateRoute(HEAD, path+"/*", handler, "static.head")
 	return r
 }
@@ -157,16 +160,7 @@ func (a *FiberAdapter) Init() {
 		a.Router()
 	}
 
-	for _, route := range a.router.lateRoutes {
-		a.router.Handle(
-			route.method,
-			route.path,
-			route.handler,
-			route.mw...,
-		).SetName(route.name)
-	}
-
-	a.router.lateRoutes = make([]*lateRoute, 0)
+	a.router.registerLateRoutes(a.router)
 	a.initialized = true
 }
 

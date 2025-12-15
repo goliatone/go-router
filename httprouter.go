@@ -100,6 +100,7 @@ func (a *HTTPServer) WrapHandler(h HandlerFunc) any {
 }
 
 func (a *HTTPServer) WrappedRouter() *httprouter.Router {
+	a.Init()
 	return a.httpRouter
 }
 
@@ -190,16 +191,11 @@ func (a *HTTPServer) Init() {
 		return
 	}
 
-	for _, route := range a.router.lateRoutes {
-		a.router.Handle(
-			route.method,
-			route.path,
-			route.handler,
-			route.mw...,
-		).SetName(route.name)
+	if a.router == nil {
+		a.Router()
 	}
 
-	a.router.lateRoutes = make([]*lateRoute, 0)
+	a.router.registerLateRoutes(a.router)
 
 	a.initialized = true
 }
@@ -237,14 +233,28 @@ type HTTPRouter struct {
 }
 
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
-	path, handler := r.makeStaticHandler(prefix, root, config...)
-	r.addLateRoute(GET, path+"/*", handler, "static.get", func(hf HandlerFunc) HandlerFunc {
+	fullPrefix := r.joinPath(r.prefix, prefix)
+	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
+	wildcard := path + "/*filepath"
+	r.addLateRoute(GET, path, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.get Next")
 			return ctx.Next()
 		}
 	})
-	r.addLateRoute(HEAD, path+"/*", handler, "static.head", func(hf HandlerFunc) HandlerFunc {
+	r.addLateRoute(GET, wildcard, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			r.logger.Info("static.get Next")
+			return ctx.Next()
+		}
+	})
+	r.addLateRoute(HEAD, path, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
+		return func(ctx Context) error {
+			r.logger.Info("static.head Next")
+			return ctx.Next()
+		}
+	})
+	r.addLateRoute(HEAD, wildcard, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.head Next")
 			return ctx.Next()

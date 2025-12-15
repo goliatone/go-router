@@ -16,6 +16,7 @@ import (
 type routerRoot struct {
 	routes      []*RouteDefinition
 	namedRoutes map[string]*RouteDefinition
+	lateRoutes  []*lateRoute
 }
 
 // Common fields for both FiberRouter and HTTPRouter
@@ -24,7 +25,6 @@ type BaseRouter struct {
 	prefix            string
 	middlewares       []namedMiddleware
 	routes            []*RouteDefinition
-	lateRoutes        []*lateRoute
 	logger            Logger
 	root              *routerRoot
 	views             Views
@@ -144,15 +144,23 @@ func (br *BaseRouter) addLateRoute(method HTTPMethod, pathStr string, handler Ha
 		mw:      m,
 	}
 
-	br.lateRoutes = append(br.lateRoutes, d)
+	br.root.lateRoutes = append(br.root.lateRoutes, d)
 }
 
-func (br *BaseRouter) registerLateRoutes() {
-	// for _, route := range br.lateRoutes {
-	// 	br.Handle(route.method, route.path, route.handler, route.name, route.allMw)
-	// }
+type lateRouteRegistrar interface {
+	Handle(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) RouteInfo
+}
 
-	// br.lateRoutes = make([]*lateRoute, 0)
+func (br *BaseRouter) registerLateRoutes(reg lateRouteRegistrar) {
+	for _, route := range br.root.lateRoutes {
+		ri := reg.Handle(route.method, route.path, route.handler, route.mw...)
+		if route.name != "" {
+			ri.SetName(route.name)
+		}
+	}
+	if len(br.root.lateRoutes) > 0 {
+		br.root.lateRoutes = br.root.lateRoutes[:0]
+	}
 }
 
 func (br *BaseRouter) WithLogger(logger Logger) *BaseRouter {
@@ -235,7 +243,11 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 		r.logger.Info("Public static handler")
 		// Get path relative to prefix
 		reqPath := c.Path()
-		if !strings.HasPrefix(reqPath, prefix) {
+		if prefix != "/" {
+			if reqPath != prefix && !strings.HasPrefix(reqPath, prefix+"/") {
+				return c.Next()
+			}
+		} else if !strings.HasPrefix(reqPath, "/") {
 			return c.Next()
 		}
 

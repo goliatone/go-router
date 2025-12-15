@@ -131,10 +131,12 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
 	fullPrefix := r.joinPath(r.prefix, prefix)
 	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
-	r.addLateRoute(GET, path, handler, "static.get")
-	r.addLateRoute(GET, path+"/*", handler, "static.get")
-	r.addLateRoute(HEAD, path, handler, "static.head")
-	r.addLateRoute(HEAD, path+"/*", handler, "static.head")
+	// Register immediately so static routes can take precedence over catch-all
+	// routes (e.g. "/*") that are typically registered later.
+	r.Handle(GET, path, handler).SetName("static.get")
+	r.Handle(GET, path+"/*", handler).SetName("static.get")
+	r.Handle(HEAD, path, handler).SetName("static.head")
+	r.Handle(HEAD, path+"/*", handler).SetName("static.head")
 	return r
 }
 

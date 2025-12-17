@@ -607,7 +607,8 @@ func (c *httpRouterContext) Cookie(cookie *Cookie) {
 
 	// Only set MaxAge and Expires if SessionOnly is false
 	if !cookie.SessionOnly {
-		if cookie.MaxAge > 0 {
+		// Preserve negative MaxAge for cookie deletion semantics.
+		if cookie.MaxAge != 0 {
 			stdCookie.MaxAge = cookie.MaxAge
 		}
 		if !cookie.Expires.IsZero() {
@@ -616,7 +617,7 @@ func (c *httpRouterContext) Cookie(cookie *Cookie) {
 	}
 
 	// Handle SameSite string
-	switch cookie.SameSite {
+	switch strings.ToLower(cookie.SameSite) {
 	case CookieSameSiteStrictMode:
 		stdCookie.SameSite = http.SameSiteStrictMode
 	case CookieSameSiteNoneMode:

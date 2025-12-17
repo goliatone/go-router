@@ -3,6 +3,7 @@ package flash_test
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -117,22 +118,25 @@ func TestFlashMiddleware(t *testing.T) {
 				t.Errorf("Want status %d, got %d", tt.wantStatus, resp.StatusCode)
 			}
 
-			if tt.checkFlash {
-				cookie := resp.Header.Get("Set-Cookie")
-				if cookie == "" {
-					t.Error("Expected flash cookie to be set")
-				}
-				if !strings.Contains(cookie, "router-app-flash") {
-					t.Error("Expected cookie name router-app-flash")
-				}
+				if tt.checkFlash {
+					var flashCookie *http.Cookie
+					for _, c := range resp.Cookies() {
+						if c.Name == "router-app-flash" {
+							flashCookie = c
+							break
+						}
+					}
+					if flashCookie == nil || flashCookie.Value == "" {
+						t.Error("Expected flash cookie to be set")
+					}
 
-				// Second request to check flash data from middleware
-				req = httptest.NewRequest("GET", "/test", nil)
-				req.Header.Set("Cookie", cookie)
-				resp, err = app.Test(req)
-				if err != nil {
-					t.Fatalf("Flash check request failed: %v", err)
-				}
+					// Second request to check flash data from middleware
+					req = httptest.NewRequest("GET", "/test", nil)
+					req.AddCookie(&http.Cookie{Name: flashCookie.Name, Value: flashCookie.Value})
+					resp, err = app.Test(req)
+					if err != nil {
+						t.Fatalf("Flash check request failed: %v", err)
+					}
 
 				// Parse rendered data
 				var data router.ViewContext
@@ -246,5 +250,56 @@ func TestFlashMiddlewareSkip(t *testing.T) {
 	}
 	if resp.StatusCode != 200 {
 		t.Errorf("Want status 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestFlashMiddleware_HTTPServer_Injection(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	r.Use(flashMiddleware.New())
+
+	r.Get("/set", func(ctx router.Context) error {
+		flash.WithData(ctx, router.ViewContext{"hello": "world"})
+		return ctx.SendStatus(200)
+	})
+
+	r.Get("/get", func(ctx router.Context) error {
+		flashData := ctx.Locals("flash").(router.ViewContext)
+		return ctx.JSON(200, flashData)
+	})
+
+	h := adapter.WrappedRouter()
+
+	rr1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest("GET", "/set", nil)
+	h.ServeHTTP(rr1, req1)
+	resp1 := rr1.Result()
+	defer resp1.Body.Close()
+
+	var flashCookie *http.Cookie
+	for _, c := range resp1.Cookies() {
+		if c.Name == "router-app-flash" {
+			flashCookie = c
+			break
+		}
+	}
+	if flashCookie == nil || flashCookie.Value == "" {
+		t.Fatalf("expected flash cookie to be set")
+	}
+
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("GET", "/get", nil)
+	req2.AddCookie(&http.Cookie{Name: flashCookie.Name, Value: flashCookie.Value})
+	h.ServeHTTP(rr2, req2)
+	resp2 := rr2.Result()
+	defer resp2.Body.Close()
+
+	var out router.ViewContext
+	if err := json.NewDecoder(resp2.Body).Decode(&out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if out["hello"] != "world" {
+		t.Fatalf("expected injected flash data, got %v", out)
 	}
 }

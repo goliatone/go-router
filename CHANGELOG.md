@@ -1,5 +1,30 @@
 # Changelog
 
+# [0.38.0](https://github.com/goliatone/go-router/compare/v0.37.0...v0.38.0) - (2025-12-17)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Normalize httprouter cookie behavior ([cb741e7](https://github.com/goliatone/go-router/commit/cb741e737d4b9990d5dcf1c437436c6f7534561c))  - (goliatone)
+- Handle rull registers to manage path issues ([8835d8d](https://github.com/goliatone/go-router/commit/8835d8d2e175f4e62dbc8650e3c4bc41b1c12440))  - (goliatone)
+- Remove reduntant default tags parse ([3c0aeb8](https://github.com/goliatone/go-router/commit/3c0aeb8b205d9fb40eca79a250c138cef530cf3d))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.38.0 ([16828cf](https://github.com/goliatone/go-router/commit/16828cfd0fa9889d9e776b0c6b3f8e832dadb732))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Flash package for concurrencty and proper use of methods ([b6731a0](https://github.com/goliatone/go-router/commit/b6731a066be4ed19a1492e4b24fdd78fdf7b5429))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.37.0 ([fec7f2e](https://github.com/goliatone/go-router/commit/fec7f2eb6d2e34a7a9f8e84f7f11a794e42bf7b9))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([1340365](https://github.com/goliatone/go-router/commit/1340365aa6041e3f10f29a2b23910219fe4821bf))  - (goliatone)
+- Update readme ([be18d88](https://github.com/goliatone/go-router/commit/be18d8874c28edc48e6113c9bae4eced5525f609))  - (goliatone)
+
 # [0.37.0](https://github.com/goliatone/go-router/compare/v0.36.0...v0.37.0) - (2025-12-15)
 
 ## <!-- 1 -->🐛 Bug Fixes

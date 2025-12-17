@@ -2,6 +2,7 @@ package router
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -302,31 +303,23 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 
 		// Add tag metadata if enabled
 		if opt.IncludeTagMetadata {
-			prop.AllTags = make(map[string]string)
-			// Collect all struct tags
-			// Common tag names we want to capture
-			tagNames := []string{"json", "bun", "crud", "validate", "custom", "xml", "yaml", "form", "query", "param", "header", "db", "gorm", "binding", "description"}
-
-			for _, tagName := range tagNames {
-				if tagValue := field.Tag.Get(tagName); tagValue != "" {
-					prop.AllTags[tagName] = tagValue
-				}
-			}
-
-			// Also capture any other tags by parsing the full tag string
-			// This ensures we don't miss any custom tags
 			fullTag := string(field.Tag)
 			if fullTag != "" {
+				prop.AllTags = make(map[string]string)
 				parseAllTags(fullTag, prop.AllTags)
+				if len(prop.AllTags) == 0 {
+					prop.AllTags = nil
+				}
 			}
 		}
 
 		// Process custom tag handlers if provided
 		if len(opt.CustomTagHandlers) > 0 {
-			prop.CustomTagData = make(map[string]any)
-
 			for tagName, handler := range opt.CustomTagHandlers {
 				if tagValue := field.Tag.Get(tagName); tagValue != "" {
+					if prop.CustomTagData == nil {
+						prop.CustomTagData = make(map[string]any)
+					}
 					// Call the custom handler for this tag
 					result := handler(tagValue)
 					// Only store non-nil results
@@ -944,53 +937,53 @@ func toSingular(s string) string {
 
 // parseAllTags parses the full struct tag string to extract all tag key-value pairs
 func parseAllTags(tagStr string, result map[string]string) {
-	// Simple tag parsing - look for key:"value" patterns
-	for len(tagStr) > 0 {
-		// Skip whitespace
-		for len(tagStr) > 0 && tagStr[0] == ' ' {
+	// Fast, stdlib-compatible parsing (mirrors reflect.StructTag.Get behavior).
+	for tagStr != "" {
+		// Skip leading space.
+		for tagStr != "" && tagStr[0] == ' ' {
 			tagStr = tagStr[1:]
 		}
-		if len(tagStr) == 0 {
+		if tagStr == "" {
 			break
 		}
 
-		// Find the key (everything before the colon)
-		keyEnd := strings.Index(tagStr, ":")
-		if keyEnd == -1 {
+		// Scan to colon. A space, quote or control character is invalid.
+		i := 0
+		for i < len(tagStr) && tagStr[i] > ' ' && tagStr[i] != ':' && tagStr[i] != '"' && tagStr[i] != 0x7f {
+			i++
+		}
+		if i == 0 || i >= len(tagStr) || tagStr[i] != ':' {
 			break
 		}
-		key := tagStr[:keyEnd]
-		tagStr = tagStr[keyEnd+1:]
+		name := tagStr[:i]
+		tagStr = tagStr[i+1:]
 
-		// Skip any whitespace and expect a quote
-		for len(tagStr) > 0 && tagStr[0] == ' ' {
-			tagStr = tagStr[1:]
-		}
-		if len(tagStr) == 0 || tagStr[0] != '"' {
+		// Value must be quoted.
+		if tagStr == "" || tagStr[0] != '"' {
 			break
 		}
-
-		// Find the value (quoted string)
-		valueStart := 1 // Skip the opening quote
-		valueEnd := valueStart
-		for valueEnd < len(tagStr) && tagStr[valueEnd] != '"' {
-			if tagStr[valueEnd] == '\\' && valueEnd+1 < len(tagStr) {
-				valueEnd += 2 // Skip escaped character
-			} else {
-				valueEnd++
+		i = 1
+		for i < len(tagStr) {
+			if tagStr[i] == '"' {
+				break
 			}
+			if tagStr[i] == '\\' {
+				i++
+			}
+			i++
 		}
-		if valueEnd >= len(tagStr) {
+		if i >= len(tagStr) {
 			break
 		}
 
-		value := tagStr[valueStart:valueEnd]
-		tagStr = tagStr[valueEnd+1:] // Skip the closing quote
+		qvalue := tagStr[:i+1] // includes surrounding quotes
+		tagStr = tagStr[i+1:]
 
-		// Only add if not already present (the explicit tag names take priority)
-		if _, exists := result[key]; !exists {
-			result[key] = value
+		value, err := strconv.Unquote(qvalue)
+		if err != nil {
+			continue
 		}
+		result[name] = value
 	}
 }
 
@@ -999,8 +992,10 @@ func getFieldNameFromTags(field reflect.StructField, tagPriority []string) strin
 	for _, tagName := range tagPriority {
 		if tagValue := field.Tag.Get(tagName); tagValue != "" {
 			// Extract the field name part (before any comma-separated options)
-			fieldName := strings.Split(tagValue, ",")[0]
-			return fieldName
+			if idx := strings.IndexByte(tagValue, ','); idx != -1 {
+				return tagValue[:idx]
+			}
+			return tagValue
 		}
 	}
 	return ""

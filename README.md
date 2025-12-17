@@ -258,6 +258,26 @@ app.Use(flash.New(flash.Config{
 - Configurable context key for accessing flash data
 - Skippable with custom skip function
 
+**Cookie Defaults (safe by default):**
+- `Path: "/"`, `HTTPOnly: true`, `SameSite: "Lax"` (set `Secure: true` for HTTPS deployments)
+- To allow client-side JS to read the cookie (client-rendered UIs), configure `flash.Config{ClientAccessible: true}`
+
+**Toast Messages (SSR-friendly):**
+```go
+import flashmw "github.com/goliatone/go-router/middleware/flash"
+import flash "github.com/goliatone/go-router/flash"
+
+f := flash.New(flash.Config{
+    Secure:              true,
+    DefaultMessageTitle: "Notice",
+})
+app.Use(flashmw.New(flashmw.Config{Flash: f}))
+
+// In a POST handler:
+flash.SetMessage(c, flash.Message{Type: "success", Text: "Saved"})
+return c.Redirect("/admin")
+```
+
 **Handler Usage:**
 ```go
 // Access flash data in handlers

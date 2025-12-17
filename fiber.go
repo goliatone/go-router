@@ -133,11 +133,58 @@ func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fibe
 	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
 	// Register immediately so static routes can take precedence over catch-all
 	// routes (e.g. "/*") that are typically registered later.
-	r.Handle(GET, path, handler).SetName("static.get")
-	r.Handle(GET, path+"/*", handler).SetName("static.get")
-	r.Handle(HEAD, path, handler).SetName("static.head")
-	r.Handle(HEAD, path+"/*", handler).SetName("static.head")
+	r.handleFull(GET, path, handler).SetName("static.get")
+	r.handleFull(GET, path+"/*", handler).SetName("static.get")
+	r.handleFull(HEAD, path, handler).SetName("static.head")
+	r.handleFull(HEAD, path+"/*", handler).SetName("static.head")
 	return r
+}
+
+// handleFull registers a route using an already-prefixed path (i.e. full/absolute path).
+// This is needed for helpers like Static() which produce full paths (including group prefix).
+func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
+	// Check for duplicates
+	for _, existingRoute := range r.root.routes {
+		if existingRoute.Method == method && existingRoute.Path == fullPath {
+			r.logger.Warn("Duplicate route detected", "method", method, "path", fullPath)
+		}
+	}
+
+	allMw := slices.Clone(r.middlewares)
+	for _, mw := range m {
+		allMw = append(allMw, namedMiddleware{
+			Name: fmt.Sprintf("%s %s %s", method, fullPath, funcName(mw)),
+			Mw:   mw,
+		})
+	}
+
+	route := r.addRoute(method, fullPath, handler, "", allMw)
+	r.logger.Info("registering route", "method", method, "path", fullPath, "name", route.Name)
+
+	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
+		ctx := NewFiberContext(c, r.logger)
+		if fc, ok := ctx.(*fiberContext); ok {
+			fc.setMergeStrategy(r.mergeStrategy)
+			fc.setHandlers(route.Handlers)
+			fc.index = -1 // reset index to ensure proper chain execution
+
+			// Inject route context
+			goCtx := fc.Context()
+			goCtx = WithRouteName(goCtx, route.Name)
+			goCtx = WithRouteParams(goCtx, c.AllParams())
+			fc.SetContext(goCtx)
+
+			return fc.Next()
+		}
+		return fmt.Errorf("context cast failed")
+	})
+
+	route.onSetName = func(name string) {
+		r.app.Name(name)
+		r.addNamedRoute(name, route)
+	}
+
+	return route
 }
 
 func (r *FiberRouter) GetPrefix() string {

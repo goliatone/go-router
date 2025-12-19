@@ -1324,3 +1324,91 @@ func TestFiberContext_LocalsMerge(t *testing.T) {
 		t.Errorf("Expected status code 200, got %d", resp.StatusCode)
 	}
 }
+
+func TestFiberAdapter_HandlerFromHTTP(t *testing.T) {
+	adapter := router.NewFiberAdapter()
+	r := adapter.Router()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if name, ok := router.RouteNameFromContext(r.Context()); !ok || name != "fiber.http" {
+			t.Errorf("Expected route name fiber.http, got %v", name)
+		}
+		w.Header().Set("X-Q", r.URL.Query().Get("q"))
+		if r.Body != nil {
+			if body, err := io.ReadAll(r.Body); err == nil && len(body) > 0 {
+				w.Header().Set("X-Body", string(body))
+			}
+		}
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	headerOnly := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Only", "yes")
+	})
+
+	r.Get("/api/http", router.HandlerFromHTTP(handler)).SetName("fiber.http")
+	r.Post("/api/http", router.HandlerFromHTTP(handler)).SetName("fiber.http")
+	r.Head("/api/http", router.HandlerFromHTTP(handler)).SetName("fiber.http")
+	r.Get("/api/header-only", router.HandlerFromHTTP(headerOnly)).SetName("fiber.header")
+
+	app := adapter.WrappedRouter()
+
+	req := httptest.NewRequest("GET", "/api/http?q=hello", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Error while making GET request: %v", err)
+	}
+	bodyBytes, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("Error reading GET response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+	if resp.Header.Get("X-Q") != "hello" {
+		t.Errorf("Expected X-Q header hello, got %s", resp.Header.Get("X-Q"))
+	}
+	if string(bodyBytes) != "ok" {
+		t.Errorf("Expected body ok, got %s", string(bodyBytes))
+	}
+
+	req = httptest.NewRequest("POST", "/api/http", strings.NewReader("payload"))
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Error while making POST request: %v", err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.Header.Get("X-Body") != "payload" {
+		t.Errorf("Expected X-Body header payload, got %s", resp.Header.Get("X-Body"))
+	}
+
+	req = httptest.NewRequest("HEAD", "/api/http", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Error while making HEAD request: %v", err)
+	}
+	headBody, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("Error reading HEAD response body: %v", err)
+	}
+	if len(headBody) != 0 {
+		t.Errorf("Expected empty body for HEAD, got %q", string(headBody))
+	}
+
+	req = httptest.NewRequest("GET", "/api/header-only", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Error while making header-only request: %v", err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+	if resp.Header.Get("X-Only") != "yes" {
+		t.Errorf("Expected X-Only header yes, got %s", resp.Header.Get("X-Only"))
+	}
+}

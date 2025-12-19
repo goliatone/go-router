@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -641,6 +642,20 @@ func TestFiberContext_QueryMethods(t *testing.T) {
 					t.Errorf("Expected first tag value to be 'golang', got '%s'", val)
 				}
 				return c.JSON(200, map[string]string{"tag": val})
+			},
+			expectedCode: 200,
+		},
+		{
+			name:        "Query Values Preserve Order",
+			path:        "/query/values",
+			queryString: "include=a&include=b&include=c&include=b",
+			handler: func(c router.Context) error {
+				values := c.QueryValues("include")
+				expected := []string{"a", "b", "c", "b"}
+				if !reflect.DeepEqual(values, expected) {
+					t.Errorf("Expected values %v, got %v", expected, values)
+				}
+				return c.JSON(200, map[string]any{"include": values})
 			},
 			expectedCode: 200,
 		},

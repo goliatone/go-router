@@ -217,7 +217,7 @@ func TestFlash_Toasts_SupportMultipleAndDefaults(t *testing.T) {
 	}
 
 	var out struct {
-		OK       bool           `json:"ok"`
+		OK       bool            `json:"ok"`
 		Messages []flash.Message `json:"messages"`
 	}
 	if err := json.NewDecoder(resp2.Body).Decode(&out); err != nil {

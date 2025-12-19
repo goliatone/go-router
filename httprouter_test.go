@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -210,6 +211,35 @@ func TestHTTPRouter_ContextMethods(t *testing.T) {
 	responseHeader := resp.Header.Get("X-Response-Header")
 	if responseHeader != "responsevalue" {
 		t.Errorf("Expected response header X-Response-Header=responsevalue, got %s", responseHeader)
+	}
+}
+
+func TestHTTPRouter_QueryValues(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	handler := func(ctx router.Context) error {
+		values := ctx.QueryValues("include")
+		expected := []string{"a", "b", "c", "b"}
+		if !reflect.DeepEqual(values, expected) {
+			t.Errorf("Expected values %v, got %v", expected, values)
+		}
+		return ctx.JSON(200, map[string]any{"include": values})
+	}
+
+	r.Get("/query/values", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/query/values?include=a&include=b&include=c&include=b")
+	if err != nil {
+		t.Fatalf("Error while making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 }
 

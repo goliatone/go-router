@@ -31,6 +31,7 @@ func (s *stubContext) Query(name string, defaultValue ...string) string {
 	}
 	return ""
 }
+func (s *stubContext) QueryValues(name string) []string           { return []string{} }
 func (s *stubContext) QueryInt(name string, defaultValue int) int { return defaultValue }
 func (s *stubContext) Queries() map[string]string                 { return map[string]string{} }
 func (s *stubContext) Body() []byte                               { return nil }

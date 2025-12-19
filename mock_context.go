@@ -272,6 +272,14 @@ func (m *MockContext) Query(key string, defaultValue ...string) string {
 	return val
 }
 
+func (m *MockContext) QueryValues(key string) []string {
+	args := m.Called(key)
+	if args.Get(0) == nil {
+		return []string{}
+	}
+	return args.Get(0).([]string)
+}
+
 func (m *MockContext) QueryInt(key string, defaultValue int) int {
 	args := m.Called(key, defaultValue)
 	return args.Int(0)

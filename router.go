@@ -68,6 +68,7 @@ type RequestContext interface {
 	ParamsInt(key string, defaultValue int) int
 
 	Query(name string, defaultValue ...string) string
+	QueryValues(name string) []string
 	QueryInt(name string, defaultValue int) int
 	Queries() map[string]string
 

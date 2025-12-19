@@ -470,6 +470,14 @@ func newHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.
 	}
 }
 
+func (c *httpRouterContext) Request() *http.Request {
+	return c.r
+}
+
+func (c *httpRouterContext) Response() http.ResponseWriter {
+	return c.w
+}
+
 func (c *httpRouterContext) setHandlers(h []NamedHandler) {
 	c.handlers = h
 }

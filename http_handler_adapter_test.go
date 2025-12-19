@@ -3,6 +3,7 @@ package router_test
 import (
 	"context"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"testing"
@@ -64,6 +65,7 @@ func (s *stubContext) Send(body []byte) error               { return nil }
 func (s *stubContext) SendString(body string) error         { return nil }
 func (s *stubContext) SendStatus(code int) error            { return nil }
 func (s *stubContext) JSON(code int, v any) error           { return nil }
+func (s *stubContext) SendStream(r io.Reader) error         { return nil }
 func (s *stubContext) NoContent(code int) error             { return nil }
 func (s *stubContext) SetHeader(k, v string) router.Context { return s }
 

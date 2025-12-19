@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"io"
 	"maps"
 	"mime/multipart"
 	"net/http"
@@ -86,6 +87,16 @@ func (w *fasthttpResponseWriter) Finalize() {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func (w *fasthttpResponseWriter) Flush() {
+	if w.ctx == nil {
+		return
+	}
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	w.ctx.Response.ImmediateHeaderFlush = true
 }
 
 func NewFiberContext(c *fiber.Ctx, logger Logger) Context {
@@ -502,6 +513,13 @@ func (c *fiberContext) SendString(body string) error {
 func (c *fiberContext) Send(body []byte) error {
 	if ctx := c.liveCtx(); ctx != nil {
 		return ctx.Send(body)
+	}
+	return fmt.Errorf("context unavailable")
+}
+
+func (c *fiberContext) SendStream(r io.Reader) error {
+	if ctx := c.liveCtx(); ctx != nil {
+		return ctx.SendStream(r)
 	}
 	return fmt.Errorf("context unavailable")
 }

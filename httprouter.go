@@ -772,6 +772,16 @@ func (c *httpRouterContext) Query(name string, defaultValue ...string) string {
 	return def
 }
 
+func (c *httpRouterContext) QueryValues(name string) []string {
+	values, ok := c.r.URL.Query()[name]
+	if !ok || len(values) == 0 {
+		return []string{}
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
+}
+
 func (c *httpRouterContext) QueryInt(name string, defaultValue int) int {
 	q := ""
 	if q = c.r.URL.Query().Get(name); q == "" {

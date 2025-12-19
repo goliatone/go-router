@@ -29,16 +29,17 @@ type fiberContext struct {
 
 // fiberRequestMeta caches request data needed after fasthttp hijacks the connection.
 type fiberRequestMeta struct {
-	method      string
-	path        string
-	originalURL string
-	ip          string
-	host        string
-	port        string
-	headers     map[string]string
-	queries     map[string]string
-	params      map[string]string
-	cookies     map[string]string
+	method       string
+	path         string
+	originalURL  string
+	ip           string
+	host         string
+	port         string
+	headers      map[string]string
+	queries      map[string]string
+	queriesMulti map[string][]string
+	params       map[string]string
+	cookies      map[string]string
 }
 
 type fasthttpResponseWriter struct {
@@ -181,10 +182,11 @@ func (c *fiberContext) captureRequestMeta() {
 	}
 
 	meta := &fiberRequestMeta{
-		headers: make(map[string]string),
-		queries: make(map[string]string),
-		params:  make(map[string]string),
-		cookies: make(map[string]string),
+		headers:      make(map[string]string),
+		queries:      make(map[string]string),
+		queriesMulti: make(map[string][]string),
+		params:       make(map[string]string),
+		cookies:      make(map[string]string),
 	}
 	c.meta = meta
 
@@ -201,7 +203,9 @@ func (c *fiberContext) captureRequestMeta() {
 
 	args := ctx.Request().URI().QueryArgs()
 	args.VisitAll(func(key, value []byte) {
-		meta.queries[string(key)] = string(value)
+		keyStr := string(key)
+		meta.queriesMulti[keyStr] = append(meta.queriesMulti[keyStr], string(value))
+		meta.queries[keyStr] = string(value)
 	})
 
 	for k, v := range ctx.AllParams() {
@@ -457,6 +461,32 @@ func (c *fiberContext) Query(name string, defaultValue ...string) string {
 		}
 	}
 	return def
+}
+
+func (c *fiberContext) QueryValues(name string) []string {
+	if ctx := c.liveCtx(); ctx != nil {
+		args := ctx.Request().URI().QueryArgs()
+		values := []string{}
+		args.VisitAll(func(key, value []byte) {
+			if string(key) == name {
+				values = append(values, string(value))
+			}
+		})
+		if len(values) > 0 {
+			return values
+		}
+	}
+	if meta := c.getMeta(); meta != nil {
+		if values, ok := meta.queriesMulti[name]; ok {
+			out := make([]string, len(values))
+			copy(out, values)
+			return out
+		}
+		if val, ok := meta.queries[name]; ok {
+			return []string{val}
+		}
+	}
+	return []string{}
 }
 
 func (c *fiberContext) QueryInt(name string, defaultValue int) int {

@@ -43,6 +43,26 @@ func main() {
     app.Serve(":3000")
 }
 
+### Adapting net/http Handlers
+
+Use `HandlerFromHTTP` to reuse standard `http.Handler` code. For direct access to
+`http.Request` and `http.ResponseWriter`, use the helper `AsHTTPContext`.
+
+```go
+app.Router().Get("/export", router.HandlerFromHTTP(exportHandler))
+
+app.Router().Get("/stream", func(c router.Context) error {
+    if httpCtx, ok := router.AsHTTPContext(c); ok {
+        httpCtx.Response().Write([]byte("chunk"))
+        if fl, ok := httpCtx.Response().(http.Flusher); ok {
+            fl.Flush()
+        }
+        return nil
+    }
+    return c.SendStream(strings.NewReader("fallback"))
+})
+```
+
 ### Controlling view/locals merge
 
 When `PassLocalsToViews` is enabled, go-router merges handler locals into the view bind. By default the view bind wins on key collisions and a warning is logged. You can override this with a custom strategy:
@@ -331,6 +351,11 @@ app := fiber.New(fiber.Config{Views: viewEngine})
 ```
 
 Asset helpers are opt-in `cfg.WithAssets("./public", "css", "js")` when you have static files.
+Templates use Django/Pongo2 syntax, for example `{{ title }}` (not Go's `{{ .Title }}`).
+
+If you want paths relative to your module root (instead of the current working
+directory), use `NewSimpleViewConfigFromModuleRoot("./views")`. For embedded
+templates, you can use `NewSimpleViewConfigFS("templates", embedFS)`.
 
 #### Configuration (`ViewConfigProvider` Interface)
 

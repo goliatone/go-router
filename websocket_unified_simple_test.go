@@ -338,10 +338,17 @@ func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
 	var onPreUpgradeCalled bool
 	var onConnectCalled bool
 	var tokenSeen string
+	preUpgradeCh := make(chan struct{}, 1)
+	connectCh := make(chan struct{}, 1)
+	tokenCh := make(chan string, 1)
 
 	// 1. Set up OnPreUpgrade hook
 	config.OnPreUpgrade = func(c router.Context) (router.UpgradeData, error) {
 		onPreUpgradeCalled = true
+		select {
+		case preUpgradeCh <- struct{}{}:
+		default:
+		}
 
 		// Extract token from query
 		token := c.Query("token")
@@ -358,10 +365,18 @@ func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
 	// 2. Set up OnConnect hook
 	config.OnConnect = func(ws router.WebSocketContext) error {
 		onConnectCalled = true
+		select {
+		case connectCh <- struct{}{}:
+		default:
+		}
 
 		// Verify UpgradeData is accessible
 		if val, ok := ws.UpgradeData("token"); ok {
 			tokenSeen = val.(string)
+			select {
+			case tokenCh <- tokenSeen:
+			default:
+			}
 		}
 
 		// Also check helper
@@ -402,6 +417,21 @@ func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
 	defer ws.Close()
 
 	// 7. Verify hooks were called
+	select {
+	case <-preUpgradeCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("OnPreUpgrade should have been called")
+	}
+	select {
+	case <-connectCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("OnConnect should have been called")
+	}
+	select {
+	case tokenSeen = <-tokenCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Token should have been passed to OnConnect")
+	}
 	assert.True(t, onPreUpgradeCalled, "OnPreUpgrade should have been called")
 	assert.True(t, onConnectCalled, "OnConnect should have been called")
 	assert.Equal(t, "secret123", tokenSeen, "Token should have been passed to OnConnect")

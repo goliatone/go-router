@@ -138,4 +138,3 @@ func addMessageToContext(data router.ViewContext, msg Message) router.ViewContex
 	}
 	return out
 }
-

@@ -829,6 +829,15 @@ func (c *httpRouterContext) Send(body []byte) error {
 	return err
 }
 
+func (c *httpRouterContext) SendStream(r io.Reader) error {
+	if r == nil {
+		return c.NoContent(http.StatusNoContent)
+	}
+	c.written = true
+	_, err := io.Copy(c.w, r)
+	return err
+}
+
 func (c *httpRouterContext) JSON(code int, v any) error {
 	c.w.Header().Set("Content-Type", "application/json")
 	c.w.WriteHeader(code)

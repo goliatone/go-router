@@ -1,5 +1,36 @@
 # Changelog
 
+# [0.39.0](https://github.com/goliatone/go-router/compare/v0.38.0...v0.39.0) - (2025-12-19)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Normalize error handler in httprouter ([823dbfe](https://github.com/goliatone/go-router/commit/823dbfe70bb12463ae7f62acd3e73a26825dbbc0))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.39.0 ([2b34e0b](https://github.com/goliatone/go-router/commit/2b34e0b9ce5f097a8ba8c9209ee511d9f78896c8))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- QueryValues for multi values ([4cddb0d](https://github.com/goliatone/go-router/commit/4cddb0d46454383409e31327a25f55877a5b7b8b))  - (goliatone)
+- View helper to manage dir ([f9abb61](https://github.com/goliatone/go-router/commit/f9abb61f15bbf42663736bbddeafa4b57de2b0f4))  - (goliatone)
+- Stream support ([b497f8d](https://github.com/goliatone/go-router/commit/b497f8df8bb37a4ffeabe669d3d0a87446cd0cf1))  - (goliatone)
+- HTTPContext interface ([3ba98c7](https://github.com/goliatone/go-router/commit/3ba98c7f61072279ba1cbd10f78e970c145b8cc4))  - (goliatone)
+- Fiber context to addapt http context ([151cc28](https://github.com/goliatone/go-router/commit/151cc283ca3ff0abfe449f62053dda1797eaed90))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.38.0 ([e394727](https://github.com/goliatone/go-router/commit/e394727317543875c34ad71de7ac6a4d37ce7d82))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#17](https://github.com/goliatone/go-router/pull/17): multi value query support, HTTP adapter and HTTPContext ([9361651](https://github.com/goliatone/go-router/commit/936165117081afc09cc0926a7aa861973badbc1e))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([25ec55c](https://github.com/goliatone/go-router/commit/25ec55cd232255ef459e2050a103af0c366ed122))  - (goliatone)
+- Update tests ([e8f0233](https://github.com/goliatone/go-router/commit/e8f0233910476255178179a43619d5029ddef5e0))  - (goliatone)
+
 # [0.38.0](https://github.com/goliatone/go-router/compare/v0.37.0...v0.38.0) - (2025-12-17)
 
 ## <!-- 1 -->🐛 Bug Fixes

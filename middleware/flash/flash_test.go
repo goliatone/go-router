@@ -118,25 +118,25 @@ func TestFlashMiddleware(t *testing.T) {
 				t.Errorf("Want status %d, got %d", tt.wantStatus, resp.StatusCode)
 			}
 
-				if tt.checkFlash {
-					var flashCookie *http.Cookie
-					for _, c := range resp.Cookies() {
-						if c.Name == "router-app-flash" {
-							flashCookie = c
-							break
-						}
+			if tt.checkFlash {
+				var flashCookie *http.Cookie
+				for _, c := range resp.Cookies() {
+					if c.Name == "router-app-flash" {
+						flashCookie = c
+						break
 					}
-					if flashCookie == nil || flashCookie.Value == "" {
-						t.Error("Expected flash cookie to be set")
-					}
+				}
+				if flashCookie == nil || flashCookie.Value == "" {
+					t.Error("Expected flash cookie to be set")
+				}
 
-					// Second request to check flash data from middleware
-					req = httptest.NewRequest("GET", "/test", nil)
-					req.AddCookie(&http.Cookie{Name: flashCookie.Name, Value: flashCookie.Value})
-					resp, err = app.Test(req)
-					if err != nil {
-						t.Fatalf("Flash check request failed: %v", err)
-					}
+				// Second request to check flash data from middleware
+				req = httptest.NewRequest("GET", "/test", nil)
+				req.AddCookie(&http.Cookie{Name: flashCookie.Name, Value: flashCookie.Value})
+				resp, err = app.Test(req)
+				if err != nil {
+					t.Fatalf("Flash check request failed: %v", err)
+				}
 
 				// Parse rendered data
 				var data router.ViewContext

@@ -28,6 +28,7 @@ type HTTPServer struct {
 	views             Views
 	passLocalsToViews bool
 	initialized       bool
+	errorHandler      func(Context, error) error
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -44,7 +45,8 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 	// engine := django.New("./views", ".html")
 
 	return &HTTPServer{
-		httpRouter: router,
+		httpRouter:   router,
+		errorHandler: DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig()),
 		// views:      engine,
 	}
 }
@@ -57,8 +59,12 @@ func DefaultHTTPRouterOptions(router *httprouter.Router) *httprouter.Router {
 
 func (a *HTTPServer) Router() Router[*httprouter.Router] {
 	if a.router == nil {
+		if a.errorHandler == nil {
+			a.errorHandler = DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig())
+		}
 		a.router = &HTTPRouter{
-			router: a.httpRouter,
+			router:       a.httpRouter,
+			errorHandler: a.errorHandler,
 			BaseRouter: BaseRouter{
 				logger:      &defaultLogger{},
 				routes:      []*RouteDefinition{},
@@ -94,7 +100,15 @@ func (a *HTTPServer) WrapHandler(h HandlerFunc) any {
 		}
 
 		if err := h(c); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			if a.errorHandler == nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if handleErr := a.errorHandler(c, err); handleErr != nil {
+				if a.router != nil && a.router.logger != nil {
+					a.router.logger.Error("error handler failed: %v", handleErr)
+				}
+			}
 		}
 	}
 }
@@ -229,7 +243,8 @@ func (a *HTTPServer) Shutdown(ctx context.Context) error {
 // HTTPRouter implements Router for httprouter
 type HTTPRouter struct {
 	BaseRouter
-	router *httprouter.Router
+	router       *httprouter.Router
+	errorHandler func(Context, error) error
 }
 
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
@@ -269,7 +284,8 @@ func (r *HTTPRouter) GetPrefix() string {
 
 func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
-		router: r.router,
+		router:       r.router,
+		errorHandler: r.errorHandler,
 		BaseRouter: BaseRouter{
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
@@ -285,7 +301,8 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 func (r *HTTPRouter) Mount(prefix string) Router[*httprouter.Router] {
 
 	return &HTTPRouter{
-		router: r.router,
+		router:       r.router,
+		errorHandler: r.errorHandler,
 		BaseRouter: BaseRouter{
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
@@ -364,7 +381,13 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 
 		if err := ctx.Next(); err != nil {
 			r.logger.Error("handler chain error: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			if r.errorHandler == nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if handleErr := r.errorHandler(ctx, err); handleErr != nil {
+				r.logger.Error("error handler failed: %v", handleErr)
+			}
 		}
 	})
 
@@ -445,6 +468,14 @@ func newHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.
 		views:  views,
 		locals: make(ViewContext),
 	}
+}
+
+func (c *httpRouterContext) Request() *http.Request {
+	return c.r
+}
+
+func (c *httpRouterContext) Response() http.ResponseWriter {
+	return c.w
 }
 
 func (c *httpRouterContext) setHandlers(h []NamedHandler) {
@@ -741,6 +772,16 @@ func (c *httpRouterContext) Query(name string, defaultValue ...string) string {
 	return def
 }
 
+func (c *httpRouterContext) QueryValues(name string) []string {
+	values, ok := c.r.URL.Query()[name]
+	if !ok || len(values) == 0 {
+		return []string{}
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
+}
+
 func (c *httpRouterContext) QueryInt(name string, defaultValue int) int {
 	q := ""
 	if q = c.r.URL.Query().Get(name); q == "" {
@@ -795,6 +836,15 @@ func (c *httpRouterContext) Send(body []byte) error {
 	}
 	c.written = true
 	_, err := c.w.Write(body)
+	return err
+}
+
+func (c *httpRouterContext) SendStream(r io.Reader) error {
+	if r == nil {
+		return c.NoContent(http.StatusNoContent)
+	}
+	c.written = true
+	_, err := io.Copy(c.w, r)
 	return err
 }
 

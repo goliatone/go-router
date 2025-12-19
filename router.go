@@ -8,6 +8,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	goerrors "github.com/goliatone/go-errors"
 )
 
 const (
@@ -66,6 +68,7 @@ type RequestContext interface {
 	ParamsInt(key string, defaultValue int) int
 
 	Query(name string, defaultValue ...string) string
+	QueryValues(name string) []string
 	QueryInt(name string, defaultValue int) int
 	Queries() map[string]string
 
@@ -117,11 +120,18 @@ type ResponseWriter interface {
 	SendString(body string) error
 	SendStatus(code int) error
 	JSON(code int, v any) error
+	SendStream(r io.Reader) error
 	// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 	NoContent(code int) error
 	SetHeader(string, string) Context
 	// Download(file string, filename ...string) error
 	// SendFile(file string, compress ...bool) error
+}
+
+// HTTPContext exposes net/http request/response primitives for adapters that support them.
+type HTTPContext interface {
+	Request() *http.Request
+	Response() http.ResponseWriter
 }
 
 // ContextStore is a request scoped, in-memoroy
@@ -317,6 +327,99 @@ func MiddlewareFromHTTP(mw func(next http.Handler) http.Handler) MiddlewareFunc 
 			return nil
 		}
 	}
+}
+
+type finalizeWriter interface {
+	Finalize()
+}
+
+type headResponseWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *headResponseWriter) WriteHeader(status int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *headResponseWriter) Write(p []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return len(p), nil
+}
+
+func (w *headResponseWriter) Finalize() {
+	if fw, ok := w.ResponseWriter.(finalizeWriter); ok {
+		fw.Finalize()
+		return
+	}
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func newHTTPAdapterError(code int, message string) error {
+	if message == "" {
+		message = http.StatusText(code)
+	}
+	return goerrors.New(message, goerrors.HTTPStatusToCategory(code)).
+		WithCode(code).
+		WithTextCode(goerrors.HTTPStatusToTextCode(code))
+}
+
+// HandlerFromHTTP adapts a net/http handler to a go-router HandlerFunc.
+// Works with any Context that also implements HTTPContext.
+func HandlerFromHTTP(h http.Handler) HandlerFunc {
+	return func(c Context) error {
+		if h == nil {
+			return newHTTPAdapterError(http.StatusInternalServerError, "handler_from_http: nil handler")
+		}
+
+		httpCtx, ok := c.(HTTPContext)
+		if !ok {
+			return newHTTPAdapterError(http.StatusNotImplemented, "handler_from_http: context does not implement HTTPContext")
+		}
+
+		req := httpCtx.Request()
+		res := httpCtx.Response()
+		if req == nil || res == nil {
+			return newHTTPAdapterError(http.StatusInternalServerError, "handler_from_http: nil request/response")
+		}
+
+		req = req.WithContext(c.Context())
+
+		if req.Method == http.MethodHead {
+			if _, ok := res.(*fasthttpResponseWriter); ok {
+				res = &headResponseWriter{ResponseWriter: res}
+			}
+		}
+
+		h.ServeHTTP(res, req)
+
+		if fw, ok := res.(finalizeWriter); ok {
+			fw.Finalize()
+		}
+
+		if ctx, ok := c.(*httpRouterContext); ok && !ctx.written {
+			ctx.written = true
+		}
+
+		return nil
+	}
+}
+
+// AsHTTPContext returns the HTTPContext if the adapter supports it.
+func AsHTTPContext(c Context) (HTTPContext, bool) {
+	if c == nil {
+		return nil, false
+	}
+	ctx, ok := c.(HTTPContext)
+	return ctx, ok
 }
 
 // Helper functions for type-safe context operations

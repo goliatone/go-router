@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -210,6 +211,35 @@ func TestHTTPRouter_ContextMethods(t *testing.T) {
 	responseHeader := resp.Header.Get("X-Response-Header")
 	if responseHeader != "responsevalue" {
 		t.Errorf("Expected response header X-Response-Header=responsevalue, got %s", responseHeader)
+	}
+}
+
+func TestHTTPRouter_QueryValues(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	handler := func(ctx router.Context) error {
+		values := ctx.QueryValues("include")
+		expected := []string{"a", "b", "c", "b"}
+		if !reflect.DeepEqual(values, expected) {
+			t.Errorf("Expected values %v, got %v", expected, values)
+		}
+		return ctx.JSON(200, map[string]any{"include": values})
+	}
+
+	r.Get("/query/values", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/query/values?include=a&include=b&include=c&include=b")
+	if err != nil {
+		t.Fatalf("Error while making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 }
 
@@ -627,5 +657,67 @@ func TestHTTPRouter_LocalsMerge(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+}
+
+func TestHTTPRouter_HandlerFromHTTP(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if name, ok := router.RouteNameFromContext(r.Context()); !ok || name != "http.handler" {
+			t.Errorf("Expected route name http.handler, got %v", name)
+		}
+		w.Header().Set("X-Test", "ok")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	r.Get("/api/http", router.HandlerFromHTTP(handler)).SetName("http.handler")
+	r.Head("/api/http", router.HandlerFromHTTP(handler)).SetName("http.handler")
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/http")
+	if err != nil {
+		t.Fatalf("Error while making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("Expected status code %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+	if resp.Header.Get("X-Test") != "ok" {
+		t.Errorf("Expected X-Test header ok, got %s", resp.Header.Get("X-Test"))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Error reading response body: %v", err)
+	}
+	if string(bodyBytes) != `{"status":"ok"}` {
+		t.Errorf("Expected body %s, got %s", `{"status":"ok"}`, string(bodyBytes))
+	}
+
+	headReq, err := http.NewRequest(http.MethodHead, server.URL+"/api/http", nil)
+	if err != nil {
+		t.Fatalf("Error creating HEAD request: %v", err)
+	}
+	headResp, err := http.DefaultClient.Do(headReq)
+	if err != nil {
+		t.Fatalf("Error while making HEAD request: %v", err)
+	}
+	defer headResp.Body.Close()
+
+	if headResp.StatusCode != http.StatusCreated {
+		t.Errorf("Expected status code %d, got %d", http.StatusCreated, headResp.StatusCode)
+	}
+	headBody, err := io.ReadAll(headResp.Body)
+	if err != nil {
+		t.Fatalf("Error reading HEAD response body: %v", err)
+	}
+	if len(headBody) != 0 {
+		t.Errorf("Expected empty body for HEAD, got %q", string(headBody))
 	}
 }

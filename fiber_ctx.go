@@ -90,6 +90,8 @@ func (w *fasthttpResponseWriter) Finalize() {
 	}
 }
 
+// Flush is best-effort on Fiber. It can flush headers but does not stream body
+// data until the handler returns unless a streaming adapter is used.
 func (w *fasthttpResponseWriter) Flush() {
 	if w.ctx == nil {
 		return

@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"time"
@@ -88,6 +89,11 @@ func (m *MockContext) SendString(s string) error {
 func (m *MockContext) Send(b []byte) error {
 	args := m.Called(b)
 	m.ResponseBodyM = string(b)
+	return args.Error(0)
+}
+
+func (m *MockContext) SendStream(r io.Reader) error {
+	args := m.Called(r)
 	return args.Error(0)
 }
 

@@ -63,6 +63,10 @@ app.Router().Get("/stream", func(c router.Context) error {
 })
 ```
 
+Note: on Fiber, net/http streaming is buffered by fasthttp. `Flush()` is
+best-effort (headers only) unless you use a streaming adapter. For true
+streaming in Fiber, prefer `SendStream` from go-router handlers.
+
 ### Controlling view/locals merge
 
 When `PassLocalsToViews` is enabled, go-router merges handler locals into the view bind. By default the view bind wins on key collisions and a warning is logged. You can override this with a custom strategy:

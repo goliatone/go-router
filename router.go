@@ -119,6 +119,7 @@ type ResponseWriter interface {
 	SendString(body string) error
 	SendStatus(code int) error
 	JSON(code int, v any) error
+	SendStream(r io.Reader) error
 	// NoContent for status codes that shouldn't have response bodies (204, 205, 304).
 	NoContent(code int) error
 	SetHeader(string, string) Context
@@ -392,7 +393,9 @@ func HandlerFromHTTP(h http.Handler) HandlerFunc {
 		req = req.WithContext(c.Context())
 
 		if req.Method == http.MethodHead {
-			res = &headResponseWriter{ResponseWriter: res}
+			if _, ok := res.(*fasthttpResponseWriter); ok {
+				res = &headResponseWriter{ResponseWriter: res}
+			}
 		}
 
 		h.ServeHTTP(res, req)
@@ -401,8 +404,21 @@ func HandlerFromHTTP(h http.Handler) HandlerFunc {
 			fw.Finalize()
 		}
 
+		if ctx, ok := c.(*httpRouterContext); ok && !ctx.written {
+			ctx.written = true
+		}
+
 		return nil
 	}
+}
+
+// AsHTTPContext returns the HTTPContext if the adapter supports it.
+func AsHTTPContext(c Context) (HTTPContext, bool) {
+	if c == nil {
+		return nil, false
+	}
+	ctx, ok := c.(HTTPContext)
+	return ctx, ok
 }
 
 // Helper functions for type-safe context operations

@@ -722,9 +722,11 @@ type Context interface {
     Path() string
     Param(name string) string
     Query(name string) string
+    QueryValues(name string) []string
     Queries() map[string]string
     Status(code int) Context
     Send(body []byte) error
+    SendStream(r io.Reader) error
     JSON(code int, v any) error
     NoContent(code int) error
     Bind(any) error
@@ -735,6 +737,11 @@ type Context interface {
     Next() error
 }
 ```
+
+Query precedence: `Query` and `Queries` keep the adapter’s single-value behavior
+(first/last depending on adapter). `QueryValues` returns all values in request
+order. If you accept comma-delimited values, split those explicitly in your
+handler.
 
 ## Metadata Generation
 

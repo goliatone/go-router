@@ -1,11 +1,18 @@
 package router
 
-import "io/fs"
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+)
 
 // SimpleViewConfig provides sensible defaults for file-based templates without
 // requiring the full ViewConfigProvider surface. Assets are opt-in.
 type SimpleViewConfig struct {
 	DirOS      string
+	DirFS      string
+	Embed      bool
 	Ext        string
 	Reload     bool
 	Debug      bool
@@ -26,6 +33,25 @@ func NewSimpleViewConfig(dirOS string) *SimpleViewConfig {
 		Reload: true,
 		Debug:  true,
 	}
+}
+
+// NewSimpleViewConfigFromModuleRoot resolves dirOS relative to the module root (go.mod).
+// If module root detection fails or dirOS is already absolute, it falls back to dirOS.
+func NewSimpleViewConfigFromModuleRoot(dirOS string) *SimpleViewConfig {
+	if dirOS == "" || filepath.IsAbs(dirOS) {
+		return NewSimpleViewConfig(dirOS)
+	}
+	root, err := moduleRoot()
+	if err != nil {
+		return NewSimpleViewConfig(dirOS)
+	}
+	return NewSimpleViewConfig(filepath.Join(root, dirOS))
+}
+
+// NewSimpleViewConfigFS initializes a config using embedded templates.
+func NewSimpleViewConfigFS(dirFS string, templates ...fs.FS) *SimpleViewConfig {
+	cfg := NewSimpleViewConfig("")
+	return cfg.WithEmbedFS(dirFS, templates...)
 }
 
 // WithAssets enables static asset helpers using the provided root directory and
@@ -67,6 +93,14 @@ func (c *SimpleViewConfig) WithFunctions(funcs map[string]any) *SimpleViewConfig
 	return c
 }
 
+// WithEmbedFS switches the config into embed mode with the provided templates.
+func (c *SimpleViewConfig) WithEmbedFS(dirFS string, templates ...fs.FS) *SimpleViewConfig {
+	c.Embed = true
+	c.DirFS = dirFS
+	c.TemplateFS = templates
+	return c
+}
+
 // ViewConfigProvider implementation
 
 func (c *SimpleViewConfig) GetReload() bool {
@@ -78,7 +112,7 @@ func (c *SimpleViewConfig) GetDebug() bool {
 }
 
 func (c *SimpleViewConfig) GetEmbed() bool {
-	return false
+	return c.Embed
 }
 
 func (c *SimpleViewConfig) GetCSSPath() string {
@@ -90,7 +124,7 @@ func (c *SimpleViewConfig) GetJSPath() string {
 }
 
 func (c *SimpleViewConfig) GetDirFS() string {
-	return ""
+	return c.DirFS
 }
 
 func (c *SimpleViewConfig) GetDirOS() string {
@@ -122,4 +156,23 @@ func (c *SimpleViewConfig) GetAssetsDir() string {
 
 func (c *SimpleViewConfig) GetTemplatesFS() []fs.FS {
 	return c.TemplateFS
+}
+
+func moduleRoot() (string, error) {
+	start, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("module root: %w", err)
+	}
+	dir := start
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("module root: go.mod not found from %s", start)
 }

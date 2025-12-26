@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.40.0](https://github.com/goliatone/go-router/compare/v0.39.0...v0.40.0) - (2025-12-26)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.40.0 ([43601f4](https://github.com/goliatone/go-router/commit/43601f4cf8dace40c10d39e40b61f7afb61335f9))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- View path helpers ([d363d0e](https://github.com/goliatone/go-router/commit/d363d0efe52d1689b8e3c8cc2b35a559fbcc2a54))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.39.0 ([f755837](https://github.com/goliatone/go-router/commit/f75583724a75107b0d1d73814e40afc3f8cb632c))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([0abf113](https://github.com/goliatone/go-router/commit/0abf11317211f81127e013281db6d2c1dfd40444))  - (goliatone)
+- Update readme ([39befa3](https://github.com/goliatone/go-router/commit/39befa3ebb885b5f6635495c903c9b4c8558b904))  - (goliatone)
+- Update path ([39ebd19](https://github.com/goliatone/go-router/commit/39ebd190977d47c60ae42c249ccc18420d34a379))  - (goliatone)
+- Fix for race test ([80bca67](https://github.com/goliatone/go-router/commit/80bca6738d5435612e2a653516d02517a586d939))  - (goliatone)
+- Update docs ([ba9d980](https://github.com/goliatone/go-router/commit/ba9d980f997d4a56c851f79351229ebb5762347a))  - (goliatone)
+
 # [0.39.0](https://github.com/goliatone/go-router/compare/v0.38.0...v0.39.0) - (2025-12-19)
 
 ## <!-- 1 -->🐛 Bug Fixes

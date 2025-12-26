@@ -456,8 +456,11 @@ func main() {
 
     // IMPORTANT: Serve your static files with the same prefix!
     // The router only generates URLs; it doesn't serve files.
-    // fs.Sub is used to serve the `assets` directory content.
-    staticFS, _ := fs.Sub(assetFS, "assets")
+    // router.SubFS is used to serve the `assets` directory content.
+    staticFS, err := router.SubFS(assetFS, "assets")
+    if err != nil {
+        log.Fatalf("Failed to scope assets: %v", err)
+    }
     app.Static("/static", filesystem.New(filesystem.Config{
         Root: http.FS(staticFS),
     }))

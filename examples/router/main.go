@@ -7,9 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"reflect"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -470,11 +468,7 @@ The API version: v0.0.0..
 }
 
 func exampleViewsDir() string {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "./views"
-	}
-	return filepath.Join(filepath.Dir(file), "views")
+	return router.AbsFromCaller("views")
 }
 
 type DomainError struct {

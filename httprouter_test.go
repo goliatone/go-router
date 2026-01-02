@@ -109,6 +109,26 @@ func TestHTTPRouter_Methods(t *testing.T) {
 	}
 }
 
+func TestHTTPRouter_ConflictPolicy_LogAndSkip(t *testing.T) {
+	adapter := router.NewHTTPServer(router.WithHTTPRouterConflictPolicy(router.HTTPRouterConflictLogAndSkip))
+	r := adapter.Router()
+
+	handler := func(ctx router.Context) error {
+		return ctx.Send([]byte("ok"))
+	}
+
+	r.Get("/admin/exports/:id", handler)
+	r.Get("/admin/exports/history", handler)
+
+	routes := r.Routes()
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route after conflict skip, got %d", len(routes))
+	}
+	if routes[0].Path != "/admin/exports/:id" {
+		t.Fatalf("unexpected route path: %s", routes[0].Path)
+	}
+}
+
 func TestHTTPRouter_Group(t *testing.T) {
 	adapter := router.NewHTTPServer()
 	r := adapter.Router()

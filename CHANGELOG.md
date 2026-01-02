@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.41.0](https://github.com/goliatone/go-router/compare/v0.40.0...v0.41.0) - (2026-01-02)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.41.0 ([93b2370](https://github.com/goliatone/go-router/commit/93b23709f3cfb1cda5caaed8421b2cc740c544fd))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Helper to manage streams and regular downloads ([158afe5](https://github.com/goliatone/go-router/commit/158afe5291598ff2df4e35f4b5fe11396d4cd138))  - (goliatone)
+- New HTTPRouterConflictPolicy to resolve routing conclicts ([d2edebf](https://github.com/goliatone/go-router/commit/d2edebfd22f34cf8c079525b25d2c22c78c2958d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.40.0 ([fa04bef](https://github.com/goliatone/go-router/commit/fa04bef767688bb19341231d026dacdf0565306f))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([46fc2f8](https://github.com/goliatone/go-router/commit/46fc2f82fc5413d40a7a6faf1e43ae014f666cea))  - (goliatone)
+- Update tests ([76278a5](https://github.com/goliatone/go-router/commit/76278a52e26330309fa3521351ef1b072bb9289f))  - (goliatone)
+
 # [0.40.0](https://github.com/goliatone/go-router/compare/v0.39.0...v0.40.0) - (2025-12-26)
 
 ## <!-- 13 -->📦 Bumps

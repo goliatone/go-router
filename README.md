@@ -12,6 +12,16 @@ go get github.com/goliatone/go-router
 
 `go-router` provides a common interface for HTTP routing that can be implemented by different HTTP frameworks. Currently includes a [Fiber](https://github.com/gofiber/fiber) and [HTTPRouter](https://github.com/julienschmidt/httprouter)  with plans to support more frameworks.
 
+## HTTPRouter Adapter Constraints
+
+`httprouter` does not allow a static segment and a wildcard segment (`:id` or `*path`) at the same path depth under the same prefix. For example, `/admin/exports/:id` and `/admin/exports/history` cannot both be registered in the HTTPRouter adapter.
+
+By default, go-router panics on these conflicts. To log and skip conflicting routes:
+
+```go
+app := router.NewHTTPServer(router.WithHTTPRouterConflictPolicy(router.HTTPRouterConflictLogAndSkip))
+```
+
 ## Usage
 
 ### Basic Example with Fiber

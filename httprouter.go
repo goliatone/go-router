@@ -15,11 +15,53 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/gofiber/utils"
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/julienschmidt/httprouter"
 )
+
+// HTTPRouterConflictPolicy controls how route conflicts are handled.
+type HTTPRouterConflictPolicy int
+
+const (
+	HTTPRouterConflictPanic HTTPRouterConflictPolicy = iota
+	HTTPRouterConflictLogAndSkip
+)
+
+func (p HTTPRouterConflictPolicy) String() string {
+	switch p {
+	case HTTPRouterConflictLogAndSkip:
+		return "log_and_skip"
+	default:
+		return "panic"
+	}
+}
+
+var httpRouterConflictPolicyMu sync.Mutex
+var httpRouterConflictPolicy = map[*httprouter.Router]HTTPRouterConflictPolicy{}
+
+// WithHTTPRouterConflictPolicy configures conflict handling for NewHTTPServer.
+func WithHTTPRouterConflictPolicy(policy HTTPRouterConflictPolicy) func(*httprouter.Router) *httprouter.Router {
+	return func(router *httprouter.Router) *httprouter.Router {
+		httpRouterConflictPolicyMu.Lock()
+		httpRouterConflictPolicy[router] = policy
+		httpRouterConflictPolicyMu.Unlock()
+		return router
+	}
+}
+
+func popHTTPRouterConflictPolicy(router *httprouter.Router) (HTTPRouterConflictPolicy, bool) {
+	httpRouterConflictPolicyMu.Lock()
+	defer httpRouterConflictPolicyMu.Unlock()
+	policy, ok := httpRouterConflictPolicy[router]
+	if ok {
+		delete(httpRouterConflictPolicy, router)
+	}
+	return policy, ok
+}
 
 type HTTPServer struct {
 	httpRouter        *httprouter.Router
@@ -29,6 +71,7 @@ type HTTPServer struct {
 	passLocalsToViews bool
 	initialized       bool
 	errorHandler      func(Context, error) error
+	conflictPolicy    HTTPRouterConflictPolicy
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -43,10 +86,15 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 	}
 
 	// engine := django.New("./views", ".html")
+	conflictPolicy := HTTPRouterConflictPanic
+	if configured, ok := popHTTPRouterConflictPolicy(router); ok {
+		conflictPolicy = configured
+	}
 
 	return &HTTPServer{
-		httpRouter:   router,
-		errorHandler: DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig()),
+		httpRouter:     router,
+		errorHandler:   DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig()),
+		conflictPolicy: conflictPolicy,
 		// views:      engine,
 	}
 }
@@ -63,8 +111,9 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 			a.errorHandler = DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig())
 		}
 		a.router = &HTTPRouter{
-			router:       a.httpRouter,
-			errorHandler: a.errorHandler,
+			router:         a.httpRouter,
+			errorHandler:   a.errorHandler,
+			conflictPolicy: a.conflictPolicy,
 			BaseRouter: BaseRouter{
 				logger:      &defaultLogger{},
 				routes:      []*RouteDefinition{},
@@ -243,8 +292,9 @@ func (a *HTTPServer) Shutdown(ctx context.Context) error {
 // HTTPRouter implements Router for httprouter
 type HTTPRouter struct {
 	BaseRouter
-	router       *httprouter.Router
-	errorHandler func(Context, error) error
+	router         *httprouter.Router
+	errorHandler   func(Context, error) error
+	conflictPolicy HTTPRouterConflictPolicy
 }
 
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
@@ -284,8 +334,9 @@ func (r *HTTPRouter) GetPrefix() string {
 
 func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
-		router:       r.router,
-		errorHandler: r.errorHandler,
+		router:         r.router,
+		errorHandler:   r.errorHandler,
+		conflictPolicy: r.conflictPolicy,
 		BaseRouter: BaseRouter{
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
@@ -301,8 +352,9 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 func (r *HTTPRouter) Mount(prefix string) Router[*httprouter.Router] {
 
 	return &HTTPRouter{
-		router:       r.router,
-		errorHandler: r.errorHandler,
+		router:         r.router,
+		errorHandler:   r.errorHandler,
+		conflictPolicy: r.conflictPolicy,
 		BaseRouter: BaseRouter{
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
@@ -338,14 +390,15 @@ func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 
 func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
 	fullPath := r.joinPath(r.prefix, pathStr)
-	// Check for duplicates, since the behavior between fiber and httprouter differs
-	// we need to decide how to handle this case...
-	for _, route := range r.root.routes {
-		if route.Method == method && route.Path == fullPath {
-			// Decide how to handle duplicates:
-			// return a RouterError or just log and skip
-			panic(fmt.Sprintf("duplicate route %s %s already registered", method, pathStr))
+	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
+		err := newHTTPRouteConflictError(method, fullPath, conflict, r.conflictPolicy)
+		if r.conflictPolicy == HTTPRouterConflictLogAndSkip {
+			if r.logger != nil {
+				r.logger.Warn("route conflict skipped: %v", err)
+			}
+			return noopRouteInfo
 		}
+		panic(err)
 	}
 
 	allMw := append([]namedMiddleware{}, r.middlewares...)
@@ -393,6 +446,157 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 
 	return route
 }
+
+type routeConflict struct {
+	existing        *RouteDefinition
+	reason          string
+	index           int
+	existingSegment string
+	newSegment      string
+}
+
+type segmentKind int
+
+const (
+	segmentStatic segmentKind = iota
+	segmentParam
+	segmentCatchAll
+)
+
+func splitPathSegments(path string) []string {
+	trimmed := strings.Trim(path, "/")
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "/")
+}
+
+func classifySegment(segment string) segmentKind {
+	if strings.HasPrefix(segment, "*") {
+		return segmentCatchAll
+	}
+	if strings.HasPrefix(segment, ":") {
+		return segmentParam
+	}
+	return segmentStatic
+}
+
+func detectHTTPRouteConflict(existingPath, newPath string) *routeConflict {
+	existingParts := splitPathSegments(existingPath)
+	newParts := splitPathSegments(newPath)
+
+	minLen := len(existingParts)
+	if len(newParts) < minLen {
+		minLen = len(newParts)
+	}
+
+	for i := 0; i < minLen; i++ {
+		existingSegment := existingParts[i]
+		newSegment := newParts[i]
+		existingKind := classifySegment(existingSegment)
+		newKind := classifySegment(newSegment)
+
+		if existingKind == segmentStatic && newKind == segmentStatic {
+			if existingSegment != newSegment {
+				return nil
+			}
+			continue
+		}
+
+		if existingKind == segmentCatchAll || newKind == segmentCatchAll {
+			return &routeConflict{
+				reason:          "catch-all segment conflicts with existing route",
+				index:           i,
+				existingSegment: existingSegment,
+				newSegment:      newSegment,
+			}
+		}
+
+		if existingKind == segmentParam && newKind == segmentParam {
+			if i == len(existingParts)-1 && i == len(newParts)-1 {
+				return &routeConflict{
+					reason:          "wildcard segment conflicts with existing route",
+					index:           i,
+					existingSegment: existingSegment,
+					newSegment:      newSegment,
+				}
+			}
+			continue
+		}
+
+		if existingKind == segmentParam || newKind == segmentParam {
+			return &routeConflict{
+				reason:          "static segment conflicts with wildcard segment",
+				index:           i,
+				existingSegment: existingSegment,
+				newSegment:      newSegment,
+			}
+		}
+	}
+
+	return nil
+}
+
+func (r *HTTPRouter) detectRouteConflict(method HTTPMethod, fullPath string) *routeConflict {
+	for _, route := range r.root.routes {
+		if route.Method != method {
+			continue
+		}
+		if route.Path == fullPath {
+			return &routeConflict{
+				existing: route,
+				reason:   "duplicate route",
+				index:    -1,
+			}
+		}
+		if conflict := detectHTTPRouteConflict(route.Path, fullPath); conflict != nil {
+			conflict.existing = route
+			return conflict
+		}
+	}
+	return nil
+}
+
+func newHTTPRouteConflictError(method HTTPMethod, path string, conflict *routeConflict, policy HTTPRouterConflictPolicy) error {
+	message := fmt.Sprintf("route conflict: %s %s conflicts with %s", method, path, conflict.existing.Path)
+	if conflict.reason != "" {
+		message = fmt.Sprintf("%s (%s)", message, conflict.reason)
+	}
+
+	metadata := map[string]any{
+		"adapter":       "httprouter",
+		"method":        method,
+		"path":          path,
+		"existing_path": conflict.existing.Path,
+		"policy":        policy.String(),
+		"reason":        conflict.reason,
+	}
+
+	if conflict.index >= 0 {
+		metadata["segment_index"] = conflict.index
+		metadata["segment"] = conflict.newSegment
+		metadata["existing_segment"] = conflict.existingSegment
+	}
+
+	return goerrors.New(message, goerrors.CategoryConflict).
+		WithCode(http.StatusConflict).
+		WithTextCode("ROUTE_CONFLICT").
+		WithMetadata(metadata)
+}
+
+type routeInfoNoop struct{}
+
+func (r *routeInfoNoop) SetName(string) RouteInfo        { return r }
+func (r *routeInfoNoop) SetDescription(string) RouteInfo { return r }
+func (r *routeInfoNoop) SetSummary(string) RouteInfo     { return r }
+func (r *routeInfoNoop) AddTags(...string) RouteInfo     { return r }
+func (r *routeInfoNoop) AddParameter(string, string, bool, map[string]any) RouteInfo {
+	return r
+}
+func (r *routeInfoNoop) SetRequestBody(string, bool, map[string]any) RouteInfo { return r }
+func (r *routeInfoNoop) AddResponse(int, string, map[string]any) RouteInfo     { return r }
+
+var noopRouteInfo RouteInfo = &routeInfoNoop{}
 
 func (r *HTTPRouter) Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {
 	return r.Handle(GET, path, handler, mw...)

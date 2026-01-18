@@ -78,7 +78,7 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 			return nil, errors.New("no valid template sources found for embed mode")
 		}
 
-		compositeTemplateFS := cfs.NewCompositeFS(templateSources...)
+		compositeTemplateFS := cfs.NewOverlayFS(templateSources...)
 		templateRootPath := NormalizePath(cfg.GetDirFS())
 
 		subFS, err := autoSubFS(compositeTemplateFS, templateRootPath, lgr)

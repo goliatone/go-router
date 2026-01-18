@@ -5,7 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path"
+	"strings"
 )
 
 const defaultDownloadContentType = "application/octet-stream"
@@ -21,12 +24,16 @@ type DownloadPayload struct {
 	Bytes          []byte
 }
 
+// FilenameSanitizer normalizes a filename for download headers.
+type FilenameSanitizer func(string) string
+
 // StreamOptions configures download stream responses.
 type StreamOptions struct {
-	Filename       string
-	ExportID       string
-	ContentLength  int64
-	MaxBufferBytes int64
+	Filename          string
+	ExportID          string
+	ContentLength     int64
+	MaxBufferBytes    int64
+	FilenameSanitizer FilenameSanitizer
 }
 
 // StreamOption applies stream options.
@@ -61,6 +68,13 @@ func WithMaxBufferBytes(max int64) StreamOption {
 		if max > 0 {
 			opts.MaxBufferBytes = max
 		}
+	}
+}
+
+// WithFilenameSanitizer overrides the default filename sanitizer.
+func WithFilenameSanitizer(sanitizer FilenameSanitizer) StreamOption {
+	return func(opts *StreamOptions) {
+		opts.FilenameSanitizer = sanitizer
 	}
 }
 
@@ -112,11 +126,9 @@ func writeDownload(target Context, ctx context.Context, payload DownloadPayload)
 
 	reader := payload.Reader
 	size := payload.Size
-	if reader == nil && payload.Bytes != nil {
+	if payload.Bytes != nil {
 		reader = bytes.NewReader(payload.Bytes)
-		if size == 0 {
-			size = int64(len(payload.Bytes))
-		}
+		size = int64(len(payload.Bytes))
 	}
 
 	opts := []StreamOption{
@@ -144,7 +156,7 @@ func writeStream(target Context, contentType string, r io.Reader, opts ...Stream
 
 	applyDownloadHeaders(target, contentType, options)
 	target.Status(http.StatusOK)
-	return target.SendStream(r)
+	return sendStream(target, r, options)
 }
 
 func applyDownloadHeaders(target Context, contentType string, opts StreamOptions) {
@@ -154,7 +166,12 @@ func applyDownloadHeaders(target Context, contentType string, opts StreamOptions
 
 	target.SetHeader(HeaderContentType, contentType)
 	if opts.Filename != "" {
-		target.SetHeader("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", opts.Filename))
+		filename := sanitizeFilename(opts.Filename, opts.FilenameSanitizer)
+		if filename != "" {
+			if value := formatContentDisposition(filename); value != "" {
+				target.SetHeader("Content-Disposition", value)
+			}
+		}
 	}
 	if opts.ExportID != "" {
 		target.SetHeader("X-Export-Id", opts.ExportID)
@@ -162,4 +179,111 @@ func applyDownloadHeaders(target Context, contentType string, opts StreamOptions
 	if opts.ContentLength > 0 {
 		target.SetHeader("Content-Length", fmt.Sprintf("%d", opts.ContentLength))
 	}
+}
+
+func sanitizeFilename(filename string, sanitizer FilenameSanitizer) string {
+	if sanitizer != nil {
+		return sanitizer(filename)
+	}
+	return defaultFilenameSanitizer(filename)
+}
+
+func defaultFilenameSanitizer(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return ""
+	}
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = path.Base(filename)
+	filename = strings.TrimSpace(filename)
+	if filename == "." || filename == ".." {
+		return ""
+	}
+	filename = strings.Map(func(r rune) rune {
+		switch {
+		case r < 0x20 || r == 0x7f:
+			return -1
+		case r == '/' || r == '\\' || r == '"':
+			return -1
+		}
+		return r
+	}, filename)
+	filename = strings.TrimSpace(filename)
+	if filename == "." || filename == ".." {
+		return ""
+	}
+	return filename
+}
+
+func formatContentDisposition(filename string) string {
+	if filename == "" {
+		return ""
+	}
+	value := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
+	if value != "" {
+		return value
+	}
+	filename = strings.ReplaceAll(filename, "\"", "")
+	if filename == "" {
+		return ""
+	}
+	return fmt.Sprintf("attachment; filename=\"%s\"", filename)
+}
+
+func sendStream(target Context, r io.Reader, opts StreamOptions) error {
+	if opts.MaxBufferBytes <= 0 {
+		return target.SendStream(r)
+	}
+	if opts.ContentLength > 0 {
+		if opts.ContentLength <= opts.MaxBufferBytes {
+			return sendBuffered(target, r, opts.MaxBufferBytes)
+		}
+		return target.SendStream(r)
+	}
+	buffered, stream, err := bufferForStream(r, opts.MaxBufferBytes)
+	if err != nil {
+		return err
+	}
+	if stream != nil {
+		return target.SendStream(stream)
+	}
+	return target.Send(buffered)
+}
+
+func sendBuffered(target Context, r io.Reader, max int64) error {
+	buf, exceeded, err := readUpTo(r, max)
+	if err != nil {
+		return err
+	}
+	if exceeded {
+		return target.SendStream(io.MultiReader(bytes.NewReader(buf), r))
+	}
+	return target.Send(buf)
+}
+
+func bufferForStream(r io.Reader, max int64) ([]byte, io.Reader, error) {
+	buf, exceeded, err := readUpTo(r, max)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !exceeded {
+		return buf, nil, nil
+	}
+	return nil, io.MultiReader(bytes.NewReader(buf), r), nil
+}
+
+func readUpTo(r io.Reader, max int64) ([]byte, bool, error) {
+	if max <= 0 {
+		buf, err := io.ReadAll(r)
+		return buf, false, err
+	}
+	limited := io.LimitReader(r, max+1)
+	buf, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(buf)) > max {
+		return buf, true, nil
+	}
+	return buf, false, nil
 }

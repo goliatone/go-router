@@ -54,6 +54,66 @@ func TestDownloadResponder_WriteStream_UsesSendStream(t *testing.T) {
 	ctx.AssertNotCalled(t, "Send", mock.Anything)
 }
 
+func TestDownloadResponder_WriteStream_BuffersWhenUnderLimit(t *testing.T) {
+	ctx := NewMockContext()
+	ctx.On("SetHeader", mock.Anything, mock.Anything).Return(ctx)
+	ctx.On("Status", mock.Anything).Return(ctx)
+	ctx.On("Send", mock.MatchedBy(func(b []byte) bool {
+		return string(b) == "small"
+	})).Return(nil)
+
+	responder := NewDownloadResponder(ctx)
+	err := responder.WriteStream(context.Background(), "text/plain", strings.NewReader("small"), WithMaxBufferBytes(10))
+	if err != nil {
+		t.Fatalf("WriteStream error: %v", err)
+	}
+
+	ctx.AssertCalled(t, "Send", mock.Anything)
+	ctx.AssertNotCalled(t, "SendStream", mock.Anything)
+}
+
+func TestDownloadResponder_WriteDownload_BytesSizeWins(t *testing.T) {
+	ctx := NewMockContext()
+	ctx.On("SetHeader", HeaderContentType, defaultDownloadContentType).Return(ctx)
+	ctx.On("SetHeader", "Content-Length", "3").Return(ctx)
+	ctx.On("Status", mock.Anything).Return(ctx)
+	ctx.On("SendStream", mock.Anything).Return(nil)
+
+	responder := NewDownloadResponder(ctx)
+	payload := DownloadPayload{
+		Bytes: []byte("hey"),
+		Size:  42,
+	}
+	if err := responder.WriteDownload(context.Background(), payload); err != nil {
+		t.Fatalf("WriteDownload error: %v", err)
+	}
+
+	ctx.AssertCalled(t, "SetHeader", "Content-Length", "3")
+}
+
+func TestApplyDownloadHeaders_SanitizesFilename(t *testing.T) {
+	ctx := NewMockContext()
+	ctx.On("SetHeader", HeaderContentType, "text/plain").Return(ctx)
+
+	var captured string
+	ctx.On("SetHeader", "Content-Disposition", mock.Anything).Run(func(args mock.Arguments) {
+		captured = args.String(1)
+	}).Return(ctx)
+
+	opts := StreamOptions{Filename: "dir/../report\r\n.txt"}
+	applyDownloadHeaders(ctx, "text/plain", opts)
+
+	if captured == "" {
+		t.Fatalf("expected Content-Disposition to be set")
+	}
+	if strings.Contains(captured, "\r") || strings.Contains(captured, "\n") {
+		t.Fatalf("Content-Disposition contains newlines: %q", captured)
+	}
+	if !strings.Contains(captured, "filename=") {
+		t.Fatalf("Content-Disposition missing filename: %q", captured)
+	}
+}
+
 func TestDownloadResponder_FiberLargeStreamHeaders(t *testing.T) {
 	adapter := NewFiberAdapter()
 	r := adapter.Router()
@@ -87,8 +147,9 @@ func TestDownloadResponder_FiberLargeStreamHeaders(t *testing.T) {
 		t.Fatalf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 
-	if got := resp.Header.Get("Content-Disposition"); got != "attachment; filename=\"export.csv\"" {
-		t.Fatalf("Expected Content-Disposition header, got %q", got)
+	expectedDisposition := formatContentDisposition("export.csv")
+	if got := resp.Header.Get("Content-Disposition"); got != expectedDisposition {
+		t.Fatalf("Expected Content-Disposition header %q, got %q", expectedDisposition, got)
 	}
 	if got := resp.Header.Get("Content-Type"); got != "text/csv" {
 		t.Fatalf("Expected Content-Type text/csv, got %q", got)

@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.42.0](https://github.com/goliatone/go-router/compare/v0.41.0...v0.42.0) - (2026-01-18)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Use new overlay fs setup ([aa0b6bd](https://github.com/goliatone/go-router/commit/aa0b6bd1978f2044ba71c9961e2ee01a40a9d104))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.42.0 ([2a853a9](https://github.com/goliatone/go-router/commit/2a853a980c2e8522637f99201cfb827b5b1d7a8d))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Download mime type and setup ([0120933](https://github.com/goliatone/go-router/commit/0120933aa5bb55bf8ffdfad1d374d690d0f05dc2))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.41.0 ([e6e5e19](https://github.com/goliatone/go-router/commit/e6e5e19fa4cf9446748761d3307fd353ece7a20c))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tasks ([f89bb5e](https://github.com/goliatone/go-router/commit/f89bb5e026f4ee10b1e6215eb6890c84631d263c))  - (goliatone)
+- Update deps ([6f4e2cf](https://github.com/goliatone/go-router/commit/6f4e2cfbdb75e624032816cf26c4ebe5cff516bf))  - (goliatone)
+
 # [0.41.0](https://github.com/goliatone/go-router/compare/v0.40.0...v0.41.0) - (2026-01-02)
 
 ## <!-- 13 -->📦 Bumps

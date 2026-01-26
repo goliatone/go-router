@@ -65,6 +65,32 @@ func TestMiddleware_NoResolver_NoContextUpdate(t *testing.T) {
 	ctx.AssertNotCalled(t, "SetContext", mock.Anything)
 }
 
+func TestMiddleware_ClaimsResolver_Error_ReturnsError(t *testing.T) {
+	ctx := router.NewMockContext()
+	ctx.On("Context").Return(context.Background())
+
+	expectedErr := errors.New("resolver failed")
+	mw := featuregate.New(featuregate.WithClaimsResolver(func(ctx router.Context) (gate.ActorClaims, error) {
+		return gate.ActorClaims{}, expectedErr
+	}))
+
+	handler := mw(func(ctx router.Context) error {
+		return nil
+	})
+
+	err := handler(ctx)
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected resolver error, got %v", err)
+	}
+
+	if ctx.NextCalled {
+		t.Error("expected Next not to be called")
+	}
+
+	ctx.AssertNotCalled(t, "SetContext", mock.Anything)
+	ctx.AssertExpectations(t)
+}
+
 func TestMiddleware_ActorResolver_SetsActorRef(t *testing.T) {
 	ctx := router.NewMockContext()
 	ctx.On("Context").Return(context.Background())

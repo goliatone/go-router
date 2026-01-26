@@ -1,6 +1,8 @@
 module github.com/goliatone/go-router
 
-go 1.23.4
+go 1.24.10
+
+toolchain go1.24.12
 
 require (
 	dario.cat/mergo v1.0.1
@@ -15,13 +17,14 @@ require (
 	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/gofiber/utils v1.1.0
 	github.com/goliatone/go-composite-fs v0.3.0
-	github.com/goliatone/go-errors v0.9.0
+	github.com/goliatone/go-errors v0.10.0
+	github.com/goliatone/go-featuregate v0.5.0
 	github.com/goliatone/hashid v0.1.1
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/julienschmidt/httprouter v1.3.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/valyala/fasthttp v1.52.0
 	golang.org/x/time v0.8.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -47,14 +50,13 @@ require (
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

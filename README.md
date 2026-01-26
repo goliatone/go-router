@@ -335,6 +335,50 @@ app.Get("/", func(c router.Context) error {
 {% endif %}
 ```
 
+### FeatureGate Middleware
+
+Integrates go-featuregate with go-router by injecting scope claims into the
+request context so handlers can call `gate.Enabled` directly.
+
+```go
+import (
+    "github.com/goliatone/go-featuregate/gate"
+    featuregatemw "github.com/goliatone/go-router/middleware/featuregate"
+)
+
+mw := featuregatemw.New(
+    featuregatemw.WithClaimsResolver(func(ctx router.Context) (gate.ActorClaims, error) {
+        return gate.ActorClaims{
+            TenantID:  ctx.Param("tenant_id"),
+            OrgID:     ctx.Param("org_id"),
+            SubjectID: ctx.Locals("user_id").(string),
+        }, nil
+    }),
+    featuregatemw.WithActorResolver(func(ctx router.Context) gate.ActorRef {
+        return gate.ActorRef{ID: ctx.Locals("user_id").(string)}
+    }),
+)
+
+app.Use(mw)
+
+app.Get("/users", func(ctx router.Context) error {
+    allowed, err := gate.Enabled(ctx.Context(), "users.read")
+    if err != nil {
+        return err
+    }
+    if !allowed {
+        return router.NewNotFoundError("not found")
+    }
+    return ctx.JSON(200, map[string]string{"ok": "true"})
+})
+```
+
+**Features:**
+- Claims resolver injects tenant/org/user scope into the request context.
+- `WithStrict(true)` returns `BAD_REQUEST` when the resolver fails or when no tenant/org/user (subject) ID is provided.
+- Actor metadata is optional and stored in context (see `featuregatemw.ActorFromContext`); go-featuregate does not consume it automatically.
+- Optional helper `featuregatemw.Context` returns the standard `context.Context`.
+
 ## View Engine
 
 ### View Engine Initialization

@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.43.0](https://github.com/goliatone/go-router/compare/v0.42.0...v0.43.0) - (2026-01-26)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.43.0 ([0d0bd06](https://github.com/goliatone/go-router/commit/0d0bd0603055826b7dd79b1fbd58d7bcf4bd3251))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Feature gate middleware ([b1ed941](https://github.com/goliatone/go-router/commit/b1ed941df019950fb6cffdd1ad16abeb115e923f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.42.0 ([f49e3d0](https://github.com/goliatone/go-router/commit/f49e3d000dc67bf624f851dda823992af6b621ce))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([248151c](https://github.com/goliatone/go-router/commit/248151c1c7e8c824348368b74448320a5fd0ba87))  - (goliatone)
+- Update readme ([3d5fdda](https://github.com/goliatone/go-router/commit/3d5fdda0528a7ddf2380c027cb09e46e3ca89875))  - (goliatone)
+- Update docs ([46f555a](https://github.com/goliatone/go-router/commit/46f555a8b7c39da26a668e6d2262ada151491411))  - (goliatone)
+
 # [0.42.0](https://github.com/goliatone/go-router/compare/v0.41.0...v0.42.0) - (2026-01-18)
 
 ## <!-- 1 -->🐛 Bug Fixes

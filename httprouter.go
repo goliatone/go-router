@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -19,7 +20,6 @@ import (
 	"text/template"
 
 	"github.com/gofiber/utils"
-	goerrors "github.com/goliatone/go-errors"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -29,12 +29,15 @@ type HTTPRouterConflictPolicy int
 const (
 	HTTPRouterConflictPanic HTTPRouterConflictPolicy = iota
 	HTTPRouterConflictLogAndSkip
+	HTTPRouterConflictLogAndContinue
 )
 
 func (p HTTPRouterConflictPolicy) String() string {
 	switch p {
 	case HTTPRouterConflictLogAndSkip:
 		return "log_and_skip"
+	case HTTPRouterConflictLogAndContinue:
+		return "log_and_continue"
 	default:
 		return "panic"
 	}
@@ -42,6 +45,8 @@ func (p HTTPRouterConflictPolicy) String() string {
 
 var httpRouterConflictPolicyMu sync.Mutex
 var httpRouterConflictPolicy = map[*httprouter.Router]HTTPRouterConflictPolicy{}
+var httpRouterStrictRoutesMu sync.Mutex
+var httpRouterStrictRoutes = map[*httprouter.Router]bool{}
 
 // WithHTTPRouterConflictPolicy configures conflict handling for NewHTTPServer.
 func WithHTTPRouterConflictPolicy(policy HTTPRouterConflictPolicy) func(*httprouter.Router) *httprouter.Router {
@@ -49,6 +54,16 @@ func WithHTTPRouterConflictPolicy(policy HTTPRouterConflictPolicy) func(*httprou
 		httpRouterConflictPolicyMu.Lock()
 		httpRouterConflictPolicy[router] = policy
 		httpRouterConflictPolicyMu.Unlock()
+		return router
+	}
+}
+
+// WithHTTPServerStrictRoutes enables route validation during Init.
+func WithHTTPServerStrictRoutes(strict bool) func(*httprouter.Router) *httprouter.Router {
+	return func(router *httprouter.Router) *httprouter.Router {
+		httpRouterStrictRoutesMu.Lock()
+		httpRouterStrictRoutes[router] = strict
+		httpRouterStrictRoutesMu.Unlock()
 		return router
 	}
 }
@@ -63,6 +78,16 @@ func popHTTPRouterConflictPolicy(router *httprouter.Router) (HTTPRouterConflictP
 	return policy, ok
 }
 
+func popHTTPRouterStrictRoutes(router *httprouter.Router) (bool, bool) {
+	httpRouterStrictRoutesMu.Lock()
+	defer httpRouterStrictRoutesMu.Unlock()
+	strict, ok := httpRouterStrictRoutes[router]
+	if ok {
+		delete(httpRouterStrictRoutes, router)
+	}
+	return strict, ok
+}
+
 type HTTPServer struct {
 	httpRouter        *httprouter.Router
 	server            *http.Server
@@ -72,6 +97,7 @@ type HTTPServer struct {
 	initialized       bool
 	errorHandler      func(Context, error) error
 	conflictPolicy    HTTPRouterConflictPolicy
+	strictRoutes      bool
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -90,11 +116,16 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 	if configured, ok := popHTTPRouterConflictPolicy(router); ok {
 		conflictPolicy = configured
 	}
+	strictRoutes := false
+	if configured, ok := popHTTPRouterStrictRoutes(router); ok {
+		strictRoutes = configured
+	}
 
 	return &HTTPServer{
 		httpRouter:     router,
 		errorHandler:   DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig()),
 		conflictPolicy: conflictPolicy,
+		strictRoutes:   strictRoutes,
 		// views:      engine,
 	}
 }
@@ -258,6 +289,12 @@ func (a *HTTPServer) Init() {
 		a.Router()
 	}
 
+	if a.strictRoutes {
+		if errs := a.router.ValidateRoutes(); len(errs) > 0 {
+			panic(errors.Join(errs...))
+		}
+	}
+
 	a.router.registerLateRoutes(a.router)
 
 	a.initialized = true
@@ -391,14 +428,16 @@ func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
 	fullPath := r.joinPath(r.prefix, pathStr)
 	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
-		err := newHTTPRouteConflictError(method, fullPath, conflict, r.conflictPolicy)
-		if r.conflictPolicy == HTTPRouterConflictLogAndSkip {
+		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy)
+		switch r.conflictPolicy {
+		case HTTPRouterConflictLogAndSkip, HTTPRouterConflictLogAndContinue:
 			if r.logger != nil {
 				r.logger.Warn("route conflict skipped: %v", err)
 			}
 			return noopRouteInfo
+		case HTTPRouterConflictPanic:
+			panic(err)
 		}
-		panic(err)
 	}
 
 	allMw := append([]namedMiddleware{}, r.middlewares...)
@@ -447,96 +486,6 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	return route
 }
 
-type routeConflict struct {
-	existing        *RouteDefinition
-	reason          string
-	index           int
-	existingSegment string
-	newSegment      string
-}
-
-type segmentKind int
-
-const (
-	segmentStatic segmentKind = iota
-	segmentParam
-	segmentCatchAll
-)
-
-func splitPathSegments(path string) []string {
-	trimmed := strings.Trim(path, "/")
-	if trimmed == "" {
-		return nil
-	}
-	return strings.Split(trimmed, "/")
-}
-
-func classifySegment(segment string) segmentKind {
-	if strings.HasPrefix(segment, "*") {
-		return segmentCatchAll
-	}
-	if strings.HasPrefix(segment, ":") {
-		return segmentParam
-	}
-	return segmentStatic
-}
-
-func detectHTTPRouteConflict(existingPath, newPath string) *routeConflict {
-	existingParts := splitPathSegments(existingPath)
-	newParts := splitPathSegments(newPath)
-
-	minLen := len(existingParts)
-	if len(newParts) < minLen {
-		minLen = len(newParts)
-	}
-
-	for i := 0; i < minLen; i++ {
-		existingSegment := existingParts[i]
-		newSegment := newParts[i]
-		existingKind := classifySegment(existingSegment)
-		newKind := classifySegment(newSegment)
-
-		if existingKind == segmentStatic && newKind == segmentStatic {
-			if existingSegment != newSegment {
-				return nil
-			}
-			continue
-		}
-
-		if existingKind == segmentCatchAll || newKind == segmentCatchAll {
-			return &routeConflict{
-				reason:          "catch-all segment conflicts with existing route",
-				index:           i,
-				existingSegment: existingSegment,
-				newSegment:      newSegment,
-			}
-		}
-
-		if existingKind == segmentParam && newKind == segmentParam {
-			if i == len(existingParts)-1 && i == len(newParts)-1 {
-				return &routeConflict{
-					reason:          "wildcard segment conflicts with existing route",
-					index:           i,
-					existingSegment: existingSegment,
-					newSegment:      newSegment,
-				}
-			}
-			continue
-		}
-
-		if existingKind == segmentParam || newKind == segmentParam {
-			return &routeConflict{
-				reason:          "static segment conflicts with wildcard segment",
-				index:           i,
-				existingSegment: existingSegment,
-				newSegment:      newSegment,
-			}
-		}
-	}
-
-	return nil
-}
-
 func (r *HTTPRouter) detectRouteConflict(method HTTPMethod, fullPath string) *routeConflict {
 	for _, route := range r.root.routes {
 		if route.Method != method {
@@ -549,39 +498,12 @@ func (r *HTTPRouter) detectRouteConflict(method HTTPMethod, fullPath string) *ro
 				index:    -1,
 			}
 		}
-		if conflict := detectHTTPRouteConflict(route.Path, fullPath); conflict != nil {
+		if conflict := detectPathConflict(route.Path, fullPath); conflict != nil {
 			conflict.existing = route
 			return conflict
 		}
 	}
 	return nil
-}
-
-func newHTTPRouteConflictError(method HTTPMethod, path string, conflict *routeConflict, policy HTTPRouterConflictPolicy) error {
-	message := fmt.Sprintf("route conflict: %s %s conflicts with %s", method, path, conflict.existing.Path)
-	if conflict.reason != "" {
-		message = fmt.Sprintf("%s (%s)", message, conflict.reason)
-	}
-
-	metadata := map[string]any{
-		"adapter":       "httprouter",
-		"method":        method,
-		"path":          path,
-		"existing_path": conflict.existing.Path,
-		"policy":        policy.String(),
-		"reason":        conflict.reason,
-	}
-
-	if conflict.index >= 0 {
-		metadata["segment_index"] = conflict.index
-		metadata["segment"] = conflict.newSegment
-		metadata["existing_segment"] = conflict.existingSegment
-	}
-
-	return goerrors.New(message, goerrors.CategoryConflict).
-		WithCode(http.StatusConflict).
-		WithTextCode("ROUTE_CONFLICT").
-		WithMetadata(metadata)
 }
 
 type routeInfoNoop struct{}

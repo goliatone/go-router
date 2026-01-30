@@ -409,6 +409,10 @@ func (m *MockRouter) Routes() []router.RouteDefinition {
 	return []router.RouteDefinition{}
 }
 
+func (m *MockRouter) ValidateRoutes() []error {
+	return nil
+}
+
 func (m *MockRouter) Use(mw ...router.MiddlewareFunc) router.Router[*MockRouter] {
 	m.Mw = append(m.Mw, mw...)
 	return m

@@ -59,3 +59,17 @@ func MustSubFS(base fs.FS, subdir string) fs.FS {
 	}
 	return sub
 }
+
+// PathParam returns a parameter segment (e.g., ":id").
+func PathParam(name string) string {
+	return ":" + name
+}
+
+// ConstrainedPathParam returns a parameter segment with a constraint.
+// Note: constraint syntax is Fiber-specific; httprouter treats it as part of the param name.
+func ConstrainedPathParam(name, constraint string) string {
+	if constraint == "" {
+		return ":" + name
+	}
+	return ":" + name + "<" + constraint + ">"
+}

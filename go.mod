@@ -19,7 +19,7 @@ require (
 	github.com/goliatone/go-composite-fs v0.3.0
 	github.com/goliatone/go-errors v0.10.0
 	github.com/goliatone/go-featuregate v0.5.0
-	github.com/goliatone/hashid v0.1.1
+	github.com/goliatone/hashid v0.2.0
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.1
@@ -37,6 +37,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
+	github.com/goliatone/go-slug v0.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/lithammer/shortuuid v3.0.0+incompatible // indirect

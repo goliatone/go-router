@@ -51,6 +51,7 @@ func detectPathConflict(existingPath, newPath string) *routeConflict {
 		minLen = len(newParts)
 	}
 
+	firstWildcardIndex := -1
 	for i := 0; i < minLen; i++ {
 		existingSegment := existingParts[i]
 		newSegment := newParts[i]
@@ -73,26 +74,35 @@ func detectPathConflict(existingPath, newPath string) *routeConflict {
 			}
 		}
 
-		if existingKind == segmentParam && newKind == segmentParam {
-			if i == len(existingParts)-1 && i == len(newParts)-1 {
-				return &routeConflict{
-					reason:          "wildcard segment conflicts with existing route",
-					index:           i,
-					existingSegment: existingSegment,
-					newSegment:      newSegment,
-				}
-			}
-			continue
-		}
-
 		if existingKind == segmentParam || newKind == segmentParam {
-			return &routeConflict{
-				reason:          "static segment conflicts with wildcard segment",
-				index:           i,
-				existingSegment: existingSegment,
-				newSegment:      newSegment,
+			if firstWildcardIndex == -1 {
+				firstWildcardIndex = i
 			}
 		}
+	}
+
+	if len(existingParts) != len(newParts) {
+		return nil
+	}
+
+	if firstWildcardIndex == -1 {
+		return nil
+	}
+
+	existingSegment := existingParts[firstWildcardIndex]
+	newSegment := newParts[firstWildcardIndex]
+	existingKind := classifySegment(existingSegment)
+	newKind := classifySegment(newSegment)
+	reason := "static segment conflicts with wildcard segment"
+	if existingKind == segmentParam && newKind == segmentParam {
+		reason = "wildcard segment conflicts with existing route"
+	}
+
+	return &routeConflict{
+		reason:          reason,
+		index:           firstWildcardIndex,
+		existingSegment: existingSegment,
+		newSegment:      newSegment,
 	}
 
 	return nil

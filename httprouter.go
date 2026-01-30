@@ -24,6 +24,8 @@ import (
 )
 
 // HTTPRouterConflictPolicy controls how route conflicts are handled.
+// Note: HTTPRouterConflictLogAndContinue behaves like log-and-skip for
+// httprouter because the underlying router does not allow conflicting routes.
 type HTTPRouterConflictPolicy int
 
 const (

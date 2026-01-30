@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.44.1](https://github.com/goliatone/go-router/compare/v0.44.0...v0.44.1) - (2026-01-30)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Detect path conflict only flag param/static overlaps ([5954c46](https://github.com/goliatone/go-router/commit/5954c4658674b5b18f246f4df83a5c4ce4f32907))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.44.1 ([4e6964f](https://github.com/goliatone/go-router/commit/4e6964f3f17b65e9b3c98998c0bab93d231b554f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.44.0 ([3237ef1](https://github.com/goliatone/go-router/commit/3237ef1200495401f8fa584759185500dce9473a))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([5cf218b](https://github.com/goliatone/go-router/commit/5cf218b2ca832a0cc04f2ab458e31a0c1f1365e2))  - (goliatone)
+
 # [0.44.0](https://github.com/goliatone/go-router/compare/v0.43.0...v0.44.0) - (2026-01-30)
 
 ## <!-- 1 -->🐛 Bug Fixes

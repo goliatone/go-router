@@ -1,5 +1,37 @@
 # Changelog
 
+# [0.44.0](https://github.com/goliatone/go-router/compare/v0.43.0...v0.44.0) - (2026-01-30)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update go version in CI ([796e873](https://github.com/goliatone/go-router/commit/796e87386864a532ea8d1d2e467c83fe1e63aed3))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.44.0 ([76aee6f](https://github.com/goliatone/go-router/commit/76aee6fd45bba7715de7717acd351520e4114eb1))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Contraineed path helepr ([9125b1b](https://github.com/goliatone/go-router/commit/9125b1b1f8d2780d375c0774648433d9d26c5ea2))  - (goliatone)
+- Route validation, conflict handler ([3cd5d49](https://github.com/goliatone/go-router/commit/3cd5d4948e18fab4326f1acb33ae6325b793f54e))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Route conflict out of routers ([d61d55b](https://github.com/goliatone/go-router/commit/d61d55b5b58f6637c993650cbf1d851f63bb962e))  - (goliatone)
+
+## <!-- 29 -->👷 CI/CD
+
+- PR [#18](https://github.com/goliatone/go-router/pull/18): add route conflict detection, validation, and optional specificity ordering ([d84a2b8](https://github.com/goliatone/go-router/commit/d84a2b8092abe8617a2a1cc007cbea57bac757a2))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.43.0 ([5c5a6c4](https://github.com/goliatone/go-router/commit/5c5a6c42d4bcfc10b70d24cd4f96150abc7860c1))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update test ([cc2bcd2](https://github.com/goliatone/go-router/commit/cc2bcd20fe24315fde17feee460fca8afbc63828))  - (goliatone)
+- Update deps ([9b02491](https://github.com/goliatone/go-router/commit/9b02491e50237450b4e8d80fe5a0fd5713818452))  - (goliatone)
+
 # [0.43.0](https://github.com/goliatone/go-router/compare/v0.42.0...v0.43.0) - (2026-01-26)
 
 ## <!-- 13 -->📦 Bumps

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -16,16 +17,24 @@ type FiberAdapter struct {
 	initialized   bool
 	router        *FiberRouter
 	mergeStrategy RenderMergeStrategy
+	strictRoutes  bool
 	opts          []func(*fiber.App) *fiber.App
 }
 
 type FiberAdapterConfig struct {
-	MergeStrategy RenderMergeStrategy
+	MergeStrategy            RenderMergeStrategy
+	ConflictPolicy           *HTTPRouterConflictPolicy
+	StrictRoutes             bool
+	OrderRoutesBySpecificity bool
 }
 
 func (cfg FiberAdapterConfig) withDefaults() FiberAdapterConfig {
 	if cfg.MergeStrategy == nil {
 		cfg.MergeStrategy = defaultRenderMergeStrategy
+	}
+	if cfg.ConflictPolicy == nil {
+		policy := HTTPRouterConflictLogAndContinue
+		cfg.ConflictPolicy = &policy
 	}
 	return cfg
 }
@@ -70,10 +79,26 @@ func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) 
 		app = opt(app)
 	}
 
+	conflictPolicy := HTTPRouterConflictLogAndContinue
+	if cfg.ConflictPolicy != nil {
+		conflictPolicy = *cfg.ConflictPolicy
+	}
+
 	return &FiberAdapter{
 		app:           app,
 		opts:          opts,
 		mergeStrategy: cfg.MergeStrategy,
+		strictRoutes:  cfg.StrictRoutes,
+		router: &FiberRouter{
+			app:                      app,
+			mergeStrategy:            cfg.MergeStrategy,
+			conflictPolicy:           conflictPolicy,
+			orderRoutesBySpecificity: cfg.OrderRoutesBySpecificity,
+			BaseRouter: BaseRouter{
+				logger: &defaultLogger{},
+				root:   &routerRoot{},
+			},
+		},
 	}
 }
 
@@ -85,9 +110,11 @@ func DefaultFiberOptions(app *fiber.App) *fiber.App {
 
 func (a *FiberAdapter) Router() Router[*fiber.App] {
 	if a.router == nil {
+		conflictPolicy := HTTPRouterConflictLogAndContinue
 		a.router = &FiberRouter{
-			app:           a.app,
-			mergeStrategy: a.mergeStrategy,
+			app:            a.app,
+			mergeStrategy:  a.mergeStrategy,
+			conflictPolicy: conflictPolicy,
 			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
 				root:   &routerRoot{},
@@ -128,7 +155,8 @@ func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fibe
 	fullPrefix := r.joinPath(r.prefix, prefix)
 	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
 	// Register immediately so static routes can take precedence over catch-all
-	// routes (e.g. "/*") that are typically registered later.
+	// routes (e.g. "/*") that are typically registered later. When
+	// specificity ordering is enabled, registration is deferred to Init.
 	r.handleFull(GET, path, handler).SetName("static.get")
 	r.handleFull(GET, path+"/*", handler).SetName("static.get")
 	r.handleFull(HEAD, path, handler).SetName("static.head")
@@ -139,10 +167,20 @@ func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fibe
 // handleFull registers a route using an already-prefixed path (i.e. full/absolute path).
 // This is needed for helpers like Static() which produce full paths (including group prefix).
 func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
-	// Check for duplicates
-	for _, existingRoute := range r.root.routes {
-		if existingRoute.Method == method && existingRoute.Path == fullPath {
-			r.logger.Warn("Duplicate route detected", "method", method, "path", fullPath)
+	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
+		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy)
+		switch r.conflictPolicy {
+		case HTTPRouterConflictLogAndSkip:
+			if r.logger != nil {
+				r.logger.Warn("route conflict skipped: %v", err)
+			}
+			return noopRouteInfo
+		case HTTPRouterConflictLogAndContinue:
+			if r.logger != nil {
+				r.logger.Warn("route conflict detected: %v", err)
+			}
+		case HTTPRouterConflictPanic:
+			panic(err)
 		}
 	}
 
@@ -155,9 +193,29 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 	}
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
-	r.logger.Info("registering route", "method", method, "path", fullPath, "name", route.Name)
+	r.routeRegistration(route)
 
-	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
+	return route
+}
+
+func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
+	if route.Name != "" {
+		r.addNamedRoute(route.Name, route)
+	}
+
+	route.onSetName = func(name string) {
+		r.app.Name(name)
+		r.addNamedRoute(name, route)
+	}
+
+	if r.orderRoutesBySpecificity && !r.root.deferredRegistered {
+		r.root.deferredRoutes = append(r.root.deferredRoutes, route)
+		return
+	}
+
+	r.logger.Info("registering route", "method", route.Method, "path", route.Path, "name", route.Name)
+
+	r.app.Add(string(route.Method), route.Path, func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c, r.logger)
 		if fc, ok := ctx.(*fiberContext); ok {
 			fc.setMergeStrategy(r.mergeStrategy)
@@ -174,13 +232,43 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 		}
 		return fmt.Errorf("context cast failed")
 	})
+}
 
-	route.onSetName = func(name string) {
-		r.app.Name(name)
-		r.addNamedRoute(name, route)
+func (r *FiberRouter) registerDeferredRoutes() {
+	if !r.orderRoutesBySpecificity || r.root.deferredRegistered {
+		return
 	}
 
-	return route
+	r.root.deferredRegistered = true
+	if len(r.root.deferredRoutes) == 0 {
+		return
+	}
+
+	sortRoutesBySpecificity(r.root.deferredRoutes)
+	for _, route := range r.root.deferredRoutes {
+		r.routeRegistration(route)
+	}
+	r.root.deferredRoutes = r.root.deferredRoutes[:0]
+}
+
+func (r *FiberRouter) detectRouteConflict(method HTTPMethod, fullPath string) *routeConflict {
+	for _, route := range r.root.routes {
+		if route.Method != method {
+			continue
+		}
+		if route.Path == fullPath {
+			return &routeConflict{
+				existing: route,
+				reason:   "duplicate route",
+				index:    -1,
+			}
+		}
+		if conflict := detectPathConflict(route.Path, fullPath); conflict != nil {
+			conflict.existing = route
+			return conflict
+		}
+	}
+	return nil
 }
 
 func (r *FiberRouter) GetPrefix() string {
@@ -205,6 +293,14 @@ func (a *FiberAdapter) Init() {
 		a.Router()
 	}
 
+	if a.strictRoutes {
+		if errs := a.router.ValidateRoutes(); len(errs) > 0 {
+			panic(errors.Join(errs...))
+		}
+	}
+
+	a.router.registerDeferredRoutes()
+
 	a.router.registerLateRoutes(a.router)
 	a.initialized = true
 }
@@ -227,8 +323,10 @@ func (a *FiberAdapter) WrappedRouter() *fiber.App {
 
 type FiberRouter struct {
 	BaseRouter
-	app           *fiber.App
-	mergeStrategy RenderMergeStrategy
+	app                      *fiber.App
+	mergeStrategy            RenderMergeStrategy
+	conflictPolicy           HTTPRouterConflictPolicy
+	orderRoutesBySpecificity bool
 }
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
@@ -236,8 +334,10 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	r.logger.Debug("creating route group", "prefix", fullPrefix)
 
 	return &FiberRouter{
-		app:           r.app,
-		mergeStrategy: r.mergeStrategy,
+		app:                      r.app,
+		mergeStrategy:            r.mergeStrategy,
+		conflictPolicy:           r.conflictPolicy,
+		orderRoutesBySpecificity: r.orderRoutesBySpecificity,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
 			// middlewares: append([]namedMiddleware{}, r.middlewares...),
@@ -253,8 +353,10 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 // return r.routers[prefix]
 func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
-		app:           r.app,
-		mergeStrategy: r.mergeStrategy,
+		app:                      r.app,
+		mergeStrategy:            r.mergeStrategy,
+		conflictPolicy:           r.conflictPolicy,
+		orderRoutesBySpecificity: r.orderRoutesBySpecificity,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
 			// middlewares: append([]namedMiddleware{}, r.middlewares...),
@@ -284,11 +386,20 @@ func (r *FiberRouter) Use(m ...MiddlewareFunc) Router[*fiber.App] {
 
 func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
 	fullPath := r.joinPath(r.prefix, pathStr)
-
-	// Check for duplicates
-	for _, existingRoute := range r.root.routes {
-		if existingRoute.Method == method && existingRoute.Path == fullPath {
-			r.logger.Warn("Duplicate route detected", "method", method, "path", fullPath)
+	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
+		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy)
+		switch r.conflictPolicy {
+		case HTTPRouterConflictLogAndSkip:
+			if r.logger != nil {
+				r.logger.Warn("route conflict skipped: %v", err)
+			}
+			return noopRouteInfo
+		case HTTPRouterConflictLogAndContinue:
+			if r.logger != nil {
+				r.logger.Warn("route conflict detected: %v", err)
+			}
+		case HTTPRouterConflictPanic:
+			panic(err)
 		}
 	}
 
@@ -301,37 +412,7 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 	}
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
-
-	r.logger.Info("registering route", "method", method, "path", pathStr, "name", route.Name)
-
-	r.app.Add(string(method), fullPath, func(c *fiber.Ctx) error {
-		ctx := NewFiberContext(c, r.logger)
-		if fc, ok := ctx.(*fiberContext); ok {
-			fc.setMergeStrategy(r.mergeStrategy)
-			fc.setHandlers(route.Handlers)
-			fc.index = -1 // reset index to ensure proper chain execution
-
-			// Inject route context
-			goCtx := fc.Context()
-
-			// Always inject route name (empty string for unnamed routes)
-			goCtx = WithRouteName(goCtx, route.Name)
-
-			// Always inject route parameters from Fiber
-			goCtx = WithRouteParams(goCtx, c.AllParams())
-			fc.SetContext(goCtx)
-
-			return fc.Next() // execute the our chain completely before returning
-		}
-		return fmt.Errorf("context cast failed")
-	})
-
-	// If we later call route.SetName then we run this callback
-	// to propagate
-	route.onSetName = func(name string) {
-		r.app.Name(name)
-		r.addNamedRoute(name, route)
-	}
+	r.routeRegistration(route)
 
 	return route
 }
@@ -362,6 +443,22 @@ func (r *FiberRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFun
 
 func (r *FiberRouter) WebSocket(path string, config WebSocketConfig, handler func(WebSocketContext) error) RouteInfo {
 	fullPath := r.joinPath(r.prefix, path)
+	if conflict := r.detectRouteConflict(GET, fullPath); conflict != nil {
+		err := newRouteConflictError(GET, fullPath, conflict, r.conflictPolicy)
+		switch r.conflictPolicy {
+		case HTTPRouterConflictLogAndSkip:
+			if r.logger != nil {
+				r.logger.Warn("route conflict skipped: %v", err)
+			}
+			return noopRouteInfo
+		case HTTPRouterConflictLogAndContinue:
+			if r.logger != nil {
+				r.logger.Warn("route conflict detected: %v", err)
+			}
+		case HTTPRouterConflictPanic:
+			panic(err)
+		}
+	}
 
 	r.logger.Info("registering websocket route", "path", path, "fullPath", fullPath)
 

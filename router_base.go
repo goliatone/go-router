@@ -14,9 +14,11 @@ import (
 )
 
 type routerRoot struct {
-	routes      []*RouteDefinition
-	namedRoutes map[string]*RouteDefinition
-	lateRoutes  []*lateRoute
+	routes             []*RouteDefinition
+	namedRoutes        map[string]*RouteDefinition
+	lateRoutes         []*lateRoute
+	deferredRoutes     []*RouteDefinition
+	deferredRegistered bool
 }
 
 // Common fields for both FiberRouter and HTTPRouter

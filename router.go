@@ -256,6 +256,7 @@ type Router[T any] interface {
 
 	// TODO: Move to a different interface e.g. MetaRouter
 	Routes() []RouteDefinition
+	ValidateRoutes() []error
 	// For debugging: Print a table of routes and their middleware chain
 	PrintRoutes()
 	WithLogger(logger Logger) Router[T]

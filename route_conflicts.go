@@ -104,8 +104,6 @@ func detectPathConflict(existingPath, newPath string) *routeConflict {
 		existingSegment: existingSegment,
 		newSegment:      newSegment,
 	}
-
-	return nil
 }
 
 func newRouteConflictError(method HTTPMethod, path string, conflict *routeConflict, policy HTTPRouterConflictPolicy) error {

@@ -203,28 +203,22 @@ func (a *HTTPServer) WrappedRouter() *httprouter.Router {
 // getRoutePattern tries to find the route pattern for a given method and path
 // by looking up the registered routes in the BaseRouter
 func (a *HTTPServer) getRoutePattern(method, path string) string {
-	// Try to find matching route pattern by iterating through registered routes
+	var best *RouteDefinition
 	for _, route := range a.router.root.routes {
-		if string(route.Method) == method {
-			// For exact matches (static routes)
-			if route.Path == path {
-				return route.Path
-			}
-
-			// For parameterized routes, we need to check if the pattern would match
-			// This is a simple heuristic - we can improve it if needed
-			if strings.Contains(route.Path, ":") || strings.Contains(route.Path, "*") {
-				// Use httprouter's lookup to see if this path would match
-				if handler, _, _ := a.httpRouter.Lookup(method, path); handler != nil {
-					// If httprouter found a match, check if our route pattern segments match
-					if pathMatchesPattern(route.Path, path) {
-						return route.Path
-					}
-				}
-			}
+		if string(route.Method) != method {
+			continue
+		}
+		if !pathMatchesPattern(route.Path, path) {
+			continue
+		}
+		if best == nil || compareRouteSpecificity(route.Path, best.Path) > 0 {
+			best = route
 		}
 	}
-	return ""
+	if best == nil {
+		return ""
+	}
+	return best.Path
 }
 
 // pathMatchesPattern checks if a request path could match a route pattern

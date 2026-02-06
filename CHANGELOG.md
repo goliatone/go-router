@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.45.0](https://github.com/goliatone/go-router/compare/v0.44.1...v0.45.0) - (2026-02-06)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Remove unrecheable code ([999d07f](https://github.com/goliatone/go-router/commit/999d07fdb691c96442ff97481939082dc942c3ab))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.45.0 ([53e098e](https://github.com/goliatone/go-router/commit/53e098ed4b069d7b3a1e0b94aeacea861bd297f1))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- WSTokenIDer and WSTOkenIDFromContext to expose optional token IDs in WS auth claims ([b3bf4b0](https://github.com/goliatone/go-router/commit/b3bf4b01ff3e74d2fd9cd41add516b296504a9d4))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.44.1 ([19181dd](https://github.com/goliatone/go-router/commit/19181dd6ad640001d9046b3b239ff948dd34a644))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update test ([c5122b9](https://github.com/goliatone/go-router/commit/c5122b9a284f8378eb1b01aa8c282fccb6c19777))  - (goliatone)
+- Update docs ([f37e071](https://github.com/goliatone/go-router/commit/f37e071c7428c89add40c22984f6b20b88c494fa))  - (goliatone)
+
 # [0.44.1](https://github.com/goliatone/go-router/compare/v0.44.0...v0.44.1) - (2026-01-30)
 
 ## <!-- 1 -->🐛 Bug Fixes

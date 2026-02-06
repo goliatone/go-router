@@ -554,6 +554,58 @@ func TestHTTPRouter_MiddlewareChain(t *testing.T) {
 	}
 }
 
+func TestHTTPRouter_MiddlewareFromHTTP_WithNextChain(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	var order []string
+
+	httpMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			order = append(order, "http")
+			next.ServeHTTP(w, req)
+		})
+	}
+
+	routerMiddleware := router.ToMiddleware(func(ctx router.Context) error {
+		order = append(order, "router")
+		return nil
+	})
+
+	handler := func(ctx router.Context) error {
+		order = append(order, "handler")
+		return ctx.Send([]byte("OK"))
+	}
+
+	r.Use(router.MiddlewareFromHTTP(httpMiddleware))
+	r.Use(routerMiddleware)
+	r.Get("/middleware-next", handler)
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/middleware-next")
+	if err != nil {
+		t.Fatalf("Error making GET request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+
+	expectedOrder := []string{"http", "router", "handler"}
+	if len(order) != len(expectedOrder) {
+		t.Errorf("Expected order %v, got %v", expectedOrder, order)
+	} else {
+		for i := range order {
+			if order[i] != expectedOrder[i] {
+				t.Errorf("At index %d, expected '%s', got '%s'", i, expectedOrder[i], order[i])
+			}
+		}
+	}
+}
+
 func TestContext_GetSet(t *testing.T) {
 	adapter := router.NewHTTPServer()
 	r := adapter.Router()

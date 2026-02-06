@@ -125,6 +125,7 @@ func TestGetRoutePattern(t *testing.T) {
 	// Add some test routes
 	server.Router().Get("/users/:id", func(ctx Context) error { return nil }).SetName("users.show")
 	server.Router().Post("/users", func(ctx Context) error { return nil }).SetName("users.create")
+	server.Router().Get("/static/*filepath", func(ctx Context) error { return nil }).SetName("static.files")
 	server.Router().Get("/health", func(ctx Context) error { return nil }) // unnamed route
 
 	server.Init()
@@ -137,6 +138,7 @@ func TestGetRoutePattern(t *testing.T) {
 	}{
 		{"GET", "/users/123", "/users/:id", "parameterized route"},
 		{"POST", "/users", "/users", "exact match route"},
+		{"GET", "/static/css/app.css", "/static/*filepath", "catch-all route"},
 		{"GET", "/health", "/health", "static route"},
 		{"DELETE", "/users/123", "", "non-existent method"},
 		{"GET", "/nonexistent", "", "non-existent path"},

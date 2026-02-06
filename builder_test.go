@@ -2,6 +2,7 @@ package router_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/goliatone/go-router"
@@ -117,6 +118,37 @@ func TestRouteBuilder_MiddlewareChain(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"mw1", "mw2", "handler"}, order)
+}
+
+func TestRouteBuilder_ToMiddlewareWithHTTPRouter(t *testing.T) {
+	server := router.NewHTTPServer().(*router.HTTPServer)
+	builder := router.NewRouteBuilder(server.Router())
+
+	var order []string
+
+	builder.
+		NewRoute().
+		GET().
+		Path("/mw").
+		Handler(func(c router.Context) error {
+			order = append(order, "handler")
+			return c.SendString("OK")
+		}).
+		Middleware(router.ToMiddleware(func(c router.Context) error {
+			order = append(order, "mw")
+			return nil
+		}))
+
+	err := builder.BuildAll()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/mw", nil)
+	rr := httptest.NewRecorder()
+
+	server.WrappedRouter().ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, []string{"mw", "handler"}, order)
 }
 
 func TestRouteBuilder_GroupRoutes(t *testing.T) {
@@ -353,10 +385,14 @@ func NewMockRouter() *MockRouter {
 
 func (m *MockRouter) Handle(method router.HTTPMethod, path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
 	allMw := append(m.Mw, mw...)
+	finalHandler := handler
+	for i := len(allMw) - 1; i >= 0; i-- {
+		finalHandler = allMw[i](finalHandler)
+	}
 	r := &MockRouteInfo{
 		Method:     method,
 		Path:       m.Prefix + path,
-		Handler:    handler,
+		Handler:    finalHandler,
 		Middleware: allMw,
 	}
 	// Always add to root router's routes

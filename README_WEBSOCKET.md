@@ -278,6 +278,23 @@ handler := router.NewWSHandler(authMiddleware(func(ctx context.Context, client r
 }))
 ```
 
+Default token extraction checks `token`, `auth_token`, and `Authorization: Bearer <token>`.
+To enable cookie extraction with the default extractor, set `EnableTokenCookie` and optionally `TokenCookieNames`:
+
+```go
+authMiddleware := router.NewWSAuth(router.WSAuthConfig{
+    TokenValidator:    &MyTokenValidator{},
+    EnableTokenCookie: true,
+    TokenCookieNames:  []string{"admin_debug_token"},
+})
+```
+
+If your claims implement `WSTokenIDer`, you can read the token ID from context:
+
+```go
+tokenID, _ := router.WSTokenIDFromContext(ctx)
+```
+
 ### Logging Middleware
 
 ```go

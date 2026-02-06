@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.45.1](https://github.com/goliatone/go-router/compare/v0.45.0...v0.45.1) - (2026-02-06)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Clean up builder route ([7d1411c](https://github.com/goliatone/go-router/commit/7d1411c93032e6cc1b74ada98a4177493fccc634))  - (goliatone)
+- Middleware from http ([bef1460](https://github.com/goliatone/go-router/commit/bef1460c692243d4af6f7453934cd4cea0b4542b))  - (goliatone)
+- Harden getRoutePattern to chosee most specific route; ([ca66f5b](https://github.com/goliatone/go-router/commit/ca66f5bf08cd37797cb925a494006a20dd0dbd03))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.45.1 ([d2f97b9](https://github.com/goliatone/go-router/commit/d2f97b9fcde382ad530fab8ea0ec86898c0a1b90))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.45.0 ([7dc1466](https://github.com/goliatone/go-router/commit/7dc1466dbd81157aeb79098184a740e163a1d94f))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update test ([6374b7a](https://github.com/goliatone/go-router/commit/6374b7a53b2c17ee1c88ae61334f3aa87fdb405b))  - (goliatone)
+
 # [0.45.0](https://github.com/goliatone/go-router/compare/v0.44.1...v0.45.0) - (2026-02-06)
 
 ## <!-- 1 -->🐛 Bug Fixes

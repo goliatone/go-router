@@ -49,6 +49,11 @@ type WSAuthClaims interface {
 	IsAtLeast(minRole string) bool
 }
 
+// WSTokenIDer is an optional interface for auth claims that expose a token ID.
+type WSTokenIDer interface {
+	TokenID() string
+}
+
 // WSAuthContextKey is used to store auth claims in context
 type WSAuthContextKey struct{}
 
@@ -58,6 +63,23 @@ func WSAuthClaimsFromContext(ctx context.Context) (WSAuthClaims, bool) {
 	return claims, ok
 }
 
+// WSTokenIDFromContext retrieves token ID from auth claims when available.
+func WSTokenIDFromContext(ctx context.Context) (string, bool) {
+	claims, ok := WSAuthClaimsFromContext(ctx)
+	if !ok || claims == nil {
+		return "", false
+	}
+	tokenIDer, ok := claims.(WSTokenIDer)
+	if !ok {
+		return "", false
+	}
+	tokenID := tokenIDer.TokenID()
+	if tokenID == "" {
+		return "", false
+	}
+	return tokenID, true
+}
+
 // WSAuthConfig holds configuration for the WebSocket authentication middleware
 type WSAuthConfig struct {
 	// TokenValidator is required for token validation
@@ -65,6 +87,11 @@ type WSAuthConfig struct {
 	// TokenExtractor defines how to extract tokens from WebSocket context
 	// Supports query parameters and headers
 	TokenExtractor func(ctx context.Context, client WSClient) (string, error)
+	// EnableTokenCookie allows cookie-based token extraction when using the default extractor.
+	EnableTokenCookie bool
+	// TokenCookieNames lists cookie names to check when EnableTokenCookie is true.
+	// Defaults to ["token", "auth_token"] if empty.
+	TokenCookieNames []string
 	// ContextEnricher enriches the context with auth claims after validation
 	ContextEnricher func(ctx context.Context, claims WSAuthClaims) context.Context
 	// OnAuthFailure handles authentication failures
@@ -74,6 +101,8 @@ type WSAuthConfig struct {
 	// Logger for auth-related logging
 	Logger Logger
 }
+
+var defaultTokenCookieNames = []string{"token", "auth_token"}
 
 // defaultTokenExtractor checks multiple sources for authentication tokens
 func defaultTokenExtractor(ctx context.Context, client WSClient) (string, error) {
@@ -88,7 +117,7 @@ func defaultTokenExtractor(ctx context.Context, client WSClient) (string, error)
 	}
 
 	// 2. Check Authorization header
-	if auth := client.Conn().Header("Authorization"); auth != "" {
+	if auth := client.Conn().Header(HeaderAuthorization); auth != "" {
 		// Handle "Bearer <token>" format
 		if strings.HasPrefix(auth, "Bearer ") {
 			return strings.TrimSpace(auth[7:]), nil
@@ -97,6 +126,39 @@ func defaultTokenExtractor(ctx context.Context, client WSClient) (string, error)
 	}
 
 	return "", errors.New("no authentication token found")
+}
+
+func defaultTokenExtractorWithConfig(cfg WSAuthConfig) func(ctx context.Context, client WSClient) (string, error) {
+	cookieNames := []string(nil)
+	if cfg.EnableTokenCookie {
+		cookieNames = cfg.TokenCookieNames
+		if len(cookieNames) == 0 {
+			cookieNames = defaultTokenCookieNames
+		}
+	}
+
+	return func(ctx context.Context, client WSClient) (string, error) {
+		token, err := defaultTokenExtractor(ctx, client)
+		if err == nil && token != "" {
+			return token, nil
+		}
+
+		if len(cookieNames) > 0 {
+			for _, name := range cookieNames {
+				if name == "" {
+					continue
+				}
+				if token := client.Conn().Cookies(name); token != "" {
+					return token, nil
+				}
+			}
+		}
+
+		if err != nil {
+			return "", err
+		}
+		return "", errors.New("no authentication token found")
+	}
 }
 
 // defaultContextEnricher adds auth claims to the context
@@ -113,7 +175,6 @@ func defaultAuthFailureHandler(ctx context.Context, client WSClient, err error) 
 
 // WSAuthConfigDefault provides default configuration for WSAuth middleware
 var WSAuthConfigDefault = WSAuthConfig{
-	TokenExtractor:  defaultTokenExtractor,
 	ContextEnricher: defaultContextEnricher,
 	OnAuthFailure:   defaultAuthFailureHandler,
 	Logger:          &defaultLogger{},
@@ -131,7 +192,7 @@ func wsAuthConfigDefault(config ...WSAuthConfig) WSAuthConfig {
 		panic("WSAuth: TokenValidator is required")
 	}
 	if cfg.TokenExtractor == nil {
-		cfg.TokenExtractor = WSAuthConfigDefault.TokenExtractor
+		cfg.TokenExtractor = defaultTokenExtractorWithConfig(cfg)
 	}
 	if cfg.ContextEnricher == nil {
 		cfg.ContextEnricher = WSAuthConfigDefault.ContextEnricher

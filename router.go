@@ -316,8 +316,6 @@ func MiddlewareFromHTTP(mw func(next http.Handler) http.Handler) MiddlewareFunc 
 				}()
 				ctx.w = w
 				ctx.r = r
-				ctx.handlers = []NamedHandler{{Name: "adapted_next", Handler: next}}
-				ctx.index = -1
 				if err := ctx.Next(); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 				}

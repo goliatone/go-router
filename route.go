@@ -198,25 +198,10 @@ func (r *Route[T]) Build() error {
 		return fmt.Errorf("route validation failed: %w", err)
 	}
 
-	finalHandler := r.handler
-	for i := len(r.middleware) - 1; i >= 0; i-- {
-		finalHandler = r.middleware[i](finalHandler)
+	ri := r.builder.router.Handle(r.definition.Method, r.definition.Path, r.handler, r.middleware...)
+	if routeDef, ok := ri.(*RouteDefinition); ok {
+		r.definition.Handlers = routeDef.Handlers
 	}
-
-	var handlers []NamedHandler
-	for _, mw := range r.middleware {
-		handlers = append(handlers, NamedHandler{
-			Name:    funcName(mw),
-			Handler: mw(finalHandler),
-		})
-	}
-	handlers = append(handlers, NamedHandler{
-		Name:    r.definition.Name,
-		Handler: finalHandler,
-	})
-	r.definition.Handlers = handlers
-
-	ri := r.builder.router.Handle(r.definition.Method, r.definition.Path, finalHandler)
 
 	if r.definition.Name != "" {
 		ri.SetName(r.definition.Name)

@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.46.0](https://github.com/goliatone/go-router/compare/v0.45.1...v0.46.0) - (2026-02-09)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- View context serialization ([11f7e56](https://github.com/goliatone/go-router/commit/11f7e56a8388cb8e6505103221fbae7d639dd494))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.46.0 ([ca0b3c4](https://github.com/goliatone/go-router/commit/ca0b3c49b5927d1b2d944728631ab4cff0d85499))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.45.1 ([0e673be](https://github.com/goliatone/go-router/commit/0e673be2a88de60acaca04c7bdac48b3b790d919))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update test ([e38e042](https://github.com/goliatone/go-router/commit/e38e042d0472fcf447b827468363b307be1488a3))  - (goliatone)
+- Update format ([44656b1](https://github.com/goliatone/go-router/commit/44656b13a9f63aba7575b80916cc7fe08f645779))  - (goliatone)
+
 # [0.45.1](https://github.com/goliatone/go-router/compare/v0.45.0...v0.45.1) - (2026-02-06)
 
 ## <!-- 1 -->🐛 Bug Fixes

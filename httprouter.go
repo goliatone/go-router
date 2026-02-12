@@ -49,6 +49,8 @@ var httpRouterConflictPolicyMu sync.Mutex
 var httpRouterConflictPolicy = map[*httprouter.Router]HTTPRouterConflictPolicy{}
 var httpRouterStrictRoutesMu sync.Mutex
 var httpRouterStrictRoutes = map[*httprouter.Router]bool{}
+var httpRouterPathConflictModeMu sync.Mutex
+var httpRouterPathConflictMode = map[*httprouter.Router]PathConflictMode{}
 
 // WithHTTPRouterConflictPolicy configures conflict handling for NewHTTPServer.
 func WithHTTPRouterConflictPolicy(policy HTTPRouterConflictPolicy) func(*httprouter.Router) *httprouter.Router {
@@ -66,6 +68,17 @@ func WithHTTPServerStrictRoutes(strict bool) func(*httprouter.Router) *httproute
 		httpRouterStrictRoutesMu.Lock()
 		httpRouterStrictRoutes[router] = strict
 		httpRouterStrictRoutesMu.Unlock()
+		return router
+	}
+}
+
+// WithHTTPRouterPathConflictMode configures path conflict handling mode for NewHTTPServer.
+// HTTPRouter currently only supports strict mode.
+func WithHTTPRouterPathConflictMode(mode PathConflictMode) func(*httprouter.Router) *httprouter.Router {
+	return func(router *httprouter.Router) *httprouter.Router {
+		httpRouterPathConflictModeMu.Lock()
+		httpRouterPathConflictMode[router] = mode.normalize()
+		httpRouterPathConflictModeMu.Unlock()
 		return router
 	}
 }
@@ -90,6 +103,16 @@ func popHTTPRouterStrictRoutes(router *httprouter.Router) (bool, bool) {
 	return strict, ok
 }
 
+func popHTTPRouterPathConflictMode(router *httprouter.Router) (PathConflictMode, bool) {
+	httpRouterPathConflictModeMu.Lock()
+	defer httpRouterPathConflictModeMu.Unlock()
+	mode, ok := httpRouterPathConflictMode[router]
+	if ok {
+		delete(httpRouterPathConflictMode, router)
+	}
+	return mode, ok
+}
+
 type HTTPServer struct {
 	httpRouter        *httprouter.Router
 	server            *http.Server
@@ -100,6 +123,7 @@ type HTTPServer struct {
 	errorHandler      func(Context, error) error
 	conflictPolicy    HTTPRouterConflictPolicy
 	strictRoutes      bool
+	pathConflictMode  PathConflictMode
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -122,12 +146,20 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 	if configured, ok := popHTTPRouterStrictRoutes(router); ok {
 		strictRoutes = configured
 	}
+	pathConflictMode := PathConflictModeStrict
+	if configured, ok := popHTTPRouterPathConflictMode(router); ok {
+		pathConflictMode = configured.normalize()
+	}
+	if pathConflictMode == PathConflictModePreferStatic {
+		panic(newUnsupportedPathConflictModeError("httprouter", pathConflictMode))
+	}
 
 	return &HTTPServer{
-		httpRouter:     router,
-		errorHandler:   DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig()),
-		conflictPolicy: conflictPolicy,
-		strictRoutes:   strictRoutes,
+		httpRouter:       router,
+		errorHandler:     DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig()),
+		conflictPolicy:   conflictPolicy,
+		strictRoutes:     strictRoutes,
+		pathConflictMode: pathConflictMode,
 		// views:      engine,
 	}
 }
@@ -144,9 +176,10 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 			a.errorHandler = DefaultHTTPErrorHandler(DefaultHTTPErrorHandlerConfig())
 		}
 		a.router = &HTTPRouter{
-			router:         a.httpRouter,
-			errorHandler:   a.errorHandler,
-			conflictPolicy: a.conflictPolicy,
+			router:           a.httpRouter,
+			errorHandler:     a.errorHandler,
+			conflictPolicy:   a.conflictPolicy,
+			pathConflictMode: a.pathConflictMode,
 			BaseRouter: BaseRouter{
 				logger:      &defaultLogger{},
 				routes:      []*RouteDefinition{},
@@ -325,9 +358,10 @@ func (a *HTTPServer) Shutdown(ctx context.Context) error {
 // HTTPRouter implements Router for httprouter
 type HTTPRouter struct {
 	BaseRouter
-	router         *httprouter.Router
-	errorHandler   func(Context, error) error
-	conflictPolicy HTTPRouterConflictPolicy
+	router           *httprouter.Router
+	errorHandler     func(Context, error) error
+	conflictPolicy   HTTPRouterConflictPolicy
+	pathConflictMode PathConflictMode
 }
 
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
@@ -367,9 +401,10 @@ func (r *HTTPRouter) GetPrefix() string {
 
 func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 	return &HTTPRouter{
-		router:         r.router,
-		errorHandler:   r.errorHandler,
-		conflictPolicy: r.conflictPolicy,
+		router:           r.router,
+		errorHandler:     r.errorHandler,
+		conflictPolicy:   r.conflictPolicy,
+		pathConflictMode: r.pathConflictMode,
 		BaseRouter: BaseRouter{
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
@@ -385,9 +420,10 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 func (r *HTTPRouter) Mount(prefix string) Router[*httprouter.Router] {
 
 	return &HTTPRouter{
-		router:         r.router,
-		errorHandler:   r.errorHandler,
-		conflictPolicy: r.conflictPolicy,
+		router:           r.router,
+		errorHandler:     r.errorHandler,
+		conflictPolicy:   r.conflictPolicy,
+		pathConflictMode: r.pathConflictMode,
 		BaseRouter: BaseRouter{
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
@@ -424,7 +460,7 @@ func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
 	fullPath := r.joinPath(r.prefix, pathStr)
 	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
-		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy)
+		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
 		switch r.conflictPolicy {
 		case HTTPRouterConflictLogAndSkip, HTTPRouterConflictLogAndContinue:
 			if r.logger != nil {
@@ -494,7 +530,7 @@ func (r *HTTPRouter) detectRouteConflict(method HTTPMethod, fullPath string) *ro
 				index:    -1,
 			}
 		}
-		if conflict := detectPathConflict(route.Path, fullPath); conflict != nil {
+		if conflict := detectPathConflict(route.Path, fullPath, r.pathConflictMode); conflict != nil {
 			conflict.existing = route
 			return conflict
 		}
@@ -559,6 +595,13 @@ func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func
 
 func (r *HTTPRouter) PrintRoutes() {
 	r.BaseRouter.PrintRoutes()
+}
+
+func (r *HTTPRouter) ValidateRoutes() []error {
+	routes := collectRoutesForValidation(&r.BaseRouter)
+	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
+		PathConflictMode: r.pathConflictMode,
+	})
 }
 
 // httpRouterContext implements Context for httprouter

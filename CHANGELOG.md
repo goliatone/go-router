@@ -1,5 +1,21 @@
 # Changelog
 
+# [0.47.0](https://github.com/goliatone/go-router/compare/v0.46.0...v0.47.0) - (2026-02-12)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.47.0 ([02a2646](https://github.com/goliatone/go-router/commit/02a264657558d5c5766dc5fcec23d7f6d2683179))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Route validation ([d928d7c](https://github.com/goliatone/go-router/commit/d928d7c20a4fd592c52ee450eaac6c116f746a2a))  - (goliatone)
+- Route conflicts to address static ([7cdec1d](https://github.com/goliatone/go-router/commit/7cdec1de3e001d98037e95ff1188da2e8b990609))  - (goliatone)
+- Path conflict mode ([cfad6e2](https://github.com/goliatone/go-router/commit/cfad6e2f9a5f09474d1a22512d29e1a861552a0a))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.46.0 ([bc20f4d](https://github.com/goliatone/go-router/commit/bc20f4d04b7796d5960cb706679ede43c6f64d63))  - (goliatone)
+
 # [0.46.0](https://github.com/goliatone/go-router/compare/v0.45.1...v0.46.0) - (2026-02-09)
 
 ## <!-- 1 -->🐛 Bug Fixes

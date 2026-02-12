@@ -8,7 +8,23 @@ import (
 	goerrors "github.com/goliatone/go-errors"
 )
 
+type RouteValidationOptions struct {
+	PathConflictMode PathConflictMode
+}
+
+func (o RouteValidationOptions) withDefaults() RouteValidationOptions {
+	o.PathConflictMode = o.PathConflictMode.normalize()
+	return o
+}
+
 func (br *BaseRouter) ValidateRoutes() []error {
+	routes := collectRoutesForValidation(br)
+	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
+		PathConflictMode: PathConflictModeStrict,
+	})
+}
+
+func collectRoutesForValidation(br *BaseRouter) []*RouteDefinition {
 	routes := make([]*RouteDefinition, 0, len(br.root.routes)+len(br.root.lateRoutes))
 	routes = append(routes, br.root.routes...)
 	for _, late := range br.root.lateRoutes {
@@ -17,12 +33,20 @@ func (br *BaseRouter) ValidateRoutes() []error {
 			Path:   late.path,
 		})
 	}
-	return ValidateRouteDefinitions(routes)
+	return routes
 }
 
 // ValidateRouteDefinitions checks for conflicting or ambiguous routes.
 func ValidateRouteDefinitions(routes []*RouteDefinition) []error {
+	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
+		PathConflictMode: PathConflictModeStrict,
+	})
+}
+
+// ValidateRouteDefinitionsWithOptions checks route conflicts using the provided path conflict mode.
+func ValidateRouteDefinitionsWithOptions(routes []*RouteDefinition, opts RouteValidationOptions) []error {
 	var errs []error
+	opts = opts.withDefaults()
 
 	for i := 0; i < len(routes); i++ {
 		for j := i + 1; j < len(routes); j++ {
@@ -38,13 +62,13 @@ func ValidateRouteDefinitions(routes []*RouteDefinition) []error {
 					reason:   "duplicate route",
 					index:    -1,
 				}
-				errs = append(errs, newRouteConflictError(left.Method, right.Path, conflict, HTTPRouterConflictPanic))
+				errs = append(errs, newRouteConflictError(left.Method, right.Path, conflict, HTTPRouterConflictPanic, opts.PathConflictMode))
 				continue
 			}
 
-			if conflict := detectPathConflict(left.Path, right.Path); conflict != nil {
+			if conflict := detectPathConflict(left.Path, right.Path, opts.PathConflictMode); conflict != nil {
 				conflict.existing = left
-				errs = append(errs, newRouteConflictError(left.Method, right.Path, conflict, HTTPRouterConflictPanic))
+				errs = append(errs, newRouteConflictError(left.Method, right.Path, conflict, HTTPRouterConflictPanic, opts.PathConflictMode))
 			}
 
 			if lintErr := detectBareIDParamLint(left, right); lintErr != nil {

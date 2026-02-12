@@ -42,7 +42,12 @@ func classifySegment(segment string) segmentKind {
 	return segmentStatic
 }
 
-func detectPathConflict(existingPath, newPath string) *routeConflict {
+func isStaticParamSibling(left, right segmentKind) bool {
+	return (left == segmentStatic && right == segmentParam) || (left == segmentParam && right == segmentStatic)
+}
+
+func detectPathConflict(existingPath, newPath string, mode PathConflictMode) *routeConflict {
+	mode = mode.normalize()
 	existingParts := splitPathSegments(existingPath)
 	newParts := splitPathSegments(newPath)
 
@@ -93,6 +98,11 @@ func detectPathConflict(existingPath, newPath string) *routeConflict {
 	newSegment := newParts[firstWildcardIndex]
 	existingKind := classifySegment(existingSegment)
 	newKind := classifySegment(newSegment)
+
+	if mode == PathConflictModePreferStatic && isStaticParamSibling(existingKind, newKind) {
+		return nil
+	}
+
 	reason := "static segment conflicts with wildcard segment"
 	if existingKind == segmentParam && newKind == segmentParam {
 		reason = "wildcard segment conflicts with existing route"
@@ -106,7 +116,7 @@ func detectPathConflict(existingPath, newPath string) *routeConflict {
 	}
 }
 
-func newRouteConflictError(method HTTPMethod, path string, conflict *routeConflict, policy HTTPRouterConflictPolicy) error {
+func newRouteConflictError(method HTTPMethod, path string, conflict *routeConflict, policy HTTPRouterConflictPolicy, mode PathConflictMode) error {
 	message := fmt.Sprintf("route conflict: %s %s conflicts with %s", method, path, conflict.existing.Path)
 	if conflict.reason != "" {
 		message = fmt.Sprintf("%s (%s)", message, conflict.reason)
@@ -118,6 +128,7 @@ func newRouteConflictError(method HTTPMethod, path string, conflict *routeConfli
 		"path":          path,
 		"existing_path": conflict.existing.Path,
 		"policy":        policy.String(),
+		"path_mode":     mode.String(),
 		"reason":        conflict.reason,
 	}
 
@@ -130,5 +141,19 @@ func newRouteConflictError(method HTTPMethod, path string, conflict *routeConfli
 	return goerrors.New(message, goerrors.CategoryConflict).
 		WithCode(http.StatusConflict).
 		WithTextCode("ROUTE_CONFLICT").
+		WithMetadata(metadata)
+}
+
+func newUnsupportedPathConflictModeError(adapter string, mode PathConflictMode) error {
+	mode = mode.normalize()
+	message := fmt.Sprintf("path conflict mode %q is not supported by %s adapter", mode, adapter)
+	metadata := map[string]any{
+		"adapter":   adapter,
+		"path_mode": mode.String(),
+	}
+
+	return goerrors.New(message, goerrors.CategoryConflict).
+		WithCode(http.StatusNotImplemented).
+		WithTextCode("ROUTE_CONFLICT_MODE_UNSUPPORTED").
 		WithMetadata(metadata)
 }

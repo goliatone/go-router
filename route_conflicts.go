@@ -56,7 +56,13 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode) *ro
 		minLen = len(newParts)
 	}
 
-	firstWildcardIndex := -1
+	firstParamPairIndex := -1
+	firstParamPairExistingSegment := ""
+	firstParamPairNewSegment := ""
+	firstStaticParamIndex := -1
+	firstStaticParamExistingSegment := ""
+	firstStaticParamNewSegment := ""
+
 	for i := 0; i < minLen; i++ {
 		existingSegment := existingParts[i]
 		newSegment := newParts[i]
@@ -79,10 +85,19 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode) *ro
 			}
 		}
 
-		if existingKind == segmentParam || newKind == segmentParam {
-			if firstWildcardIndex == -1 {
-				firstWildcardIndex = i
+		if existingKind == segmentParam && newKind == segmentParam {
+			if firstParamPairIndex == -1 {
+				firstParamPairIndex = i
+				firstParamPairExistingSegment = existingSegment
+				firstParamPairNewSegment = newSegment
 			}
+			continue
+		}
+
+		if isStaticParamSibling(existingKind, newKind) && firstStaticParamIndex == -1 {
+			firstStaticParamIndex = i
+			firstStaticParamExistingSegment = existingSegment
+			firstStaticParamNewSegment = newSegment
 		}
 	}
 
@@ -90,29 +105,27 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode) *ro
 		return nil
 	}
 
-	if firstWildcardIndex == -1 {
-		return nil
+	if firstStaticParamIndex != -1 {
+		if mode == PathConflictModePreferStatic {
+			return nil
+		}
+		return &routeConflict{
+			reason:          "static segment conflicts with wildcard segment",
+			index:           firstStaticParamIndex,
+			existingSegment: firstStaticParamExistingSegment,
+			newSegment:      firstStaticParamNewSegment,
+		}
 	}
 
-	existingSegment := existingParts[firstWildcardIndex]
-	newSegment := newParts[firstWildcardIndex]
-	existingKind := classifySegment(existingSegment)
-	newKind := classifySegment(newSegment)
-
-	if mode == PathConflictModePreferStatic && isStaticParamSibling(existingKind, newKind) {
+	if firstParamPairIndex == -1 {
 		return nil
-	}
-
-	reason := "static segment conflicts with wildcard segment"
-	if existingKind == segmentParam && newKind == segmentParam {
-		reason = "wildcard segment conflicts with existing route"
 	}
 
 	return &routeConflict{
-		reason:          reason,
-		index:           firstWildcardIndex,
-		existingSegment: existingSegment,
-		newSegment:      newSegment,
+		reason:          "wildcard segment conflicts with existing route",
+		index:           firstParamPairIndex,
+		existingSegment: firstParamPairExistingSegment,
+		newSegment:      firstParamPairNewSegment,
 	}
 }
 

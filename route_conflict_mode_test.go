@@ -31,6 +31,30 @@ func TestValidateRouteDefinitionsWithOptions_StaticParamSiblingMode(t *testing.T
 	}
 }
 
+func TestValidateRouteDefinitionsWithOptions_SharedParamPrefixStaticSibling(t *testing.T) {
+	routes := []*router.RouteDefinition{
+		{Method: router.GET, Path: "/admin/content/:name/:entry"},
+		{Method: router.GET, Path: "/admin/content/:name/new"},
+	}
+
+	strictErrs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+		PathConflictMode: router.PathConflictModeStrict,
+	})
+	if len(strictErrs) == 0 {
+		t.Fatal("expected strict mode to report conflict for shared param prefix with static sibling")
+	}
+	if !strings.Contains(strictErrs[0].Error(), "static segment conflicts with wildcard segment") {
+		t.Fatalf("expected strict conflict at static-vs-param segment, got %q", strictErrs[0].Error())
+	}
+
+	preferStaticErrs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+		PathConflictMode: router.PathConflictModePreferStatic,
+	})
+	if len(preferStaticErrs) != 0 {
+		t.Fatalf("expected prefer_static mode to allow later static-vs-param sibling, got %d errors", len(preferStaticErrs))
+	}
+}
+
 func TestValidateRouteDefinitionsWithOptions_DuplicateStillConflicts(t *testing.T) {
 	routes := []*router.RouteDefinition{
 		{Method: router.GET, Path: "/users/:id"},

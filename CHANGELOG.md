@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.49.0](https://github.com/goliatone/go-router/compare/v0.48.0...v0.49.0) - (2026-02-13)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.49.0 ([27fa91b](https://github.com/goliatone/go-router/commit/27fa91bff053b1138bcb63ebeac6fd395484bd13))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- EnforceCatchAllConflicts to bypass catch all ([49e8526](https://github.com/goliatone/go-router/commit/49e8526a09f3fe7a297d69a6d748924b64c25086))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.48.0 ([80b6238](https://github.com/goliatone/go-router/commit/80b6238f3318e6ecd2e0d3cc8d4aeea78b235b56))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([1937ad3](https://github.com/goliatone/go-router/commit/1937ad30c3bb189bcc3c742201406c84d1e4829b))  - (goliatone)
+- Update test ([b31fc19](https://github.com/goliatone/go-router/commit/b31fc19d01947d156f9df2d9f3ee65d1795da58e))  - (goliatone)
+
 # [0.48.0](https://github.com/goliatone/go-router/compare/v0.47.0...v0.48.0) - (2026-02-13)
 
 ## <!-- 1 -->🐛 Bug Fixes

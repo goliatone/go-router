@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.48.0](https://github.com/goliatone/go-router/compare/v0.47.0...v0.48.0) - (2026-02-13)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Handle multiple wildcards ([f8f9883](https://github.com/goliatone/go-router/commit/f8f9883fc49fd23b76288e2b0f0bdbcbb98f23a0))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.48.0 ([ea6fbc0](https://github.com/goliatone/go-router/commit/ea6fbc0d3e899f4f92cb6a4a17e4a649fadcd9e7))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.47.0 ([f9f7c50](https://github.com/goliatone/go-router/commit/f9f7c508b640a7417bd00ddd3c4c1cf67d8b143c))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([bd2d9ef](https://github.com/goliatone/go-router/commit/bd2d9efbed93603b0fc7b21fe041cc5f62721715))  - (goliatone)
+- Update test ([8b582ab](https://github.com/goliatone/go-router/commit/8b582ab4bafdda4cecdde0943e4683d251990282))  - (goliatone)
+
 # [0.47.0](https://github.com/goliatone/go-router/compare/v0.46.0...v0.47.0) - (2026-02-12)
 
 ## <!-- 13 -->📦 Bumps

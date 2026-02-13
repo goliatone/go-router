@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.50.0](https://github.com/goliatone/go-router/compare/v0.49.0...v0.50.0) - (2026-02-13)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.50.0 ([27212ad](https://github.com/goliatone/go-router/commit/27212adf6e3946a22a01d9e03b83ad6d3ebf6167))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Enfor route links option ([33e995a](https://github.com/goliatone/go-router/commit/33e995a46103aafeb86ef7ad5f745226d61cd799))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.49.0 ([855aa32](https://github.com/goliatone/go-router/commit/855aa32e294e7807fbde1aa7b86d84dab48c2a7f))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([a826b4e](https://github.com/goliatone/go-router/commit/a826b4ed1ac3a73a5803b4927cf30f6164275864))  - (goliatone)
+- Update test ([b1c2b61](https://github.com/goliatone/go-router/commit/b1c2b617d6786e017369004e03c6da8242f63801))  - (goliatone)
+
 # [0.49.0](https://github.com/goliatone/go-router/compare/v0.48.0...v0.49.0) - (2026-02-13)
 
 ## <!-- 13 -->📦 Bumps

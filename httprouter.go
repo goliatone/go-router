@@ -602,6 +602,7 @@ func (r *HTTPRouter) ValidateRoutes() []error {
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
 		PathConflictMode:         r.pathConflictMode,
 		EnforceCatchAllConflicts: true,
+		EnforceRouteLints:        false,
 	})
 }
 

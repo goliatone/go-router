@@ -59,6 +59,17 @@ errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidatio
 })
 ```
 
+Route lint enforcement (for example bare `:id` next to static siblings like
+`/users/new`) is also opt-in. By default, lints do not fail strict route
+validation.
+
+```go
+errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+    PathConflictMode:  router.PathConflictModePreferStatic,
+    EnforceRouteLints: true,
+})
+```
+
 When allowing catch-all routes, keep deterministic ordering enabled (`OrderRoutesBySpecificity`)
 so specific routes are registered before catch-all routes.
 

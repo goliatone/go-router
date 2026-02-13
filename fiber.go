@@ -25,6 +25,7 @@ type FiberAdapterConfig struct {
 	MergeStrategy            RenderMergeStrategy
 	ConflictPolicy           *HTTPRouterConflictPolicy
 	PathConflictMode         PathConflictMode
+	EnforceCatchAllConflicts bool
 	StrictRoutes             bool
 	OrderRoutesBySpecificity bool
 }
@@ -100,6 +101,7 @@ func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) 
 			mergeStrategy:            cfg.MergeStrategy,
 			conflictPolicy:           conflictPolicy,
 			pathConflictMode:         cfg.PathConflictMode,
+			enforceCatchAllConflicts: cfg.EnforceCatchAllConflicts,
 			orderRoutesBySpecificity: cfg.OrderRoutesBySpecificity,
 			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
@@ -119,10 +121,11 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 	if a.router == nil {
 		conflictPolicy := HTTPRouterConflictLogAndContinue
 		a.router = &FiberRouter{
-			app:              a.app,
-			mergeStrategy:    a.mergeStrategy,
-			conflictPolicy:   conflictPolicy,
-			pathConflictMode: PathConflictModeStrict,
+			app:                      a.app,
+			mergeStrategy:            a.mergeStrategy,
+			conflictPolicy:           conflictPolicy,
+			pathConflictMode:         PathConflictModeStrict,
+			enforceCatchAllConflicts: false,
 			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
 				root:   &routerRoot{},
@@ -271,7 +274,7 @@ func (r *FiberRouter) detectRouteConflict(method HTTPMethod, fullPath string) *r
 				index:    -1,
 			}
 		}
-		if conflict := detectPathConflict(route.Path, fullPath, r.pathConflictMode); conflict != nil {
+		if conflict := detectPathConflict(route.Path, fullPath, r.pathConflictMode, r.enforceCatchAllConflicts); conflict != nil {
 			conflict.existing = route
 			return conflict
 		}
@@ -335,6 +338,7 @@ type FiberRouter struct {
 	mergeStrategy            RenderMergeStrategy
 	conflictPolicy           HTTPRouterConflictPolicy
 	pathConflictMode         PathConflictMode
+	enforceCatchAllConflicts bool
 	orderRoutesBySpecificity bool
 }
 
@@ -347,6 +351,7 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 		mergeStrategy:            r.mergeStrategy,
 		conflictPolicy:           r.conflictPolicy,
 		pathConflictMode:         r.pathConflictMode,
+		enforceCatchAllConflicts: r.enforceCatchAllConflicts,
 		orderRoutesBySpecificity: r.orderRoutesBySpecificity,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
@@ -367,6 +372,7 @@ func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
 		mergeStrategy:            r.mergeStrategy,
 		conflictPolicy:           r.conflictPolicy,
 		pathConflictMode:         r.pathConflictMode,
+		enforceCatchAllConflicts: r.enforceCatchAllConflicts,
 		orderRoutesBySpecificity: r.orderRoutesBySpecificity,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
@@ -501,6 +507,7 @@ func (r *FiberRouter) WithLogger(logger Logger) Router[*fiber.App] {
 func (r *FiberRouter) ValidateRoutes() []error {
 	routes := collectRoutesForValidation(&r.BaseRouter)
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
-		PathConflictMode: r.pathConflictMode,
+		PathConflictMode:         r.pathConflictMode,
+		EnforceCatchAllConflicts: r.enforceCatchAllConflicts,
 	})
 }

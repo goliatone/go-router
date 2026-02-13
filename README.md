@@ -37,6 +37,31 @@ app := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
 })
 ```
 
+Catch-all conflict enforcement (`/*` vs concrete routes) is now opt-in for route
+validation and Fiber conflict detection. This allows common patterns such as a
+global fallback route when ordering is deterministic.
+
+Enable catch-all conflict enforcement explicitly when desired:
+
+```go
+app := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
+    PathConflictMode:         router.PathConflictModePreferStatic,
+    EnforceCatchAllConflicts: true,
+})
+```
+
+For validation helpers:
+
+```go
+errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+    PathConflictMode:         router.PathConflictModePreferStatic,
+    EnforceCatchAllConflicts: true,
+})
+```
+
+When allowing catch-all routes, keep deterministic ordering enabled (`OrderRoutesBySpecificity`)
+so specific routes are registered before catch-all routes.
+
 HTTPRouter only supports `strict`. Requesting `prefer_static` with:
 
 ```go

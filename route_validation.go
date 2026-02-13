@@ -9,7 +9,8 @@ import (
 )
 
 type RouteValidationOptions struct {
-	PathConflictMode PathConflictMode
+	PathConflictMode         PathConflictMode
+	EnforceCatchAllConflicts bool
 }
 
 func (o RouteValidationOptions) withDefaults() RouteValidationOptions {
@@ -20,7 +21,8 @@ func (o RouteValidationOptions) withDefaults() RouteValidationOptions {
 func (br *BaseRouter) ValidateRoutes() []error {
 	routes := collectRoutesForValidation(br)
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
-		PathConflictMode: PathConflictModeStrict,
+		PathConflictMode:         PathConflictModeStrict,
+		EnforceCatchAllConflicts: false,
 	})
 }
 
@@ -39,7 +41,8 @@ func collectRoutesForValidation(br *BaseRouter) []*RouteDefinition {
 // ValidateRouteDefinitions checks for conflicting or ambiguous routes.
 func ValidateRouteDefinitions(routes []*RouteDefinition) []error {
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
-		PathConflictMode: PathConflictModeStrict,
+		PathConflictMode:         PathConflictModeStrict,
+		EnforceCatchAllConflicts: false,
 	})
 }
 
@@ -66,7 +69,7 @@ func ValidateRouteDefinitionsWithOptions(routes []*RouteDefinition, opts RouteVa
 				continue
 			}
 
-			if conflict := detectPathConflict(left.Path, right.Path, opts.PathConflictMode); conflict != nil {
+			if conflict := detectPathConflict(left.Path, right.Path, opts.PathConflictMode, opts.EnforceCatchAllConflicts); conflict != nil {
 				conflict.existing = left
 				errs = append(errs, newRouteConflictError(left.Method, right.Path, conflict, HTTPRouterConflictPanic, opts.PathConflictMode))
 			}

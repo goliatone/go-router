@@ -22,6 +22,29 @@ By default, go-router panics on these conflicts. To log and skip conflicting rou
 app := router.NewHTTPServer(router.WithHTTPRouterConflictPolicy(router.HTTPRouterConflictLogAndSkip))
 ```
 
+## Path Conflict Modes
+
+The default route path conflict mode is `strict` for all adapters. In strict mode,
+static and param siblings (for example `/users/bulk/assign-role` and `/users/bulk/:action`)
+are treated as conflicts.
+
+Fiber can opt into `prefer_static`, which allows static+param siblings and makes
+matching deterministic by preferring static routes over param routes.
+
+```go
+app := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
+    PathConflictMode: router.PathConflictModePreferStatic,
+})
+```
+
+HTTPRouter only supports `strict`. Requesting `prefer_static` with:
+
+```go
+router.NewHTTPServer(router.WithHTTPRouterPathConflictMode(router.PathConflictModePreferStatic))
+```
+
+will fail fast with a `ROUTE_CONFLICT_MODE_UNSUPPORTED` error.
+
 ## Usage
 
 ### Basic Example with Fiber

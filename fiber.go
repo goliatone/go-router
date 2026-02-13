@@ -26,6 +26,7 @@ type FiberAdapterConfig struct {
 	ConflictPolicy           *HTTPRouterConflictPolicy
 	PathConflictMode         PathConflictMode
 	EnforceCatchAllConflicts bool
+	EnforceRouteLints        bool
 	StrictRoutes             bool
 	OrderRoutesBySpecificity bool
 }
@@ -102,6 +103,7 @@ func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) 
 			conflictPolicy:           conflictPolicy,
 			pathConflictMode:         cfg.PathConflictMode,
 			enforceCatchAllConflicts: cfg.EnforceCatchAllConflicts,
+			enforceRouteLints:        cfg.EnforceRouteLints,
 			orderRoutesBySpecificity: cfg.OrderRoutesBySpecificity,
 			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
@@ -126,6 +128,7 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 			conflictPolicy:           conflictPolicy,
 			pathConflictMode:         PathConflictModeStrict,
 			enforceCatchAllConflicts: false,
+			enforceRouteLints:        false,
 			BaseRouter: BaseRouter{
 				logger: &defaultLogger{},
 				root:   &routerRoot{},
@@ -339,6 +342,7 @@ type FiberRouter struct {
 	conflictPolicy           HTTPRouterConflictPolicy
 	pathConflictMode         PathConflictMode
 	enforceCatchAllConflicts bool
+	enforceRouteLints        bool
 	orderRoutesBySpecificity bool
 }
 
@@ -352,6 +356,7 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 		conflictPolicy:           r.conflictPolicy,
 		pathConflictMode:         r.pathConflictMode,
 		enforceCatchAllConflicts: r.enforceCatchAllConflicts,
+		enforceRouteLints:        r.enforceRouteLints,
 		orderRoutesBySpecificity: r.orderRoutesBySpecificity,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
@@ -373,6 +378,7 @@ func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
 		conflictPolicy:           r.conflictPolicy,
 		pathConflictMode:         r.pathConflictMode,
 		enforceCatchAllConflicts: r.enforceCatchAllConflicts,
+		enforceRouteLints:        r.enforceRouteLints,
 		orderRoutesBySpecificity: r.orderRoutesBySpecificity,
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
@@ -509,5 +515,6 @@ func (r *FiberRouter) ValidateRoutes() []error {
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
 		PathConflictMode:         r.pathConflictMode,
 		EnforceCatchAllConflicts: r.enforceCatchAllConflicts,
+		EnforceRouteLints:        r.enforceRouteLints,
 	})
 }

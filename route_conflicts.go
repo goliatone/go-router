@@ -46,7 +46,7 @@ func isStaticParamSibling(left, right segmentKind) bool {
 	return (left == segmentStatic && right == segmentParam) || (left == segmentParam && right == segmentStatic)
 }
 
-func detectPathConflict(existingPath, newPath string, mode PathConflictMode) *routeConflict {
+func detectPathConflict(existingPath, newPath string, mode PathConflictMode, enforceCatchAllConflicts bool) *routeConflict {
 	mode = mode.normalize()
 	existingParts := splitPathSegments(existingPath)
 	newParts := splitPathSegments(newPath)
@@ -76,7 +76,7 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode) *ro
 			continue
 		}
 
-		if existingKind == segmentCatchAll || newKind == segmentCatchAll {
+		if (existingKind == segmentCatchAll || newKind == segmentCatchAll) && enforceCatchAllConflicts {
 			return &routeConflict{
 				reason:          "catch-all segment conflicts with existing route",
 				index:           i,

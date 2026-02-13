@@ -530,7 +530,7 @@ func (r *HTTPRouter) detectRouteConflict(method HTTPMethod, fullPath string) *ro
 				index:    -1,
 			}
 		}
-		if conflict := detectPathConflict(route.Path, fullPath, r.pathConflictMode); conflict != nil {
+		if conflict := detectPathConflict(route.Path, fullPath, r.pathConflictMode, true); conflict != nil {
 			conflict.existing = route
 			return conflict
 		}
@@ -600,7 +600,8 @@ func (r *HTTPRouter) PrintRoutes() {
 func (r *HTTPRouter) ValidateRoutes() []error {
 	routes := collectRoutesForValidation(&r.BaseRouter)
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
-		PathConflictMode: r.pathConflictMode,
+		PathConflictMode:         r.pathConflictMode,
+		EnforceCatchAllConflicts: true,
 	})
 }
 

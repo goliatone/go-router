@@ -69,7 +69,7 @@ func TestValidateRouteDefinitionsWithOptions_DuplicateStillConflicts(t *testing.
 	}
 }
 
-func TestValidateRouteDefinitionsWithOptions_CatchAllStillConflicts(t *testing.T) {
+func TestValidateRouteDefinitionsWithOptions_CatchAllConflictsDisabledByDefault(t *testing.T) {
 	routes := []*router.RouteDefinition{
 		{Method: router.GET, Path: "/files/*filepath"},
 		{Method: router.GET, Path: "/files/:id"},
@@ -78,8 +78,23 @@ func TestValidateRouteDefinitionsWithOptions_CatchAllStillConflicts(t *testing.T
 	errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
 		PathConflictMode: router.PathConflictModePreferStatic,
 	})
+	if len(errs) != 0 {
+		t.Fatalf("expected catch-all conflicts to be disabled by default, got %d errors", len(errs))
+	}
+}
+
+func TestValidateRouteDefinitionsWithOptions_CatchAllConflictsCanBeEnforced(t *testing.T) {
+	routes := []*router.RouteDefinition{
+		{Method: router.GET, Path: "/files/*filepath"},
+		{Method: router.GET, Path: "/files/:id"},
+	}
+
+	errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+		PathConflictMode:         router.PathConflictModePreferStatic,
+		EnforceCatchAllConflicts: true,
+	})
 	if len(errs) == 0 {
-		t.Fatal("expected catch-all conflict in prefer_static mode")
+		t.Fatal("expected catch-all conflict when enforcement is enabled")
 	}
 }
 
@@ -171,6 +186,84 @@ func TestFiberStrictMode_StaticParamSiblingStillConflicts(t *testing.T) {
 	}()
 
 	adapter.Init()
+}
+
+func TestFiberPreferStaticMode_CatchAllDispatchDeterministic(t *testing.T) {
+	tests := []struct {
+		name          string
+		catchAllFirst bool
+	}{
+		{name: "catch-all first", catchAllFirst: true},
+		{name: "catch-all last", catchAllFirst: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
+				PathConflictMode: router.PathConflictModePreferStatic,
+				StrictRoutes:     true,
+			})
+			r := adapter.Router()
+
+			catchAllHandler := func(ctx router.Context) error { return ctx.SendString("catch-all") }
+			postsIndexHandler := func(ctx router.Context) error { return ctx.SendString("posts-index") }
+			postDetailHandler := func(ctx router.Context) error {
+				return ctx.SendString("post-detail:" + ctx.Param("slug"))
+			}
+
+			if tt.catchAllFirst {
+				r.Get("/*", catchAllHandler)
+			}
+
+			r.Get("/posts", postsIndexHandler)
+			r.Get("/posts/:slug", postDetailHandler)
+
+			if !tt.catchAllFirst {
+				r.Get("/*", catchAllHandler)
+			}
+
+			app := adapter.WrappedRouter()
+
+			indexResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/posts", nil), -1)
+			if err != nil {
+				t.Fatalf("posts index request failed: %v", err)
+			}
+			indexBody, err := io.ReadAll(indexResp.Body)
+			indexResp.Body.Close()
+			if err != nil {
+				t.Fatalf("reading posts index response failed: %v", err)
+			}
+			if got := string(indexBody); got != "posts-index" {
+				t.Fatalf("expected /posts to resolve to posts index, got %q", got)
+			}
+
+			detailResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/posts/hello", nil), -1)
+			if err != nil {
+				t.Fatalf("post detail request failed: %v", err)
+			}
+			detailBody, err := io.ReadAll(detailResp.Body)
+			detailResp.Body.Close()
+			if err != nil {
+				t.Fatalf("reading post detail response failed: %v", err)
+			}
+			if got := string(detailBody); got != "post-detail:hello" {
+				t.Fatalf("expected /posts/:slug to resolve to post detail, got %q", got)
+			}
+
+			fallbackResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/admin/logout", nil), -1)
+			if err != nil {
+				t.Fatalf("fallback request failed: %v", err)
+			}
+			fallbackBody, err := io.ReadAll(fallbackResp.Body)
+			fallbackResp.Body.Close()
+			if err != nil {
+				t.Fatalf("reading fallback response failed: %v", err)
+			}
+			if got := string(fallbackBody); got != "catch-all" {
+				t.Fatalf("expected fallback path to resolve to catch-all, got %q", got)
+			}
+		})
+	}
 }
 
 func TestHTTPRouterPreferStaticModeUnsupported(t *testing.T) {

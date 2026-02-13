@@ -98,6 +98,38 @@ func TestValidateRouteDefinitionsWithOptions_CatchAllConflictsCanBeEnforced(t *t
 	}
 }
 
+func TestValidateRouteDefinitionsWithOptions_RouteLintsDisabledByDefault(t *testing.T) {
+	routes := []*router.RouteDefinition{
+		{Method: router.GET, Path: "/users/:id"},
+		{Method: router.GET, Path: "/users/new"},
+	}
+
+	errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+		PathConflictMode: router.PathConflictModePreferStatic,
+	})
+	if len(errs) != 0 {
+		t.Fatalf("expected route lints to be disabled by default, got %d errors", len(errs))
+	}
+}
+
+func TestValidateRouteDefinitionsWithOptions_RouteLintsCanBeEnforced(t *testing.T) {
+	routes := []*router.RouteDefinition{
+		{Method: router.GET, Path: "/users/:id"},
+		{Method: router.GET, Path: "/users/new"},
+	}
+
+	errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+		PathConflictMode:  router.PathConflictModePreferStatic,
+		EnforceRouteLints: true,
+	})
+	if len(errs) == 0 {
+		t.Fatal("expected route lint when enforcement is enabled")
+	}
+	if !strings.Contains(errs[0].Error(), "ROUTE_LINT") {
+		t.Fatalf("expected route lint error code, got %q", errs[0].Error())
+	}
+}
+
 func TestFiberPreferStaticMode_DeterministicDispatch(t *testing.T) {
 	tests := []struct {
 		name        string

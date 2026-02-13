@@ -11,6 +11,7 @@ import (
 type RouteValidationOptions struct {
 	PathConflictMode         PathConflictMode
 	EnforceCatchAllConflicts bool
+	EnforceRouteLints        bool
 }
 
 func (o RouteValidationOptions) withDefaults() RouteValidationOptions {
@@ -74,11 +75,13 @@ func ValidateRouteDefinitionsWithOptions(routes []*RouteDefinition, opts RouteVa
 				errs = append(errs, newRouteConflictError(left.Method, right.Path, conflict, HTTPRouterConflictPanic, opts.PathConflictMode))
 			}
 
-			if lintErr := detectBareIDParamLint(left, right); lintErr != nil {
-				errs = append(errs, lintErr)
-			}
-			if lintErr := detectBareIDParamLint(right, left); lintErr != nil {
-				errs = append(errs, lintErr)
+			if opts.EnforceRouteLints {
+				if lintErr := detectBareIDParamLint(left, right); lintErr != nil {
+					errs = append(errs, lintErr)
+				}
+				if lintErr := detectBareIDParamLint(right, left); lintErr != nil {
+					errs = append(errs, lintErr)
+				}
 			}
 		}
 	}

@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.52.0](https://github.com/goliatone/go-router/compare/v0.51.0...v0.52.0) - (2026-03-10)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update go version ([35f50e9](https://github.com/goliatone/go-router/commit/35f50e9385d3caeea3cc1324e82440d060b7581d))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.52.0 ([574009e](https://github.com/goliatone/go-router/commit/574009ee2c676ae2ae4773c67bf30c1a8219582b))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Metadata merge for rpc ([6abbebb](https://github.com/goliatone/go-router/commit/6abbebbafefd94a2487df0c7c3278a21097b2c49))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.51.0 ([c40433b](https://github.com/goliatone/go-router/commit/c40433becd0d38abcabf96d9c1ed08256284abd5))  - (goliatone)
+
 # [0.51.0](https://github.com/goliatone/go-router/compare/v0.50.0...v0.51.0) - (2026-03-10)
 
 ## <!-- 1 -->🐛 Bug Fixes

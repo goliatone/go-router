@@ -1,5 +1,17 @@
 # Changelog
 
+# [Unreleased]
+
+## <!-- 16 -->➕ Add
+
+- Add first-class Fiber RPC mounting package `rpcfiber` for `go-command/rpc`, including default `POST /api/rpc` and `GET /api/rpc/endpoints` routes.
+- Add method-aware RPC payload decoding via `NewRequestForMethod` and configurable request-meta extraction hooks for headers/query/params/context.
+- Add integration tests for Fiber RPC mounting against a real `go-command/rpc` server.
+
+## <!-- 3 -->📚 Documentation
+
+- Document one-call Fiber RPC mount usage and optional custom hook configuration.
+
 # [0.50.0](https://github.com/goliatone/go-router/compare/v0.49.0...v0.50.0) - (2026-02-13)
 
 ## <!-- 13 -->📦 Bumps
@@ -1513,5 +1525,4 @@
 
 - Add readme ([35dce27](https://github.com/goliatone/go-router/commit/35dce274b74cc2214eac454325bdb3622fe3869d))  - (goliatone)
 - Add hashid to deps ([d5c548e](https://github.com/goliatone/go-router/commit/d5c548eb6eae23b9a1b29a9619fa3dfb06879642))  - (goliatone)
-
 

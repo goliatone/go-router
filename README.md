@@ -111,6 +111,53 @@ func main() {
     // Start server
     app.Serve(":3000")
 }
+```
+
+### Fiber RPC Mount (`go-command/rpc`)
+
+Use `rpcfiber.MountFiber` to add first-class RPC transport routes to a Fiber-backed go-router app.
+
+```go
+import (
+    "github.com/gofiber/fiber/v2"
+    cmdrpc "github.com/goliatone/go-command/rpc"
+    "github.com/goliatone/go-router"
+    "github.com/goliatone/go-router/rpcfiber"
+)
+
+func mountRPC(app router.Server[*fiber.App], rpcServer *cmdrpc.Server) error {
+    return rpcfiber.MountFiber(app.Router(), rpcServer)
+}
+```
+
+Default mounted routes:
+
+- `POST /api/rpc`
+- `GET /api/rpc/endpoints`
+
+`POST /api/rpc` decodes payloads using `rpc.Server.NewRequestForMethod`, injects transport metadata into `rpc.RequestMeta`, and invokes the method using `rpc.Server.Invoke`.
+
+You can customize route paths and add request hooks:
+
+```go
+err := rpcfiber.MountFiber(
+    app.Router(),
+    rpcServer,
+    rpcfiber.WithInvokePath("/api/:tenant/rpc"),
+    rpcfiber.WithMetaExtractor(func(c router.Context, meta *cmdrpc.RequestMeta) {
+        meta.Scope = map[string]any{
+            "traceId": c.Header("X-Trace-ID"),
+        }
+    }),
+    rpcfiber.WithBeforeInvokeHook(func(c router.Context, method string, payload any) error {
+        // Optional pre-invoke validation or observability hook.
+        return nil
+    }),
+)
+if err != nil {
+    panic(err)
+}
+```
 
 ### Adapting net/http Handlers
 
@@ -156,7 +203,6 @@ if err != nil {
     return err
 }
 return c.Render("error", merged)
-```
 ```
 
 ### Route Groups
@@ -223,6 +269,60 @@ users := builder.Group("/users")
 
     users.BuildAll()
 }
+```
+
+### Namespace Resolver
+
+`go-router` includes a generic namespace + route-key resolver for projects that want stable route keys instead of hardcoded path strings.
+
+```go
+type Surface string
+
+const (
+    SurfacePublic    Surface = "public"
+    SurfaceProtected Surface = "protected"
+)
+
+paths := router.NewNamespaceResolver(
+    map[Surface]string{
+        SurfacePublic:    "/public/api/v1",
+        SurfaceProtected: "/api/v1",
+    },
+    map[Surface]map[string]string{
+        SurfaceProtected: {
+            "wizard.session.create": "/wizard/sessions",
+            "wizard.session.get":    "/wizard/sessions/:session_id",
+        },
+    },
+)
+
+full, err := paths.Resolve(SurfaceProtected, "wizard.session.get")
+if err != nil {
+    return err
+}
+// full == "/api/v1/wizard/sessions/:session_id"
+```
+
+Grouped-router usage:
+
+```go
+protected := app.Router().Group(paths.MustNamespace(SurfaceProtected))
+
+protected.Get(
+    paths.MustRelative(SurfaceProtected, "wizard.session.get"),
+    getWizardSessionHandler,
+)
+```
+
+Migration note (`wizard-flow`):
+
+```go
+// Before: app-local resolver implementation.
+// After: keep your namespace + route tables in app code and use go-router's resolver.
+paths := router.NewNamespaceResolver(
+    namespaceTable, // map[Surface]string
+    routeTable,     // map[Surface]map[string]string
+)
 ```
 
 ## Middleware

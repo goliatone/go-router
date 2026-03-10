@@ -1,10 +1,12 @@
 package rpcfiber
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -162,8 +164,8 @@ func (r invokeRequest) rawPayload() json.RawMessage {
 }
 
 func (h mountHandler) handleInvoke(ctx router.Context) error {
-	var req invokeRequest
-	if err := ctx.Bind(&req); err != nil {
+	req, err := parseInvokeRequest(ctx)
+	if err != nil {
 		return writeRPCError(
 			ctx,
 			http.StatusBadRequest,
@@ -236,6 +238,33 @@ func (h mountHandler) handleInvoke(ctx router.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, result)
+}
+
+func parseInvokeRequest(ctx router.Context) (invokeRequest, error) {
+	var req invokeRequest
+
+	httpReq := requestFromContext(ctx)
+	if httpReq == nil || httpReq.Body == nil {
+		if err := ctx.Bind(&req); err != nil {
+			return invokeRequest{}, err
+		}
+		return req, nil
+	}
+
+	body, err := io.ReadAll(httpReq.Body)
+	if err != nil {
+		return invokeRequest{}, err
+	}
+	httpReq.Body = io.NopCloser(bytes.NewReader(body))
+
+	if !hasPayload(json.RawMessage(body)) {
+		return req, nil
+	}
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		return invokeRequest{}, err
+	}
+	return req, nil
 }
 
 func (h mountHandler) handleEndpoints(ctx router.Context) error {
@@ -463,33 +492,42 @@ func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta) any {
 		return payload
 	}
 
-	if value.Kind() != reflect.Ptr {
-		ptr := reflect.New(value.Type())
-		ptr.Elem().Set(value)
-		payload = ptr.Interface()
-		value = reflect.ValueOf(payload)
-	}
-	if value.IsNil() {
+	if value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return payload
+		}
+		elem := value.Elem()
+		if elem.Kind() != reflect.Struct {
+			return payload
+		}
+		metaField := elem.FieldByName("Meta")
+		if !metaField.IsValid() || !metaField.CanSet() || metaField.Type() != requestMetaType {
+			return payload
+		}
+		currentMeta, ok := metaField.Interface().(cmdrpc.RequestMeta)
+		if !ok {
+			return payload
+		}
+		metaField.Set(reflect.ValueOf(mergeRequestMeta(extracted, currentMeta)))
 		return payload
 	}
 
-	elem := value.Elem()
-	if elem.Kind() != reflect.Struct {
+	if value.Kind() != reflect.Struct {
 		return payload
 	}
 
-	metaField := elem.FieldByName("Meta")
+	copyValue := reflect.New(value.Type()).Elem()
+	copyValue.Set(value)
+	metaField := copyValue.FieldByName("Meta")
 	if !metaField.IsValid() || !metaField.CanSet() || metaField.Type() != requestMetaType {
 		return payload
 	}
-
 	currentMeta, ok := metaField.Interface().(cmdrpc.RequestMeta)
 	if !ok {
 		return payload
 	}
-
 	metaField.Set(reflect.ValueOf(mergeRequestMeta(extracted, currentMeta)))
-	return payload
+	return copyValue.Interface()
 }
 
 func normalizeMeta(meta cmdrpc.RequestMeta) cmdrpc.RequestMeta {

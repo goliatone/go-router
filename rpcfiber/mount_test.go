@@ -126,6 +126,65 @@ func TestMountFiber_DefaultRoutesAndMethodAwareDecode(t *testing.T) {
 	assert.Equal(t, "RPC_INVALID_PARAMS", invalidOut.Error.Code)
 }
 
+func TestMountFiber_DiscoveryDisabledSkipsEndpointsRoute(t *testing.T) {
+	adapter := router.NewFiberAdapter()
+	r := adapter.Router()
+	srv := cmdrpc.NewServer()
+
+	err := srv.RegisterEndpoint(cmdrpc.NewEndpoint[echoData, map[string]any](
+		cmdrpc.EndpointSpec{
+			Method: "example.echo",
+			Kind:   cmdrpc.MethodKindQuery,
+		},
+		func(_ context.Context, req cmdrpc.RequestEnvelope[echoData]) (cmdrpc.ResponseEnvelope[map[string]any], error) {
+			return cmdrpc.ResponseEnvelope[map[string]any]{Data: map[string]any{"name": req.Data.Name}}, nil
+		},
+	))
+	require.NoError(t, err)
+	require.NoError(t, rpcfiber.MountFiber(r, srv, rpcfiber.WithDiscoveryEnabled(false)))
+
+	app := adapter.WrappedRouter()
+
+	resp := testRequest(t, app, http.MethodPost, "/api/rpc", `{"method":"example.echo","params":{"data":{"name":"Ada"}}}`, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	resp = testRequest(t, app, http.MethodGet, "/api/rpc/endpoints", "", nil)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestMountFiber_MetaMergePolicyTransportOverrides(t *testing.T) {
+	adapter := router.NewFiberAdapter()
+	r := adapter.Router()
+	srv := cmdrpc.NewServer()
+
+	var capturedMeta cmdrpc.RequestMeta
+	err := srv.RegisterEndpoint(cmdrpc.NewEndpoint[echoData, map[string]any](
+		cmdrpc.EndpointSpec{
+			Method: "example.merge",
+			Kind:   cmdrpc.MethodKindQuery,
+		},
+		func(_ context.Context, req cmdrpc.RequestEnvelope[echoData]) (cmdrpc.ResponseEnvelope[map[string]any], error) {
+			capturedMeta = req.Meta
+			return cmdrpc.ResponseEnvelope[map[string]any]{Data: map[string]any{"ok": true}}, nil
+		},
+	))
+	require.NoError(t, err)
+	require.NoError(t, rpcfiber.MountFiber(
+		r,
+		srv,
+		rpcfiber.WithMetaMergePolicy(rpcfiber.MetaMergePolicyTransportOverrides),
+	))
+
+	app := adapter.WrappedRouter()
+	body := `{"method":"example.merge","params":{"data":{"name":"Ada"},"meta":{"actorId":"payload-actor","tenant":"payload-tenant"}}}`
+	resp := testRequest(t, app, http.MethodPost, "/api/rpc?tenant=query-tenant", body, map[string]string{
+		"X-Actor-ID": "header-actor",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "header-actor", capturedMeta.ActorID)
+	assert.Equal(t, "query-tenant", capturedMeta.Tenant)
+}
+
 func TestMountFiber_CustomMetaExtractorsAndHooks(t *testing.T) {
 	adapter := router.NewFiberAdapter()
 	r := adapter.Router()

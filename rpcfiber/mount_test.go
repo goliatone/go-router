@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,43 @@ import (
 
 type echoData struct {
 	Name string `json:"name"`
+}
+
+type strictValueRequest struct {
+	Data echoData           `json:"data"`
+	Meta cmdrpc.RequestMeta `json:"meta,omitempty"`
+}
+
+type strictValueMethodServer struct {
+	payload any
+}
+
+func (s *strictValueMethodServer) Invoke(_ context.Context, method string, payload any) (any, error) {
+	if method != "example.value" {
+		return nil, fmt.Errorf("unexpected method %q", method)
+	}
+	req, ok := payload.(strictValueRequest)
+	if !ok {
+		return nil, fmt.Errorf("unexpected payload type %T", payload)
+	}
+	s.payload = payload
+	return cmdrpc.ResponseEnvelope[map[string]any]{
+		Data: map[string]any{
+			"name":    req.Data.Name,
+			"actorId": req.Meta.ActorID,
+		},
+	}, nil
+}
+
+func (s *strictValueMethodServer) NewRequestForMethod(method string) (any, error) {
+	if method != "example.value" {
+		return nil, errors.New("not found")
+	}
+	return strictValueRequest{}, nil
+}
+
+func (s *strictValueMethodServer) EndpointsMeta() []cmdrpc.Endpoint {
+	return []cmdrpc.Endpoint{{Method: "example.value"}}
 }
 
 func TestMountFiber_DefaultRoutesAndMethodAwareDecode(t *testing.T) {
@@ -194,6 +232,76 @@ func TestMountFiber_ReturnsRPCErrorEnvelopeWithoutAPIErrWrapper(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "RPC_INVOKE_FAILED", errorObj["code"])
 	assert.Equal(t, "rpc invocation failed", errorObj["message"])
+}
+
+func TestMountFiber_PreservesValuePayloadTypeWhenInjectingMeta(t *testing.T) {
+	adapter := router.NewFiberAdapter()
+	r := adapter.Router()
+	srv := &strictValueMethodServer{}
+
+	require.NoError(t, rpcfiber.MountFiber(r, srv))
+
+	app := adapter.WrappedRouter()
+	body := `{"method":"example.value","params":{"data":{"name":"Ada"}}}`
+	resp := testRequest(t, app, http.MethodPost, "/api/rpc", body, map[string]string{
+		"X-Actor-ID": "header-actor",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var out cmdrpc.ResponseEnvelope[map[string]any]
+	decodeResponse(t, resp, &out)
+	require.Nil(t, out.Error)
+	assert.Equal(t, "Ada", out.Data["name"])
+	assert.Equal(t, "header-actor", out.Data["actorId"])
+
+	_, ok := srv.payload.(strictValueRequest)
+	assert.True(t, ok, "payload type should remain a value type")
+}
+
+func TestMountFiber_EmptyBodyMethodFallbackAndValidation(t *testing.T) {
+	adapter := router.NewFiberAdapter()
+	r := adapter.Router()
+	srv := cmdrpc.NewServer()
+
+	err := srv.RegisterEndpoint(cmdrpc.NewEndpoint[struct{}, map[string]string](
+		cmdrpc.EndpointSpec{
+			Method: "example.ping",
+			Kind:   cmdrpc.MethodKindQuery,
+		},
+		func(_ context.Context, _ cmdrpc.RequestEnvelope[struct{}]) (cmdrpc.ResponseEnvelope[map[string]string], error) {
+			return cmdrpc.ResponseEnvelope[map[string]string]{
+				Data: map[string]string{"ok": "pong"},
+			}, nil
+		},
+	))
+	require.NoError(t, err)
+	require.NoError(t, rpcfiber.MountFiber(r, srv))
+
+	app := adapter.WrappedRouter()
+
+	resp := testRequest(t, app, http.MethodPost, "/api/rpc?method=example.ping", "", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var out cmdrpc.ResponseEnvelope[map[string]string]
+	decodeResponse(t, resp, &out)
+	require.Nil(t, out.Error)
+	assert.Equal(t, "pong", out.Data["ok"])
+
+	resp = testRequest(t, app, http.MethodPost, "/api/rpc", "", nil)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	var missingMethod cmdrpc.ResponseEnvelope[any]
+	decodeResponse(t, resp, &missingMethod)
+	require.NotNil(t, missingMethod.Error)
+	assert.Equal(t, "RPC_METHOD_REQUIRED", missingMethod.Error.Code)
+
+	resp = testRequest(t, app, http.MethodPost, "/api/rpc?method=example.ping", "{", nil)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	var invalid cmdrpc.ResponseEnvelope[any]
+	decodeResponse(t, resp, &invalid)
+	require.NotNil(t, invalid.Error)
+	assert.Equal(t, "RPC_INVALID_REQUEST", invalid.Error.Code)
 }
 
 func testRequest(

@@ -34,13 +34,27 @@ type BeforeInvokeHook func(router.Context, string, any) error
 // AfterInvokeHook runs after RPC invoke (success or failure).
 type AfterInvokeHook func(router.Context, string, any, error)
 
+// MetaMergePolicy controls precedence when combining transport metadata with payload metadata.
+type MetaMergePolicy string
+
+const (
+	// MetaMergePolicyEnvelopeOverrides preserves payload/envelope metadata precedence.
+	MetaMergePolicyEnvelopeOverrides MetaMergePolicy = "envelope_overrides"
+	// MetaMergePolicyTransportOverrides gives trusted transport metadata precedence.
+	MetaMergePolicyTransportOverrides MetaMergePolicy = "transport_overrides"
+)
+
 // Option mutates MountFiber configuration.
 type Option func(*Config)
 
 // Config controls route mounting and metadata extraction behavior.
 type Config struct {
-	InvokePath    string
-	EndpointsPath string
+	InvokePath           string
+	EndpointsPath        string
+	DiscoveryEnabled     bool
+	MetaMergePolicy      MetaMergePolicy
+	InvokeMiddlewares    []router.MiddlewareFunc
+	DiscoveryMiddlewares []router.MiddlewareFunc
 
 	MetaExtractors []MetaExtractor
 	BeforeInvoke   BeforeInvokeHook
@@ -49,8 +63,10 @@ type Config struct {
 
 func defaultConfig() Config {
 	return Config{
-		InvokePath:    "/api/rpc",
-		EndpointsPath: "/api/rpc/endpoints",
+		InvokePath:       "/api/rpc",
+		EndpointsPath:    "/api/rpc/endpoints",
+		DiscoveryEnabled: true,
+		MetaMergePolicy:  MetaMergePolicyEnvelopeOverrides,
 		MetaExtractors: []MetaExtractor{
 			ExtractMetaFromHeaders,
 			ExtractMetaFromQuery,
@@ -75,6 +91,44 @@ func WithEndpointsPath(path string) Option {
 		if cfg != nil {
 			cfg.EndpointsPath = path
 		}
+	}
+}
+
+// WithDiscoveryEnabled toggles registration of the discovery endpoints route.
+func WithDiscoveryEnabled(enabled bool) Option {
+	return func(cfg *Config) {
+		if cfg != nil {
+			cfg.DiscoveryEnabled = enabled
+		}
+	}
+}
+
+// WithMetaMergePolicy sets transport-vs-envelope metadata precedence.
+func WithMetaMergePolicy(policy MetaMergePolicy) Option {
+	return func(cfg *Config) {
+		if cfg != nil {
+			cfg.MetaMergePolicy = policy
+		}
+	}
+}
+
+// WithInvokeMiddlewares appends middleware only for the invoke route.
+func WithInvokeMiddlewares(mw ...router.MiddlewareFunc) Option {
+	return func(cfg *Config) {
+		if cfg == nil || len(mw) == 0 {
+			return
+		}
+		cfg.InvokeMiddlewares = append(cfg.InvokeMiddlewares, mw...)
+	}
+}
+
+// WithDiscoveryMiddlewares appends middleware only for the discovery route.
+func WithDiscoveryMiddlewares(mw ...router.MiddlewareFunc) Option {
+	return func(cfg *Config) {
+		if cfg == nil || len(mw) == 0 {
+			return
+		}
+		cfg.DiscoveryMiddlewares = append(cfg.DiscoveryMiddlewares, mw...)
 	}
 }
 
@@ -137,11 +191,20 @@ func MountFiber(r router.Router[*fiber.App], srv MethodServer, opts ...Option) e
 		}
 	}
 	cfg.InvokePath = normalizePath(cfg.InvokePath, "/api/rpc")
-	cfg.EndpointsPath = normalizePath(cfg.EndpointsPath, "/api/rpc/endpoints")
+	if cfg.DiscoveryEnabled {
+		cfg.EndpointsPath = normalizePath(cfg.EndpointsPath, "/api/rpc/endpoints")
+	}
+	switch cfg.MetaMergePolicy {
+	case MetaMergePolicyEnvelopeOverrides, MetaMergePolicyTransportOverrides:
+	default:
+		cfg.MetaMergePolicy = MetaMergePolicyEnvelopeOverrides
+	}
 
 	handler := mountHandler{server: srv, cfg: cfg}
-	r.Post(cfg.InvokePath, handler.handleInvoke)
-	r.Get(cfg.EndpointsPath, handler.handleEndpoints)
+	r.Post(cfg.InvokePath, handler.handleInvoke, cloneRouterMiddlewares(cfg.InvokeMiddlewares)...)
+	if cfg.DiscoveryEnabled {
+		r.Get(cfg.EndpointsPath, handler.handleEndpoints, cloneRouterMiddlewares(cfg.DiscoveryMiddlewares)...)
+	}
 	return nil
 }
 
@@ -206,7 +269,7 @@ func (h mountHandler) handleInvoke(ctx router.Context) error {
 	}
 
 	transportMeta := extractMeta(ctx, h.cfg.MetaExtractors)
-	payload = applyTransportMeta(payload, transportMeta)
+	payload = applyTransportMeta(payload, transportMeta, h.cfg.MetaMergePolicy)
 
 	if h.cfg.BeforeInvoke != nil {
 		if err := h.cfg.BeforeInvoke(ctx, method, payload); err != nil {
@@ -482,7 +545,7 @@ func hasPayload(raw json.RawMessage) bool {
 	return trimmed != "" && trimmed != "null"
 }
 
-func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta) any {
+func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta, policy MetaMergePolicy) any {
 	if payload == nil || isZeroMeta(extracted) {
 		return payload
 	}
@@ -508,7 +571,7 @@ func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta) any {
 		if !ok {
 			return payload
 		}
-		metaField.Set(reflect.ValueOf(mergeRequestMeta(extracted, currentMeta)))
+		metaField.Set(reflect.ValueOf(mergeRequestMetaWithPolicy(extracted, currentMeta, policy)))
 		return payload
 	}
 
@@ -526,8 +589,17 @@ func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta) any {
 	if !ok {
 		return payload
 	}
-	metaField.Set(reflect.ValueOf(mergeRequestMeta(extracted, currentMeta)))
+	metaField.Set(reflect.ValueOf(mergeRequestMetaWithPolicy(extracted, currentMeta, policy)))
 	return copyValue.Interface()
+}
+
+func mergeRequestMetaWithPolicy(extracted, current cmdrpc.RequestMeta, policy MetaMergePolicy) cmdrpc.RequestMeta {
+	switch policy {
+	case MetaMergePolicyTransportOverrides:
+		return mergeRequestMeta(current, extracted)
+	default:
+		return mergeRequestMeta(extracted, current)
+	}
 }
 
 func normalizeMeta(meta cmdrpc.RequestMeta) cmdrpc.RequestMeta {
@@ -1002,6 +1074,15 @@ func cloneStrings(in []string) []string {
 		return nil
 	}
 	out := make([]string, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneRouterMiddlewares(in []router.MiddlewareFunc) []router.MiddlewareFunc {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]router.MiddlewareFunc, len(in))
 	copy(out, in)
 	return out
 }

@@ -1,16 +1,28 @@
 # Changelog
 
-# [Unreleased]
+# [0.51.0](https://github.com/goliatone/go-router/compare/v0.50.0...v0.51.0) - (2026-03-10)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Mount reflaction for requests ([2363455](https://github.com/goliatone/go-router/commit/23634553b0b0de18f40dd171fb067ed7ff432ee8))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.51.0 ([5ece031](https://github.com/goliatone/go-router/commit/5ece031c4a32a71e3a115d735c03d97a67edccc4))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 
-- Add first-class Fiber RPC mounting package `rpcfiber` for `go-command/rpc`, including default `POST /api/rpc` and `GET /api/rpc/endpoints` routes.
-- Add method-aware RPC payload decoding via `NewRequestForMethod` and configurable request-meta extraction hooks for headers/query/params/context.
-- Add integration tests for Fiber RPC mounting against a real `go-command/rpc` server.
+- Rpcfiber ([00774ba](https://github.com/goliatone/go-router/commit/00774ba01f4ef6f3b5d56c04f1daf7519397fccc))  - (goliatone)
+- Namespace resolver ([0fc19c5](https://github.com/goliatone/go-router/commit/0fc19c5ab8a88348e6342e3a041195eefa38dbe5))  - (goliatone)
 
 ## <!-- 3 -->📚 Documentation
 
-- Document one-call Fiber RPC mount usage and optional custom hook configuration.
+- Update changelog for v0.50.0 ([c35804a](https://github.com/goliatone/go-router/commit/c35804a1b240320cbb408fefb651ccec400a2bef))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([ad0eb73](https://github.com/goliatone/go-router/commit/ad0eb73e5100e1002f02ee2062d33942eccd436e))  - (goliatone)
+- Update deps ([1bbe1e8](https://github.com/goliatone/go-router/commit/1bbe1e81effc235e9dbcdffbb5c24a2259bd3831))  - (goliatone)
 
 # [0.50.0](https://github.com/goliatone/go-router/compare/v0.49.0...v0.50.0) - (2026-02-13)
 
@@ -1525,4 +1537,5 @@
 
 - Add readme ([35dce27](https://github.com/goliatone/go-router/commit/35dce274b74cc2214eac454325bdb3622fe3869d))  - (goliatone)
 - Add hashid to deps ([d5c548e](https://github.com/goliatone/go-router/commit/d5c548eb6eae23b9a1b29a9619fa3dfb06879642))  - (goliatone)
+
 

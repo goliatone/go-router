@@ -28,6 +28,7 @@ type BaseRouter struct {
 	middlewares       []namedMiddleware
 	routes            []*RouteDefinition
 	logger            Logger
+	namedRoutePolicy  NamedRouteCollisionPolicy
 	root              *routerRoot
 	views             Views
 	passLocalsToViews bool
@@ -104,14 +105,14 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 	br.root.routes = append(br.root.routes, r)
 
 	// If the route has a name, also store it in the map
-	br.addNamedRoute(routeName, r)
+	_ = br.addNamedRoute(routeName, r)
 
 	return r
 }
 
-func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) {
+func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) error {
 	if routeName == "" {
-		return
+		return nil
 	}
 	br.mx.Lock()
 	defer br.mx.Unlock()
@@ -124,7 +125,31 @@ func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) {
 		route.Name = routeName
 	}
 
-	br.root.namedRoutes[route.Name] = route
+	existing := br.root.namedRoutes[route.Name]
+	if existing == nil || existing == route {
+		br.root.namedRoutes[route.Name] = route
+		return nil
+	}
+
+	if existing.Path == route.Path {
+		return nil
+	}
+
+	policy := br.namedRoutePolicy.normalize()
+	conflictErr := newRouteNameConflictError(route.Name, existing, route, policy)
+
+	switch policy {
+	case NamedRouteCollisionPolicySkip:
+		return conflictErr
+	case NamedRouteCollisionPolicyError:
+		if br.logger != nil {
+			br.logger.Warn("named route conflict detected: %v", conflictErr)
+		}
+		return conflictErr
+	default:
+		br.root.namedRoutes[route.Name] = route
+		return nil
+	}
 }
 
 type lateRoute struct {

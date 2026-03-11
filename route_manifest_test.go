@@ -56,6 +56,44 @@ func TestBuildRouteManifestOmitsInternalHelperNames(t *testing.T) {
 	}
 }
 
+func TestBuildRouteManifestWithInternalNamesIncludesHelperNames(t *testing.T) {
+	routes := []RouteDefinition{
+		{Method: GET, Path: "/openapi.json", Name: "openapi.json", nameMode: routeNameModeInternal},
+		{Method: GET, Path: "/users", Name: "users.list"},
+	}
+
+	manifest := BuildRouteManifestWithInternalNames(routes)
+
+	if manifest[0].Path != "/openapi.json" || manifest[0].Name != "openapi.json" {
+		t.Fatalf("expected internal helper name to be exposed, got %#v", manifest[0])
+	}
+	if manifest[1].Name != "users.list" {
+		t.Fatalf("expected explicit public name to remain unchanged, got %#v", manifest[1])
+	}
+}
+
+func TestBuildRouterManifestWithInternalNamesUsesRuntimeNames(t *testing.T) {
+	adapter := NewHTTPServer()
+	r := adapter.Router()
+	r.Get("/users", func(ctx Context) error { return ctx.SendString("ok") }).SetName("users.list")
+	ServeOpenAPI(r, NewOpenAPIRenderer())
+
+	manifest := BuildRouterManifestWithInternalNames(r)
+
+	var foundOpenAPI bool
+	for _, entry := range manifest {
+		if entry.Path == "/openapi.json" {
+			foundOpenAPI = true
+			if entry.Name != "openapi.json" {
+				t.Fatalf("expected internal helper name in manifest, got %#v", entry)
+			}
+		}
+	}
+	if !foundOpenAPI {
+		t.Fatal("expected openapi helper route in manifest")
+	}
+}
+
 func TestDiffRouteManifestsClassifiesAddedRemovedAndChanged(t *testing.T) {
 	before := []RouteManifestEntry{
 		{Method: GET, Path: "/health", Name: "health.check"},

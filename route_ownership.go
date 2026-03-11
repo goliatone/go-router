@@ -33,11 +33,17 @@ type RouteOwnershipPolicy struct {
 
 func (p RouteOwnershipPolicy) withDefaults() RouteOwnershipPolicy {
 	p.RouteValidation = p.RouteValidation.withDefaults()
-	if p.RouteValidation.NamedRoutePolicy == NamedRouteCollisionPolicyReplace {
-		p.RouteValidation.NamedRoutePolicy = NamedRouteCollisionPolicyError
-	}
 	p.RouteValidation.PathConflictMode = p.RouteValidation.PathConflictMode.normalize()
 	return p
+}
+
+func StrictRouteOwnershipPolicy() RouteOwnershipPolicy {
+	return RouteOwnershipPolicy{
+		RouteValidation: RouteValidationOptions{
+			PathConflictMode: PathConflictModeStrict,
+			NamedRoutePolicy: NamedRouteCollisionPolicyError,
+		},
+	}
 }
 
 func ValidateOwnedRouteSets(routeSets []OwnedRouteSet, policy RouteOwnershipPolicy) []error {
@@ -89,7 +95,8 @@ func ValidateOwnedRouteSets(routeSets []OwnedRouteSet, policy RouteOwnershipPoli
 				errs = append(errs, newRouteOwnerPrefixMismatchError(owner, route, ownerCfg.AllowedPrefixes))
 			}
 
-			if hasOwnerCfg && route.Name != "" && len(ownerCfg.RouteNamePrefixes) > 0 && !matchesAnyNamePrefix(route.Name, ownerCfg.RouteNamePrefixes) {
+			publicName := route.effectivePublicName()
+			if hasOwnerCfg && publicName != "" && len(ownerCfg.RouteNamePrefixes) > 0 && !matchesAnyNamePrefix(publicName, ownerCfg.RouteNamePrefixes) {
 				errs = append(errs, newRouteNamePrefixMismatchError(owner, route, ownerCfg.RouteNamePrefixes))
 			}
 		}

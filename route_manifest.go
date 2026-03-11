@@ -21,12 +21,26 @@ type RouteManifestDiff struct {
 }
 
 func BuildRouteManifest(routes []RouteDefinition) []RouteManifestEntry {
+	return buildRouteManifest(routes, false)
+}
+
+// BuildRouteManifestWithInternalNames includes runtime/helper names in the Name field.
+// This is intended for debugging and internal router introspection rather than public API snapshots.
+func BuildRouteManifestWithInternalNames(routes []RouteDefinition) []RouteManifestEntry {
+	return buildRouteManifest(routes, true)
+}
+
+func buildRouteManifest(routes []RouteDefinition, includeInternalNames bool) []RouteManifestEntry {
 	manifest := make([]RouteManifestEntry, len(routes))
 	for i, route := range routes {
+		name := route.effectivePublicName()
+		if includeInternalNames && route.Name != "" {
+			name = route.Name
+		}
 		manifest[i] = RouteManifestEntry{
 			Method: route.Method,
 			Path:   route.Path,
-			Name:   route.Name,
+			Name:   name,
 		}
 	}
 	sortRouteManifestEntries(manifest)
@@ -38,6 +52,14 @@ func BuildRouterManifest(r interface{ Routes() []RouteDefinition }) []RouteManif
 		return nil
 	}
 	return BuildRouteManifest(r.Routes())
+}
+
+// BuildRouterManifestWithInternalNames includes runtime/helper names in the Name field.
+func BuildRouterManifestWithInternalNames(r interface{ Routes() []RouteDefinition }) []RouteManifestEntry {
+	if r == nil {
+		return nil
+	}
+	return BuildRouteManifestWithInternalNames(r.Routes())
 }
 
 func DiffRouteManifests(before, after []RouteManifestEntry) RouteManifestDiff {

@@ -14,11 +14,26 @@ import (
 )
 
 type routerRoot struct {
-	routes             []*RouteDefinition
-	namedRoutes        map[string]*RouteDefinition
-	lateRoutes         []*lateRoute
-	deferredRoutes     []*RouteDefinition
-	deferredRegistered bool
+	routes              []*RouteDefinition
+	namedRoutes         map[string]*namedRouteBinding
+	namedRouteConflicts map[*RouteDefinition]error
+	lateRoutes          []*lateRoute
+	deferredRoutes      []*RouteDefinition
+	deferredRegistered  bool
+}
+
+type routeNameMode int
+
+const (
+	routeNameModeUnspecified routeNameMode = iota
+	routeNameModeInternal
+	routeNameModePublic
+)
+
+type namedRouteBinding struct {
+	Name  string
+	Route *RouteDefinition
+	Mode  routeNameMode
 }
 
 // Common fields for both FiberRouter and HTTPRouter
@@ -102,41 +117,92 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 			Handlers: chain,
 		}
 
-	br.root.routes = append(br.root.routes, r)
+	if routeName != "" {
+		br.applyInternalRouteName(r, routeName)
+	}
 
-	// If the route has a name, also store it in the map
-	_ = br.addNamedRoute(routeName, r)
+	br.root.routes = append(br.root.routes, r)
 
 	return r
 }
 
 func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) error {
-	if routeName == "" {
+	return br.applyPublicRouteName(route, routeName)
+}
+
+func (br *BaseRouter) applyPublicRouteName(route *RouteDefinition, routeName string) error {
+	if route == nil {
 		return nil
 	}
+	if routeName == "" {
+		br.removePublicRouteBinding(route)
+		route.publicName = ""
+		route.Name = ""
+		route.nameMode = routeNameModePublic
+		br.clearNamedRouteConflict(route)
+		return nil
+	}
+
+	oldName := route.effectivePublicName()
+	if err := br.registerNamedRoute(route, routeName, routeNameModePublic); err != nil {
+		return err
+	}
+
+	if oldName != "" && oldName != routeName {
+		br.removePublicRouteBinding(route, oldName)
+	}
+
+	route.publicName = routeName
+	route.Name = routeName
+	route.nameMode = routeNameModePublic
+	br.clearNamedRouteConflict(route)
+	return nil
+}
+
+func (br *BaseRouter) applyInternalRouteName(route *RouteDefinition, routeName string) {
+	if route == nil {
+		return
+	}
+	route.Name = routeName
+	route.nameMode = routeNameModeInternal
+	if route.publicName == routeName {
+		route.publicName = ""
+	}
+}
+
+func (br *BaseRouter) registerNamedRoute(route *RouteDefinition, routeName string, mode routeNameMode) error {
+	if routeName == "" || route == nil {
+		return nil
+	}
+
+	if mode != routeNameModePublic {
+		return nil
+	}
+
 	br.mx.Lock()
 	defer br.mx.Unlock()
 
 	if br.root.namedRoutes == nil {
-		br.root.namedRoutes = make(map[string]*RouteDefinition)
+		br.root.namedRoutes = make(map[string]*namedRouteBinding)
 	}
 
-	if route.Name != routeName {
-		route.Name = routeName
-	}
-
-	existing := br.root.namedRoutes[route.Name]
-	if existing == nil || existing == route {
-		br.root.namedRoutes[route.Name] = route
+	existing := br.root.namedRoutes[routeName]
+	if existing == nil || existing.Route == route {
+		br.root.namedRoutes[routeName] = &namedRouteBinding{
+			Name:  routeName,
+			Route: route,
+			Mode:  mode,
+		}
 		return nil
 	}
 
-	if existing.Path == route.Path {
+	if existing.Route != nil && existing.Route.Path == route.Path {
 		return nil
 	}
 
 	policy := br.namedRoutePolicy.normalize()
-	conflictErr := newRouteNameConflictError(route.Name, existing, route, policy)
+	conflictErr := newRouteNameConflictError(routeName, existing.Route, route, policy)
+	br.recordNamedRouteConflict(route, conflictErr)
 
 	switch policy {
 	case NamedRouteCollisionPolicySkip:
@@ -147,9 +213,92 @@ func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) er
 		}
 		return conflictErr
 	default:
-		br.root.namedRoutes[route.Name] = route
+		br.root.namedRoutes[routeName] = &namedRouteBinding{
+			Name:  routeName,
+			Route: route,
+			Mode:  mode,
+		}
+		br.clearNamedRouteConflict(route)
 		return nil
 	}
+}
+
+func (br *BaseRouter) recordNamedRouteConflict(route *RouteDefinition, err error) {
+	if route == nil || err == nil {
+		return
+	}
+	if br.root.namedRouteConflicts == nil {
+		br.root.namedRouteConflicts = make(map[*RouteDefinition]error)
+	}
+	br.root.namedRouteConflicts[route] = err
+}
+
+func (br *BaseRouter) clearNamedRouteConflict(route *RouteDefinition) {
+	if route == nil || br.root.namedRouteConflicts == nil {
+		return
+	}
+	delete(br.root.namedRouteConflicts, route)
+}
+
+func (br *BaseRouter) removePublicRouteBinding(route *RouteDefinition, names ...string) {
+	if route == nil || br.root.namedRoutes == nil {
+		return
+	}
+
+	targetName := route.effectivePublicName()
+	if len(names) > 0 && names[0] != "" {
+		targetName = names[0]
+	}
+	if targetName == "" {
+		return
+	}
+
+	br.mx.Lock()
+	defer br.mx.Unlock()
+
+	binding := br.root.namedRoutes[targetName]
+	if binding == nil || binding.Route != route {
+		return
+	}
+
+	for _, candidate := range br.root.routes {
+		if candidate == nil || candidate == route {
+			continue
+		}
+		if candidate.effectivePublicName() != targetName {
+			continue
+		}
+		br.root.namedRoutes[targetName] = &namedRouteBinding{
+			Name:  targetName,
+			Route: candidate,
+			Mode:  routeNameModePublic,
+		}
+		return
+	}
+
+	delete(br.root.namedRoutes, targetName)
+}
+
+func (br *BaseRouter) namedRouteConflicts() []error {
+	if len(br.root.namedRouteConflicts) == 0 {
+		return nil
+	}
+
+	errs := make([]error, 0, len(br.root.namedRouteConflicts))
+	seen := make(map[*RouteDefinition]struct{}, len(br.root.namedRouteConflicts))
+	for _, route := range br.root.routes {
+		if err, ok := br.root.namedRouteConflicts[route]; ok {
+			errs = append(errs, err)
+			seen[route] = struct{}{}
+		}
+	}
+	for route, err := range br.root.namedRouteConflicts {
+		if _, ok := seen[route]; ok {
+			continue
+		}
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 type lateRoute struct {
@@ -157,10 +306,19 @@ type lateRoute struct {
 	path    string
 	handler HandlerFunc
 	name    string
+	mode    routeNameMode
 	mw      []MiddlewareFunc
 }
 
 func (br *BaseRouter) addLateRoute(method HTTPMethod, pathStr string, handler HandlerFunc, routeName string, m ...MiddlewareFunc) {
+	br.addLateRouteWithMode(method, pathStr, handler, routeName, routeNameModePublic, m...)
+}
+
+func (br *BaseRouter) addInternalLateRoute(method HTTPMethod, pathStr string, handler HandlerFunc, routeName string, m ...MiddlewareFunc) {
+	br.addLateRouteWithMode(method, pathStr, handler, routeName, routeNameModeInternal, m...)
+}
+
+func (br *BaseRouter) addLateRouteWithMode(method HTTPMethod, pathStr string, handler HandlerFunc, routeName string, mode routeNameMode, m ...MiddlewareFunc) {
 	// method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc
 
 	d := &lateRoute{
@@ -168,6 +326,7 @@ func (br *BaseRouter) addLateRoute(method HTTPMethod, pathStr string, handler Ha
 		path:    pathStr,
 		handler: handler,
 		name:    routeName,
+		mode:    mode,
 		mw:      m,
 	}
 
@@ -182,6 +341,12 @@ func (br *BaseRouter) registerLateRoutes(reg lateRouteRegistrar) {
 	for _, route := range br.root.lateRoutes {
 		ri := reg.Handle(route.method, route.path, route.handler, route.mw...)
 		if route.name != "" {
+			if route.mode == routeNameModeInternal {
+				if def, ok := ri.(*RouteDefinition); ok {
+					br.applyInternalRouteName(def, route.name)
+				}
+				continue
+			}
 			ri.SetName(route.name)
 		}
 	}
@@ -207,7 +372,11 @@ func (br *BaseRouter) GetRoute(name string) *RouteDefinition {
 	if br.root.namedRoutes == nil {
 		return nil
 	}
-	return br.root.namedRoutes[name]
+	binding := br.root.namedRoutes[name]
+	if binding == nil || binding.Mode != routeNameModePublic {
+		return nil
+	}
+	return binding.Route
 }
 
 func (br *BaseRouter) RouteNameFromPath(method string, pathPattern string) (string, bool) {

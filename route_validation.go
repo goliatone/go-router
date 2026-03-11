@@ -23,11 +23,15 @@ func (o RouteValidationOptions) withDefaults() RouteValidationOptions {
 
 func (br *BaseRouter) ValidateRoutes() []error {
 	routes := collectRoutesForValidation(br)
-	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
+	errs := ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
 		PathConflictMode:         PathConflictModeStrict,
 		EnforceCatchAllConflicts: false,
 		NamedRoutePolicy:         br.namedRoutePolicy,
 	})
+	if br.namedRoutePolicy.normalize() == NamedRouteCollisionPolicyError {
+		errs = append(errs, br.namedRouteConflicts()...)
+	}
+	return errs
 }
 
 func collectRoutesForValidation(br *BaseRouter) []*RouteDefinition {
@@ -35,9 +39,10 @@ func collectRoutesForValidation(br *BaseRouter) []*RouteDefinition {
 	routes = append(routes, br.root.routes...)
 	for _, late := range br.root.lateRoutes {
 		routes = append(routes, &RouteDefinition{
-			Method: late.method,
-			Path:   late.path,
-			Name:   late.name,
+			Method:   late.method,
+			Path:     late.path,
+			Name:     late.name,
+			nameMode: late.mode,
 		})
 	}
 	return routes
@@ -103,13 +108,17 @@ func validateNamedRouteConflicts(routes []*RouteDefinition, policy NamedRouteCol
 	byName := make(map[string]*RouteDefinition, len(routes))
 
 	for _, route := range routes {
-		if route == nil || route.Name == "" {
+		if route == nil {
+			continue
+		}
+		publicName := route.effectivePublicName()
+		if publicName == "" {
 			continue
 		}
 
-		existing := byName[route.Name]
+		existing := byName[publicName]
 		if existing == nil {
-			byName[route.Name] = route
+			byName[publicName] = route
 			continue
 		}
 
@@ -117,7 +126,7 @@ func validateNamedRouteConflicts(routes []*RouteDefinition, policy NamedRouteCol
 			continue
 		}
 
-		errs = append(errs, newRouteNameConflictError(route.Name, existing, route, policy))
+		errs = append(errs, newRouteNameConflictError(publicName, existing, route, policy))
 	}
 
 	return errs

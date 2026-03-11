@@ -38,6 +38,29 @@ type ErrorHandler = func(Context, error) error
 
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
+type NamedRouteCollisionPolicy string
+
+const (
+	NamedRouteCollisionPolicyReplace NamedRouteCollisionPolicy = "replace"
+	NamedRouteCollisionPolicyError   NamedRouteCollisionPolicy = "error"
+	NamedRouteCollisionPolicySkip    NamedRouteCollisionPolicy = "skip"
+)
+
+func (p NamedRouteCollisionPolicy) normalize() NamedRouteCollisionPolicy {
+	switch p {
+	case NamedRouteCollisionPolicyError:
+		return NamedRouteCollisionPolicyError
+	case NamedRouteCollisionPolicySkip:
+		return NamedRouteCollisionPolicySkip
+	default:
+		return NamedRouteCollisionPolicyReplace
+	}
+}
+
+func (p NamedRouteCollisionPolicy) String() string {
+	return string(p.normalize())
+}
+
 const (
 	GET    HTTPMethod = "GET"
 	POST   HTTPMethod = "POST"

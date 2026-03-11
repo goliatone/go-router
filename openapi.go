@@ -329,13 +329,17 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 		}
 	}
 
-	router.Get(jsonPath, func(c Context) error {
+	if route, ok := router.Get(jsonPath, func(c Context) error {
 		doc := buildDoc()
 		return c.JSON(http.StatusOK, doc)
-	}).SetName("openapi.json")
+	}).(*RouteDefinition); ok {
+		route.Name = "openapi.json"
+		route.publicName = ""
+		route.nameMode = routeNameModeInternal
+	}
 
 	// Serve OpenAPI YAML
-	router.Get(yamlPath, func(c Context) error {
+	if route, ok := router.Get(yamlPath, func(c Context) error {
 		doc := buildDoc()
 		yamlBytes, err := yaml.Marshal(doc)
 		if err != nil {
@@ -343,10 +347,14 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 		}
 		c.SetHeader("Content-Type", "text/plain; charset=utf-8")
 		return c.Send(yamlBytes)
-	}).SetName("openapi.yaml")
+	}).(*RouteDefinition); ok {
+		route.Name = "openapi.yaml"
+		route.publicName = ""
+		route.nameMode = routeNameModeInternal
+	}
 
 	// Serve Stoplight Elements UI
-	router.Get(cfg.docsPath, func(c Context) error {
+	if route, ok := router.Get(cfg.docsPath, func(c Context) error {
 		html := `<!doctype html>
 <html lang="en">
   <head>
@@ -372,7 +380,11 @@ func ServeOpenAPI[T any](router Router[T], renderer OpenApiMetaGenerator, opts .
 </html>`
 		c.SetHeader("Content-Type", "text/html; charset=utf-8")
 		return c.Send([]byte(html))
-	}).SetName("openapi.docs")
+	}).(*RouteDefinition); ok {
+		route.Name = "openapi.docs"
+		route.publicName = ""
+		route.nameMode = routeNameModeInternal
+	}
 }
 
 func cloneOpenAPIRenderer(base *OpenAPIRenderer) *OpenAPIRenderer {

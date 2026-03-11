@@ -11,10 +11,13 @@ func NewRouteDefinition() *RouteDefinition {
 // Ensure RouteDefinition implements RouteInfo
 
 func (r *RouteDefinition) SetName(n string) RouteInfo {
-	r.Name = n
 	if r.onSetName != nil {
-		r.onSetName(n)
+		_ = r.onSetName(r, n)
+		return r
 	}
+	r.Name = n
+	r.publicName = n
+	r.nameMode = routeNameModePublic
 	return r
 }
 
@@ -59,4 +62,17 @@ func (r *RouteDefinition) AddResponse(code int, desc string, content map[string]
 		Content:     content,
 	})
 	return r
+}
+
+func (r *RouteDefinition) effectivePublicName() string {
+	if r == nil {
+		return ""
+	}
+	if r.publicName != "" {
+		return r.publicName
+	}
+	if r.nameMode == routeNameModeInternal {
+		return ""
+	}
+	return r.Name
 }

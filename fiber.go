@@ -175,10 +175,18 @@ func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fibe
 	// Register immediately so static routes can take precedence over catch-all
 	// routes (e.g. "/*") that are typically registered later. When
 	// specificity ordering is enabled, registration is deferred to Init.
-	r.handleFull(GET, path, handler).SetName("static.get")
-	r.handleFull(GET, path+"/*", handler).SetName("static.get")
-	r.handleFull(HEAD, path, handler).SetName("static.head")
-	r.handleFull(HEAD, path+"/*", handler).SetName("static.head")
+	if route, ok := r.handleFull(GET, path, handler).(*RouteDefinition); ok {
+		r.applyInternalRouteName(route, "static.get")
+	}
+	if route, ok := r.handleFull(GET, path+"/*", handler).(*RouteDefinition); ok {
+		r.applyInternalRouteName(route, "static.get")
+	}
+	if route, ok := r.handleFull(HEAD, path, handler).(*RouteDefinition); ok {
+		r.applyInternalRouteName(route, "static.head")
+	}
+	if route, ok := r.handleFull(HEAD, path+"/*", handler).(*RouteDefinition); ok {
+		r.applyInternalRouteName(route, "static.head")
+	}
 	return r
 }
 
@@ -217,13 +225,12 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 }
 
 func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
-	if route.Name != "" {
-		_ = r.addNamedRoute(route.Name, route)
-	}
-
-	route.onSetName = func(name string) {
+	route.onSetName = func(route *RouteDefinition, name string) error {
+		if err := r.applyPublicRouteName(route, name); err != nil {
+			return err
+		}
 		r.app.Name(name)
-		_ = r.addNamedRoute(name, route)
+		return nil
 	}
 
 	if r.orderRoutesBySpecificity && !r.root.deferredRegistered {
@@ -499,9 +506,12 @@ func (r *FiberRouter) WebSocket(path string, config WebSocketConfig, handler fun
 
 	// Create route info for consistency
 	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
-	route.onSetName = func(name string) {
+	route.onSetName = func(route *RouteDefinition, name string) error {
+		if err := r.applyPublicRouteName(route, name); err != nil {
+			return err
+		}
 		r.app.Name(name)
-		_ = r.addNamedRoute(name, route)
+		return nil
 	}
 
 	return route
@@ -518,10 +528,14 @@ func (r *FiberRouter) WithLogger(logger Logger) Router[*fiber.App] {
 
 func (r *FiberRouter) ValidateRoutes() []error {
 	routes := collectRoutesForValidation(&r.BaseRouter)
-	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
+	errs := ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
 		PathConflictMode:         r.pathConflictMode,
 		EnforceCatchAllConflicts: r.enforceCatchAllConflicts,
 		EnforceRouteLints:        r.enforceRouteLints,
 		NamedRoutePolicy:         r.namedRoutePolicy,
 	})
+	if r.namedRoutePolicy.normalize() == NamedRouteCollisionPolicyError {
+		errs = append(errs, r.namedRouteConflicts()...)
+	}
+	return errs
 }

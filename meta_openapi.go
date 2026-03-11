@@ -46,7 +46,9 @@ type RouteDefinition struct {
 	RequestBody *RequestBody `json:"request_body,omitempty"`
 	Responses   []Response   `json:"responses,omitempty"`
 	Security    []string     `json:"security,omitempty"`
-	onSetName   func(n string)
+	onSetName   func(*RouteDefinition, string) error
+	publicName  string
+	nameMode    routeNameMode
 }
 
 // Parameter unifies the parameter definitions

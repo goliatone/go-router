@@ -446,6 +446,14 @@ Manifest entries are sorted by path, method, and route name. Internal helper rou
 still included, but their `Name` field is blank in the default manifest so CI diffs reflect
 public API identity instead of framework-owned helper names.
 
+If you need the runtime/helper names for debugging or internal inspection, use the
+separate opt-in API:
+
+```go
+internalManifest := router.BuildRouterManifestWithInternalNames(app.Router())
+rawManifest := router.BuildRouteManifestWithInternalNames(moduleRoutes)
+```
+
 ### Strict Host Boot Profile
 
 ```go

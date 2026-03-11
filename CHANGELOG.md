@@ -9,6 +9,7 @@
 - Deterministic route manifest export and manifest diff helpers for CI reporting
 - Internal helper-route naming so static, websocket, and OpenAPI helper routes no longer claim the public named-route namespace by default
 - StrictRouteOwnershipPolicy helper for host/module validation defaults
+- Separate manifest APIs for exposing internal/helper route names when callers need runtime-level visibility
 
 ## <!-- 3 -->📚 Documentation
 

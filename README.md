@@ -87,6 +87,17 @@ Named-route collisions default to `replace` for backward compatibility. When ena
 the policy only treats a route name as conflicting if it points to a different full path.
 Reusing the same name on the same path across multiple methods is allowed.
 
+`SetName(...)` is the public naming API. It now applies names transactionally:
+- `replace` rebinds the public lookup name
+- `skip` keeps the existing public binding and leaves the incoming route's public name unchanged
+- `error` keeps the existing binding, records `ROUTE_NAME_CONFLICT`, and fails strict startup validation during `Init()`
+
+Framework-owned helper routes now keep internal runtime names without claiming the public
+named-route namespace. Static helpers, default websocket routes, and `ServeOpenAPI(...)`
+routes still expose a local route name for request context and debugging, but they do not
+participate in `GetRoute(...)`, ownership validation, or default manifest identity unless
+you explicitly call `SetName(...)` on the returned route.
+
 Fiber:
 
 ```go
@@ -396,6 +407,24 @@ if len(errs) > 0 {
 }
 ```
 
+For a strict host/module boot profile, start from the built-in strict defaults and layer
+owner rules on top:
+
+```go
+policy := router.StrictRouteOwnershipPolicy()
+policy.ReservedRoots = []router.ReservedRootClaim{
+    {Owner: "host", Root: "/admin"},
+    {Owner: "host", Root: "/api"},
+}
+policy.Owners = []router.OwnerRoutePolicy{
+    {
+        Owner:             "translations",
+        AllowedPrefixes:   []string{"/modules/translations"},
+        RouteNamePrefixes: []string{"translations."},
+    },
+}
+```
+
 This is complementary to `NamespaceResolver`: the resolver gives stable paths, and
 the ownership validator enforces who is allowed to claim them.
 
@@ -413,7 +442,9 @@ for _, entry := range diff.Added {
 }
 ```
 
-Manifest entries are sorted by path, method, and route name.
+Manifest entries are sorted by path, method, and route name. Internal helper routes are
+still included, but their `Name` field is blank in the default manifest so CI diffs reflect
+public API identity instead of framework-owned helper names.
 
 ### Strict Host Boot Profile
 
@@ -424,12 +455,13 @@ app := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
     PathConflictMode: router.PathConflictModeStrict,
 })
 
-errs := router.ValidateOwnedRouteSets(routeSets, router.RouteOwnershipPolicy{
-    ReservedRoots: []router.ReservedRootClaim{
-        {Owner: "host", Root: "/admin"},
-        {Owner: "host", Root: "/api"},
-    },
-})
+policy := router.StrictRouteOwnershipPolicy()
+policy.ReservedRoots = []router.ReservedRootClaim{
+    {Owner: "host", Root: "/admin"},
+    {Owner: "host", Root: "/api"},
+}
+
+errs := router.ValidateOwnedRouteSets(routeSets, policy)
 if len(errs) > 0 {
     panic(errors.Join(errs...))
 }

@@ -7,10 +7,17 @@
 - Named-route collision policies for Fiber, HTTPRouter, and shared route validation
 - Route ownership validation helpers for host/module mount policies
 - Deterministic route manifest export and manifest diff helpers for CI reporting
+- Internal helper-route naming so static, websocket, and OpenAPI helper routes no longer claim the public named-route namespace by default
+- StrictRouteOwnershipPolicy helper for host/module validation defaults
 
 ## <!-- 3 -->📚 Documentation
 
 - Document strict named-route policy, ownership validation, and route manifest workflows
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Make `SetName(...)` transactional so `skip` and `error` do not leave route state out of sync with public lookup
+- Exclude internal helper names from default public manifests and ownership/name-conflict validation while preserving runtime route names for debugging
 
 # [0.52.0](https://github.com/goliatone/go-router/compare/v0.51.0...v0.52.0) - (2026-03-10)
 
@@ -1567,4 +1574,3 @@
 
 - Add readme ([35dce27](https://github.com/goliatone/go-router/commit/35dce274b74cc2214eac454325bdb3622fe3869d))  - (goliatone)
 - Add hashid to deps ([d5c548e](https://github.com/goliatone/go-router/commit/d5c548eb6eae23b9a1b29a9619fa3dfb06879642))  - (goliatone)
-

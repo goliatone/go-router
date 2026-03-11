@@ -158,6 +158,15 @@ func newRouteConflictError(method HTTPMethod, path string, conflict *routeConfli
 }
 
 func newRouteNameConflictError(routeName string, existing, incoming *RouteDefinition, policy NamedRouteCollisionPolicy) error {
+	existingName := routeName
+	if existing != nil {
+		if publicName := existing.effectivePublicName(); publicName != "" {
+			existingName = publicName
+		} else if existing.Name != "" {
+			existingName = existing.Name
+		}
+	}
+
 	message := fmt.Sprintf(
 		"route name conflict: %q maps to %s %s and %s %s",
 		routeName,
@@ -174,8 +183,8 @@ func newRouteNameConflictError(routeName string, existing, incoming *RouteDefini
 		"incoming_method": incoming.Method,
 		"incoming_path":   incoming.Path,
 		"policy":          policy.String(),
-		"existing_name":   existing.Name,
-		"incoming_name":   incoming.Name,
+		"existing_name":   existingName,
+		"incoming_name":   routeName,
 	}
 
 	return goerrors.New(message, goerrors.CategoryConflict).

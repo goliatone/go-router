@@ -397,25 +397,25 @@ func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httpr
 	fullPrefix := r.joinPath(r.prefix, prefix)
 	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
 	wildcard := path + "/*filepath"
-	r.addLateRoute(GET, path, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
+	r.addInternalLateRoute(GET, path, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.get Next")
 			return ctx.Next()
 		}
 	})
-	r.addLateRoute(GET, wildcard, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
+	r.addInternalLateRoute(GET, wildcard, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.get Next")
 			return ctx.Next()
 		}
 	})
-	r.addLateRoute(HEAD, path, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
+	r.addInternalLateRoute(HEAD, path, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.head Next")
 			return ctx.Next()
 		}
 	})
-	r.addLateRoute(HEAD, wildcard, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
+	r.addInternalLateRoute(HEAD, wildcard, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.head Next")
 			return ctx.Next()
@@ -512,11 +512,8 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	}
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
-	if route.Name != "" {
-		_ = r.addNamedRoute(route.Name, route)
-	}
-	route.onSetName = func(name string) {
-		_ = r.addNamedRoute(name, route)
+	route.onSetName = func(route *RouteDefinition, name string) error {
+		return r.applyPublicRouteName(route, name)
 	}
 
 	// Register final handler with httprouter
@@ -626,8 +623,8 @@ func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func
 
 	// Create route info for consistency
 	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
-	route.onSetName = func(name string) {
-		_ = r.addNamedRoute(name, route)
+	route.onSetName = func(route *RouteDefinition, name string) error {
+		return r.applyPublicRouteName(route, name)
 	}
 
 	return route
@@ -639,12 +636,16 @@ func (r *HTTPRouter) PrintRoutes() {
 
 func (r *HTTPRouter) ValidateRoutes() []error {
 	routes := collectRoutesForValidation(&r.BaseRouter)
-	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
+	errs := ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
 		PathConflictMode:         r.pathConflictMode,
 		EnforceCatchAllConflicts: true,
 		EnforceRouteLints:        false,
 		NamedRoutePolicy:         r.namedRoutePolicy,
 	})
+	if r.namedRoutePolicy.normalize() == NamedRouteCollisionPolicyError {
+		errs = append(errs, r.namedRouteConflicts()...)
+	}
+	return errs
 }
 
 // httpRouterContext implements Context for httprouter

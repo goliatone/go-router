@@ -129,6 +129,42 @@ func TestHTTPRouter_ConflictPolicy_LogAndSkip(t *testing.T) {
 	}
 }
 
+func TestHTTPRouter_SetNameUpdatesNamedRouteLookup(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	r.Get("/users/:id", func(ctx router.Context) error {
+		return ctx.SendString("profile")
+	}).SetName("users.profile")
+
+	r.Get("/jump", func(ctx router.Context) error {
+		return ctx.RedirectToRoute("users.profile", router.ViewContext{"id": "123"})
+	})
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Get(server.URL + "/jump")
+	if err != nil {
+		t.Fatalf("Error while making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("Expected status code %d, got %d", http.StatusFound, resp.StatusCode)
+	}
+
+	if location := resp.Header.Get("Location"); location != "/users/123" {
+		t.Fatalf("Expected redirect location %q, got %q", "/users/123", location)
+	}
+}
+
 func TestHTTPRouter_Group(t *testing.T) {
 	adapter := router.NewHTTPServer()
 	r := adapter.Router()

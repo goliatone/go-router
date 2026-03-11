@@ -12,10 +12,12 @@ type RouteValidationOptions struct {
 	PathConflictMode         PathConflictMode
 	EnforceCatchAllConflicts bool
 	EnforceRouteLints        bool
+	NamedRoutePolicy         NamedRouteCollisionPolicy
 }
 
 func (o RouteValidationOptions) withDefaults() RouteValidationOptions {
 	o.PathConflictMode = o.PathConflictMode.normalize()
+	o.NamedRoutePolicy = o.NamedRoutePolicy.normalize()
 	return o
 }
 
@@ -24,6 +26,7 @@ func (br *BaseRouter) ValidateRoutes() []error {
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
 		PathConflictMode:         PathConflictModeStrict,
 		EnforceCatchAllConflicts: false,
+		NamedRoutePolicy:         br.namedRoutePolicy,
 	})
 }
 
@@ -34,6 +37,7 @@ func collectRoutesForValidation(br *BaseRouter) []*RouteDefinition {
 		routes = append(routes, &RouteDefinition{
 			Method: late.method,
 			Path:   late.path,
+			Name:   late.name,
 		})
 	}
 	return routes
@@ -44,6 +48,7 @@ func ValidateRouteDefinitions(routes []*RouteDefinition) []error {
 	return ValidateRouteDefinitionsWithOptions(routes, RouteValidationOptions{
 		PathConflictMode:         PathConflictModeStrict,
 		EnforceCatchAllConflicts: false,
+		NamedRoutePolicy:         NamedRouteCollisionPolicyReplace,
 	})
 }
 
@@ -84,6 +89,35 @@ func ValidateRouteDefinitionsWithOptions(routes []*RouteDefinition, opts RouteVa
 				}
 			}
 		}
+	}
+
+	if opts.NamedRoutePolicy == NamedRouteCollisionPolicyError {
+		errs = append(errs, validateNamedRouteConflicts(routes, opts.NamedRoutePolicy)...)
+	}
+
+	return errs
+}
+
+func validateNamedRouteConflicts(routes []*RouteDefinition, policy NamedRouteCollisionPolicy) []error {
+	var errs []error
+	byName := make(map[string]*RouteDefinition, len(routes))
+
+	for _, route := range routes {
+		if route == nil || route.Name == "" {
+			continue
+		}
+
+		existing := byName[route.Name]
+		if existing == nil {
+			byName[route.Name] = route
+			continue
+		}
+
+		if existing.Path == route.Path {
+			continue
+		}
+
+		errs = append(errs, newRouteNameConflictError(route.Name, existing, route, policy))
 	}
 
 	return errs

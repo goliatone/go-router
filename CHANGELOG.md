@@ -1,24 +1,36 @@
 # Changelog
 
-# Unreleased
+# [0.53.0](https://github.com/goliatone/go-router/compare/v0.52.0...v0.53.0) - (2026-03-11)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.53.0 ([2dfa1f5](https://github.com/goliatone/go-router/commit/2dfa1f500c87903a67a37be9290d18ac6d6603be))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 
-- Named-route collision policies for Fiber, HTTPRouter, and shared route validation
-- Route ownership validation helpers for host/module mount policies
-- Deterministic route manifest export and manifest diff helpers for CI reporting
-- Internal helper-route naming so static, websocket, and OpenAPI helper routes no longer claim the public named-route namespace by default
-- StrictRouteOwnershipPolicy helper for host/module validation defaults
-- Separate manifest APIs for exposing internal/helper route names when callers need runtime-level visibility
+- Refactor naming routes ([299ca20](https://github.com/goliatone/go-router/commit/299ca20f5f73e8c46531b7b6d99f543209b97184))  - (goliatone)
+- Route definition for set name ([9f1816c](https://github.com/goliatone/go-router/commit/9f1816cde52d284b4edf447a00e34d796e00d7ff))  - (goliatone)
+- Fiber route manifest ([cbafab0](https://github.com/goliatone/go-router/commit/cbafab01ed67b3b47d81f44f5b58acaea916c6e4))  - (goliatone)
+- Route definition public name ([d20b10c](https://github.com/goliatone/go-router/commit/d20b10cf81211bf6ee9fb4de27adf56f3b3ce4ef))  - (goliatone)
+- Named route policy ([b062f0a](https://github.com/goliatone/go-router/commit/b062f0ab7480b8aa905a909a69a6379f4ea7e9b5))  - (goliatone)
+- Named route collision conflict info ([ec74897](https://github.com/goliatone/go-router/commit/ec7489725e76ef150cef245dfedea33203f8a630))  - (goliatone)
+- Route ownership ([ee62567](https://github.com/goliatone/go-router/commit/ee62567e69eac8c8c5eb3aec543645ee91c15b38))  - (goliatone)
+- Route manifest ([84b8920](https://github.com/goliatone/go-router/commit/84b892086aae8efa4e832ffa1f8ae8dfa8ea9e8c))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Naming of routes ([030720a](https://github.com/goliatone/go-router/commit/030720aaf0049c53fe3319049f62a30d5a5555c1))  - (goliatone)
+- Support routing names ([b2011a6](https://github.com/goliatone/go-router/commit/b2011a66caaae6f0f1af83ee9229c99a0f6f7b42))  - (goliatone)
 
 ## <!-- 3 -->📚 Documentation
 
-- Document strict named-route policy, ownership validation, and route manifest workflows
+- Update changelog for v0.52.0 ([6f2dc14](https://github.com/goliatone/go-router/commit/6f2dc144049729e7ad77ebb69ddbf2317f66e5b7))  - (goliatone)
 
-## <!-- 1 -->🐛 Bug Fixes
+## <!-- 7 -->⚙️ Miscellaneous Tasks
 
-- Make `SetName(...)` transactional so `skip` and `error` do not leave route state out of sync with public lookup
-- Exclude internal helper names from default public manifests and ownership/name-conflict validation while preserving runtime route names for debugging
+- Update docs ([02aa2b8](https://github.com/goliatone/go-router/commit/02aa2b8b8bfe816dadca4bd321b07deb89d7e1b3))  - (goliatone)
+- Update tests ([a67806b](https://github.com/goliatone/go-router/commit/a67806b1477ac43e2ea7fd24b325369797146af0))  - (goliatone)
+- Udpate docs ([b1cec82](https://github.com/goliatone/go-router/commit/b1cec82ddd5ba216995886f73f3ed4ff451b4802))  - (goliatone)
 
 # [0.52.0](https://github.com/goliatone/go-router/compare/v0.51.0...v0.52.0) - (2026-03-10)
 
@@ -1575,3 +1587,5 @@
 
 - Add readme ([35dce27](https://github.com/goliatone/go-router/commit/35dce274b74cc2214eac454325bdb3622fe3869d))  - (goliatone)
 - Add hashid to deps ([d5c548e](https://github.com/goliatone/go-router/commit/d5c548eb6eae23b9a1b29a9619fa3dfb06879642))  - (goliatone)
+
+

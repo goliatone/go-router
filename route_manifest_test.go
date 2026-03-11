@@ -40,6 +40,22 @@ func TestBuildRouterManifestUsesRouterRoutes(t *testing.T) {
 	}
 }
 
+func TestBuildRouteManifestOmitsInternalHelperNames(t *testing.T) {
+	routes := []RouteDefinition{
+		{Method: GET, Path: "/openapi.json", Name: "openapi.json", nameMode: routeNameModeInternal},
+		{Method: GET, Path: "/users", Name: "users.list"},
+	}
+
+	manifest := BuildRouteManifest(routes)
+
+	if manifest[0].Path != "/openapi.json" || manifest[0].Name != "" {
+		t.Fatalf("expected internal helper route to have blank public manifest name, got %#v", manifest[0])
+	}
+	if manifest[1].Name != "users.list" {
+		t.Fatalf("expected explicit public name to remain in manifest, got %#v", manifest[1])
+	}
+}
+
 func TestDiffRouteManifestsClassifiesAddedRemovedAndChanged(t *testing.T) {
 	before := []RouteManifestEntry{
 		{Method: GET, Path: "/health", Name: "health.check"},

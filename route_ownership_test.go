@@ -161,3 +161,76 @@ func TestValidateOwnedRouteSetsReusesSharedRouteValidation(t *testing.T) {
 		t.Fatalf("expected route conflict from shared validation, got %q", errs[0].Error())
 	}
 }
+
+func TestValidateOwnedRouteSetsExplicitReplacePreservesCallerIntent(t *testing.T) {
+	errs := ValidateOwnedRouteSets([]OwnedRouteSet{
+		{
+			Owner: "host",
+			Routes: []RouteDefinition{
+				{Method: GET, Path: "/users/:id", Name: "users.show"},
+			},
+		},
+		{
+			Owner: "host",
+			Routes: []RouteDefinition{
+				{Method: GET, Path: "/members/:id", Name: "users.show"},
+			},
+		},
+	}, RouteOwnershipPolicy{
+		RouteValidation: RouteValidationOptions{
+			NamedRoutePolicy: NamedRouteCollisionPolicyReplace,
+		},
+	})
+
+	if len(errs) != 0 {
+		t.Fatalf("expected explicit replace policy to avoid named-route validation errors, got %v", errs)
+	}
+}
+
+func TestStrictRouteOwnershipPolicyUsesStrictNamedRouteDefaults(t *testing.T) {
+	policy := StrictRouteOwnershipPolicy()
+	errs := ValidateOwnedRouteSets([]OwnedRouteSet{
+		{
+			Owner: "host",
+			Routes: []RouteDefinition{
+				{Method: GET, Path: "/users/:id", Name: "users.show"},
+			},
+		},
+		{
+			Owner: "host",
+			Routes: []RouteDefinition{
+				{Method: GET, Path: "/members/:id", Name: "users.show"},
+			},
+		},
+	}, policy)
+
+	if len(errs) == 0 {
+		t.Fatal("expected strict ownership helper to enforce named-route conflicts")
+	}
+	if !strings.Contains(errs[0].Error(), "ROUTE_NAME_CONFLICT") {
+		t.Fatalf("expected ROUTE_NAME_CONFLICT, got %q", errs[0].Error())
+	}
+}
+
+func TestValidateOwnedRouteSetsIgnoresInternalNamesForPrefixChecks(t *testing.T) {
+	errs := ValidateOwnedRouteSets([]OwnedRouteSet{
+		{
+			Owner: "translations",
+			Routes: []RouteDefinition{
+				{Method: GET, Path: "/modules/translations/openapi.json", Name: "openapi.json", nameMode: routeNameModeInternal},
+			},
+		},
+	}, RouteOwnershipPolicy{
+		Owners: []OwnerRoutePolicy{
+			{
+				Owner:             "translations",
+				AllowedPrefixes:   []string{"/modules/translations"},
+				RouteNamePrefixes: []string{"translations."},
+			},
+		},
+	})
+
+	if len(errs) != 0 {
+		t.Fatalf("expected internal helper names to be ignored by prefix validation, got %v", errs)
+	}
+}

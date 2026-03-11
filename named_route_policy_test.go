@@ -48,6 +48,9 @@ func TestBaseRouterNamedRoutePolicySkipKeepsOriginalLookup(t *testing.T) {
 	if got := br.GetRoute("users.show"); got != first {
 		t.Fatalf("expected original route to remain registered, got %+v", got)
 	}
+	if second.effectivePublicName() != "users.show" {
+		t.Fatalf("expected direct addNamedRoute to keep second route public name metadata for compatibility, got %q", second.effectivePublicName())
+	}
 }
 
 func TestValidateRouteDefinitionsWithOptions_NamedRoutePolicyError(t *testing.T) {
@@ -127,5 +130,98 @@ func TestBaseRouterValidateRoutesIncludesLateRouteNames(t *testing.T) {
 	}
 	if !strings.Contains(errs[0].Error(), "ROUTE_NAME_CONFLICT") {
 		t.Fatalf("expected named-route conflict, got %q", errs[0].Error())
+	}
+}
+
+func TestRouteDefinitionSetNameSkipLeavesExistingRouteStateUntouched(t *testing.T) {
+	br := &BaseRouter{
+		namedRoutePolicy: NamedRouteCollisionPolicySkip,
+		root:             &routerRoot{},
+	}
+
+	first := &RouteDefinition{Method: GET, Path: "/users/:id"}
+	first.onSetName = func(route *RouteDefinition, name string) error {
+		return br.applyPublicRouteName(route, name)
+	}
+	second := &RouteDefinition{Method: GET, Path: "/members/:id", Name: "websocket", nameMode: routeNameModeInternal}
+	second.onSetName = func(route *RouteDefinition, name string) error {
+		return br.applyPublicRouteName(route, name)
+	}
+	br.root.routes = []*RouteDefinition{first, second}
+
+	first.SetName("users.show")
+	second.SetName("users.show")
+
+	if got := br.GetRoute("users.show"); got != first {
+		t.Fatalf("expected original route binding to remain, got %+v", got)
+	}
+	if second.Name != "websocket" {
+		t.Fatalf("expected conflicting SetName to preserve runtime name, got %q", second.Name)
+	}
+	if second.effectivePublicName() != "" {
+		t.Fatalf("expected conflicting SetName to avoid assigning a public name, got %q", second.effectivePublicName())
+	}
+}
+
+func TestRouteDefinitionSetNameErrorRecordsConflictAndLeavesRouteUntouched(t *testing.T) {
+	br := &BaseRouter{
+		namedRoutePolicy: NamedRouteCollisionPolicyError,
+		root:             &routerRoot{},
+	}
+
+	first := &RouteDefinition{Method: GET, Path: "/users/:id"}
+	first.onSetName = func(route *RouteDefinition, name string) error {
+		return br.applyPublicRouteName(route, name)
+	}
+	second := &RouteDefinition{Method: GET, Path: "/members/:id"}
+	second.onSetName = func(route *RouteDefinition, name string) error {
+		return br.applyPublicRouteName(route, name)
+	}
+	br.root.routes = []*RouteDefinition{first, second}
+
+	first.SetName("users.show")
+	second.SetName("users.show")
+
+	if got := br.GetRoute("users.show"); got != first {
+		t.Fatalf("expected original route binding to remain, got %+v", got)
+	}
+	if second.Name != "" {
+		t.Fatalf("expected rejected SetName to leave runtime name unchanged, got %q", second.Name)
+	}
+	if second.effectivePublicName() != "" {
+		t.Fatalf("expected rejected SetName to leave public name empty, got %q", second.effectivePublicName())
+	}
+	errs := br.namedRouteConflicts()
+	if len(errs) != 1 {
+		t.Fatalf("expected one recorded named-route conflict, got %d", len(errs))
+	}
+	if !strings.Contains(errs[0].Error(), "ROUTE_NAME_CONFLICT") {
+		t.Fatalf("expected ROUTE_NAME_CONFLICT, got %q", errs[0].Error())
+	}
+}
+
+func TestRouteDefinitionSetNameReplaceRemovesOldBinding(t *testing.T) {
+	br := &BaseRouter{
+		namedRoutePolicy: NamedRouteCollisionPolicyReplace,
+		root:             &routerRoot{},
+	}
+
+	route := &RouteDefinition{Method: GET, Path: "/users/:id"}
+	route.onSetName = func(route *RouteDefinition, name string) error {
+		return br.applyPublicRouteName(route, name)
+	}
+	br.root.routes = []*RouteDefinition{route}
+
+	route.SetName("users.show")
+	route.SetName("members.show")
+
+	if got := br.GetRoute("users.show"); got != nil {
+		t.Fatalf("expected old binding to be removed, got %+v", got)
+	}
+	if got := br.GetRoute("members.show"); got != route {
+		t.Fatalf("expected renamed route binding, got %+v", got)
+	}
+	if route.Name != "members.show" {
+		t.Fatalf("expected runtime name to update to new public name, got %q", route.Name)
 	}
 }

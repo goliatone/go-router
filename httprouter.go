@@ -51,6 +51,8 @@ var httpRouterStrictRoutesMu sync.Mutex
 var httpRouterStrictRoutes = map[*httprouter.Router]bool{}
 var httpRouterPathConflictModeMu sync.Mutex
 var httpRouterPathConflictMode = map[*httprouter.Router]PathConflictMode{}
+var httpRouterNamedRoutePolicyMu sync.Mutex
+var httpRouterNamedRoutePolicy = map[*httprouter.Router]NamedRouteCollisionPolicy{}
 
 // WithHTTPRouterConflictPolicy configures conflict handling for NewHTTPServer.
 func WithHTTPRouterConflictPolicy(policy HTTPRouterConflictPolicy) func(*httprouter.Router) *httprouter.Router {
@@ -79,6 +81,16 @@ func WithHTTPRouterPathConflictMode(mode PathConflictMode) func(*httprouter.Rout
 		httpRouterPathConflictModeMu.Lock()
 		httpRouterPathConflictMode[router] = mode.normalize()
 		httpRouterPathConflictModeMu.Unlock()
+		return router
+	}
+}
+
+// WithHTTPRouterNamedRoutePolicy configures named-route collision handling for NewHTTPServer.
+func WithHTTPRouterNamedRoutePolicy(policy NamedRouteCollisionPolicy) func(*httprouter.Router) *httprouter.Router {
+	return func(router *httprouter.Router) *httprouter.Router {
+		httpRouterNamedRoutePolicyMu.Lock()
+		httpRouterNamedRoutePolicy[router] = policy.normalize()
+		httpRouterNamedRoutePolicyMu.Unlock()
 		return router
 	}
 }
@@ -113,6 +125,16 @@ func popHTTPRouterPathConflictMode(router *httprouter.Router) (PathConflictMode,
 	return mode, ok
 }
 
+func popHTTPRouterNamedRoutePolicy(router *httprouter.Router) (NamedRouteCollisionPolicy, bool) {
+	httpRouterNamedRoutePolicyMu.Lock()
+	defer httpRouterNamedRoutePolicyMu.Unlock()
+	policy, ok := httpRouterNamedRoutePolicy[router]
+	if ok {
+		delete(httpRouterNamedRoutePolicy, router)
+	}
+	return policy, ok
+}
+
 type HTTPServer struct {
 	httpRouter        *httprouter.Router
 	server            *http.Server
@@ -124,6 +146,7 @@ type HTTPServer struct {
 	conflictPolicy    HTTPRouterConflictPolicy
 	strictRoutes      bool
 	pathConflictMode  PathConflictMode
+	namedRoutePolicy  NamedRouteCollisionPolicy
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -153,6 +176,10 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 	if pathConflictMode == PathConflictModePreferStatic {
 		panic(newUnsupportedPathConflictModeError("httprouter", pathConflictMode))
 	}
+	namedRoutePolicy := NamedRouteCollisionPolicyReplace
+	if configured, ok := popHTTPRouterNamedRoutePolicy(router); ok {
+		namedRoutePolicy = configured.normalize()
+	}
 
 	return &HTTPServer{
 		httpRouter:       router,
@@ -160,6 +187,7 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 		conflictPolicy:   conflictPolicy,
 		strictRoutes:     strictRoutes,
 		pathConflictMode: pathConflictMode,
+		namedRoutePolicy: namedRoutePolicy,
 		// views:      engine,
 	}
 }
@@ -181,11 +209,12 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 			conflictPolicy:   a.conflictPolicy,
 			pathConflictMode: a.pathConflictMode,
 			BaseRouter: BaseRouter{
-				logger:      &defaultLogger{},
-				routes:      []*RouteDefinition{},
-				middlewares: []namedMiddleware{},
-				root:        &routerRoot{routes: []*RouteDefinition{}},
-				views:       a.views,
+				logger:           &defaultLogger{},
+				namedRoutePolicy: a.namedRoutePolicy,
+				routes:           []*RouteDefinition{},
+				middlewares:      []namedMiddleware{},
+				root:             &routerRoot{routes: []*RouteDefinition{}},
+				views:            a.views,
 			},
 		}
 	}
@@ -409,6 +438,7 @@ func (r *HTTPRouter) Group(prefix string) Router[*httprouter.Router] {
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
 			logger:            r.logger,
+			namedRoutePolicy:  r.namedRoutePolicy,
 			routes:            r.routes,
 			root:              r.root,
 			views:             r.views,
@@ -428,6 +458,7 @@ func (r *HTTPRouter) Mount(prefix string) Router[*httprouter.Router] {
 			prefix:            r.joinPath(r.prefix, prefix),
 			middlewares:       append([]namedMiddleware{}, r.middlewares...),
 			logger:            r.logger,
+			namedRoutePolicy:  r.namedRoutePolicy,
 			routes:            r.routes,
 			root:              r.root,
 			views:             r.views,
@@ -481,6 +512,12 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	}
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
+	if route.Name != "" {
+		_ = r.addNamedRoute(route.Name, route)
+	}
+	route.onSetName = func(name string) {
+		_ = r.addNamedRoute(name, route)
+	}
 
 	// Register final handler with httprouter
 	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
@@ -589,6 +626,9 @@ func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func
 
 	// Create route info for consistency
 	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
+	route.onSetName = func(name string) {
+		_ = r.addNamedRoute(name, route)
+	}
 
 	return route
 }
@@ -603,6 +643,7 @@ func (r *HTTPRouter) ValidateRoutes() []error {
 		PathConflictMode:         r.pathConflictMode,
 		EnforceCatchAllConflicts: true,
 		EnforceRouteLints:        false,
+		NamedRoutePolicy:         r.namedRoutePolicy,
 	})
 }
 

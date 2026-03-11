@@ -157,6 +157,33 @@ func newRouteConflictError(method HTTPMethod, path string, conflict *routeConfli
 		WithMetadata(metadata)
 }
 
+func newRouteNameConflictError(routeName string, existing, incoming *RouteDefinition, policy NamedRouteCollisionPolicy) error {
+	message := fmt.Sprintf(
+		"route name conflict: %q maps to %s %s and %s %s",
+		routeName,
+		existing.Method,
+		existing.Path,
+		incoming.Method,
+		incoming.Path,
+	)
+
+	metadata := map[string]any{
+		"route_name":      routeName,
+		"existing_method": existing.Method,
+		"existing_path":   existing.Path,
+		"incoming_method": incoming.Method,
+		"incoming_path":   incoming.Path,
+		"policy":          policy.String(),
+		"existing_name":   existing.Name,
+		"incoming_name":   incoming.Name,
+	}
+
+	return goerrors.New(message, goerrors.CategoryConflict).
+		WithCode(http.StatusConflict).
+		WithTextCode("ROUTE_NAME_CONFLICT").
+		WithMetadata(metadata)
+}
+
 func newUnsupportedPathConflictModeError(adapter string, mode PathConflictMode) error {
 	mode = mode.normalize()
 	message := fmt.Sprintf("path conflict mode %q is not supported by %s adapter", mode, adapter)

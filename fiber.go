@@ -24,6 +24,7 @@ type FiberAdapter struct {
 type FiberAdapterConfig struct {
 	MergeStrategy            RenderMergeStrategy
 	ConflictPolicy           *HTTPRouterConflictPolicy
+	NamedRoutePolicy         NamedRouteCollisionPolicy
 	PathConflictMode         PathConflictMode
 	EnforceCatchAllConflicts bool
 	EnforceRouteLints        bool
@@ -39,6 +40,7 @@ func (cfg FiberAdapterConfig) withDefaults() FiberAdapterConfig {
 		policy := HTTPRouterConflictLogAndContinue
 		cfg.ConflictPolicy = &policy
 	}
+	cfg.NamedRoutePolicy = cfg.NamedRoutePolicy.normalize()
 	cfg.PathConflictMode = cfg.PathConflictMode.normalize()
 	// Prefer-static mode requires deterministic specificity ordering.
 	if cfg.PathConflictMode == PathConflictModePreferStatic {
@@ -106,8 +108,9 @@ func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) 
 			enforceRouteLints:        cfg.EnforceRouteLints,
 			orderRoutesBySpecificity: cfg.OrderRoutesBySpecificity,
 			BaseRouter: BaseRouter{
-				logger: &defaultLogger{},
-				root:   &routerRoot{},
+				logger:           &defaultLogger{},
+				namedRoutePolicy: cfg.NamedRoutePolicy,
+				root:             &routerRoot{},
 			},
 		},
 	}
@@ -130,8 +133,9 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 			enforceCatchAllConflicts: false,
 			enforceRouteLints:        false,
 			BaseRouter: BaseRouter{
-				logger: &defaultLogger{},
-				root:   &routerRoot{},
+				logger:           &defaultLogger{},
+				namedRoutePolicy: NamedRouteCollisionPolicyReplace,
+				root:             &routerRoot{},
 			},
 		}
 	}
@@ -214,12 +218,12 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 
 func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
 	if route.Name != "" {
-		r.addNamedRoute(route.Name, route)
+		_ = r.addNamedRoute(route.Name, route)
 	}
 
 	route.onSetName = func(name string) {
 		r.app.Name(name)
-		r.addNamedRoute(name, route)
+		_ = r.addNamedRoute(name, route)
 	}
 
 	if r.orderRoutesBySpecificity && !r.root.deferredRegistered {
@@ -361,10 +365,11 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
 			// middlewares: append([]namedMiddleware{}, r.middlewares...),
-			middlewares: slices.Clone(r.middlewares),
-			logger:      r.logger,
-			routes:      r.routes,
-			root:        r.root,
+			middlewares:      slices.Clone(r.middlewares),
+			logger:           r.logger,
+			namedRoutePolicy: r.namedRoutePolicy,
+			routes:           r.routes,
+			root:             r.root,
 		},
 	}
 }
@@ -383,10 +388,11 @@ func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
 		BaseRouter: BaseRouter{
 			prefix: r.joinPath(r.prefix, prefix),
 			// middlewares: append([]namedMiddleware{}, r.middlewares...),
-			middlewares: slices.Clone(r.middlewares),
-			logger:      r.logger,
-			routes:      r.routes,
-			root:        r.root,
+			middlewares:      slices.Clone(r.middlewares),
+			logger:           r.logger,
+			namedRoutePolicy: r.namedRoutePolicy,
+			routes:           r.routes,
+			root:             r.root,
 		},
 	}
 }
@@ -495,7 +501,7 @@ func (r *FiberRouter) WebSocket(path string, config WebSocketConfig, handler fun
 	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
 	route.onSetName = func(name string) {
 		r.app.Name(name)
-		r.addNamedRoute(name, route)
+		_ = r.addNamedRoute(name, route)
 	}
 
 	return route
@@ -516,5 +522,6 @@ func (r *FiberRouter) ValidateRoutes() []error {
 		PathConflictMode:         r.pathConflictMode,
 		EnforceCatchAllConflicts: r.enforceCatchAllConflicts,
 		EnforceRouteLints:        r.enforceRouteLints,
+		NamedRoutePolicy:         r.namedRoutePolicy,
 	})
 }

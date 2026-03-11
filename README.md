@@ -81,6 +81,40 @@ router.NewHTTPServer(router.WithHTTPRouterPathConflictMode(router.PathConflictMo
 
 will fail fast with a `ROUTE_CONFLICT_MODE_UNSUPPORTED` error.
 
+## Named Route Collision Policy
+
+Named-route collisions default to `replace` for backward compatibility. When enabled,
+the policy only treats a route name as conflicting if it points to a different full path.
+Reusing the same name on the same path across multiple methods is allowed.
+
+Fiber:
+
+```go
+app := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
+    StrictRoutes:     true,
+    NamedRoutePolicy: router.NamedRouteCollisionPolicyError,
+})
+```
+
+HTTPRouter:
+
+```go
+app := router.NewHTTPServer(
+    router.WithHTTPServerStrictRoutes(true),
+    router.WithHTTPRouterNamedRoutePolicy(router.NamedRouteCollisionPolicyError),
+)
+```
+
+For validation helpers:
+
+```go
+errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
+    NamedRoutePolicy: router.NamedRouteCollisionPolicyError,
+})
+```
+
+`error` mode emits `ROUTE_NAME_CONFLICT` with route-name metadata and fails strict startup validation during `Init()`.
+
 ## Usage
 
 ### Basic Example with Fiber
@@ -323,6 +357,85 @@ paths := router.NewNamespaceResolver(
     namespaceTable, // map[Surface]string
     routeTable,     // map[Surface]map[string]string
 )
+```
+
+### Route Ownership Validation
+
+Use `ValidateOwnedRouteSets` when a host app wants to verify mounted module routes
+against explicit ownership rules.
+
+```go
+routeSets := []router.OwnedRouteSet{
+    {
+        Owner: "host",
+        Routes: app.Router().Routes(),
+    },
+    {
+        Owner: "translations",
+        Routes: translationsRoutes,
+    },
+}
+
+policy := router.RouteOwnershipPolicy{
+    ReservedRoots: []router.ReservedRootClaim{
+        {Owner: "host", Root: "/admin"},
+        {Owner: "host", Root: "/api"},
+    },
+    Owners: []router.OwnerRoutePolicy{
+        {
+            Owner:             "translations",
+            AllowedPrefixes:   []string{"/modules/translations"},
+            RouteNamePrefixes: []string{"translations."},
+        },
+    },
+}
+
+errs := router.ValidateOwnedRouteSets(routeSets, policy)
+if len(errs) > 0 {
+    panic(errors.Join(errs...))
+}
+```
+
+This is complementary to `NamespaceResolver`: the resolver gives stable paths, and
+the ownership validator enforces who is allowed to claim them.
+
+### Route Manifest And Diff
+
+Use manifests for deterministic CI snapshots and upgrade review.
+
+```go
+before := router.BuildRouteManifest(moduleRoutes)
+after := router.BuildRouterManifest(app.Router())
+
+diff := router.DiffRouteManifests(before, after)
+for _, entry := range diff.Added {
+    fmt.Printf("added %s %s (%s)\n", entry.Method, entry.Path, entry.Name)
+}
+```
+
+Manifest entries are sorted by path, method, and route name.
+
+### Strict Host Boot Profile
+
+```go
+app := router.NewFiberAdapterWithConfig(router.FiberAdapterConfig{
+    StrictRoutes:     true,
+    NamedRoutePolicy: router.NamedRouteCollisionPolicyError,
+    PathConflictMode: router.PathConflictModeStrict,
+})
+
+errs := router.ValidateOwnedRouteSets(routeSets, router.RouteOwnershipPolicy{
+    ReservedRoots: []router.ReservedRootClaim{
+        {Owner: "host", Root: "/admin"},
+        {Owner: "host", Root: "/api"},
+    },
+})
+if len(errs) > 0 {
+    panic(errors.Join(errs...))
+}
+
+manifest := router.BuildRouterManifest(app.Router())
+_ = manifest
 ```
 
 ## Middleware

@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	_ "embed"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -61,7 +62,7 @@ func setCommonHeaders(c Context, contentType, etag string, maxAge time.Duration)
 
 // checkETag checks if the client's ETag matches and returns 304 if unchanged
 func checkETag(c Context, etag string) bool {
-	clientETag := c.Get("If-None-Match", "")
+	clientETag := strings.TrimSpace(c.Header("If-None-Match"))
 	return clientETag == etag
 }
 

@@ -60,7 +60,7 @@ func TestWebSocketConfigDefaults(t *testing.T) {
 	config := router.DefaultWebSocketConfig()
 
 	// Test default values
-	assert.Equal(t, []string{"*"}, config.Origins)
+	assert.Empty(t, config.Origins)
 	assert.Equal(t, 4096, config.ReadBufferSize)
 	assert.Equal(t, 4096, config.WriteBufferSize)
 	assert.Equal(t, 10*time.Second, config.HandshakeTimeout)
@@ -200,7 +200,7 @@ func TestWebSocketApplyDefaults(t *testing.T) {
 	config.ApplyDefaults()
 
 	// Check that defaults were applied
-	assert.Equal(t, []string{"*"}, config.Origins)
+	assert.Empty(t, config.Origins)
 	assert.Equal(t, 4096, config.ReadBufferSize)
 	assert.Equal(t, 4096, config.WriteBufferSize)
 	assert.Equal(t, 10*time.Second, config.HandshakeTimeout)

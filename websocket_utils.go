@@ -3,6 +3,8 @@ package router
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"net"
+	"net/url"
 	"strings"
 )
 
@@ -40,33 +42,20 @@ func isWebSocketRequest(c Context) bool {
 
 // validateOrigin checks if the request origin is allowed based on configuration
 func validateOrigin(c Context, config WebSocketConfig) bool {
-	// If no origin validation is configured, allow all
-	if config.CheckOrigin == nil && len(config.Origins) == 0 {
-		return true
-	}
-
-	origin := c.Header("Origin")
+	origin := strings.TrimSpace(c.Header("Origin"))
 
 	// Use custom origin validation function if provided
 	if config.CheckOrigin != nil {
 		return config.CheckOrigin(origin)
 	}
 
-	// Check against allowed origins list
-	if len(config.Origins) > 0 {
-		// Allow all origins if "*" is in the list
-		for _, allowedOrigin := range config.Origins {
-			if allowedOrigin == "*" {
-				return true
-			}
-			if allowedOrigin == origin {
-				return true
-			}
-		}
-		return false
+	// Same-origin is the safe default when no explicit allowlist is provided.
+	if len(config.Origins) == 0 {
+		return isSameOrigin(c)
 	}
 
-	return true
+	// Check against allowed origins list
+	return matchesAnyOriginPattern(origin, config.Origins)
 }
 
 // validateSubprotocols checks if requested subprotocols are supported
@@ -124,25 +113,181 @@ func validateWebSocketKey(key string) bool {
 
 // isSameOrigin checks if the request is from the same origin as the server
 func isSameOrigin(c Context) bool {
-	origin := c.Header("Origin")
+	origin := strings.TrimSpace(c.Header("Origin"))
 	if origin == "" {
 		return true // No origin header means same-origin request
 	}
 
-	// Get the host from the request
-	host := c.Header("Host")
+	host := requestHost(c)
 	if host == "" {
 		return false
 	}
 
-	// Build expected origin
-	scheme := "http"
-	if c.Header("X-Forwarded-Proto") == "https" ||
-		c.Header("X-Forwarded-Ssl") == "on" ||
-		c.Header("X-Scheme") == "https" {
-		scheme = "https"
+	return originMatchesRequest(origin, requestScheme(c), host)
+}
+
+func requestHost(c Context) string {
+	if httpCtx, ok := c.(HTTPContext); ok {
+		if req := httpCtx.Request(); req != nil && req.Host != "" {
+			return strings.TrimSpace(req.Host)
+		}
+	}
+	return strings.TrimSpace(c.Header("Host"))
+}
+
+func requestScheme(c Context) string {
+	for _, header := range []string{"X-Forwarded-Proto", "X-Scheme"} {
+		if value := strings.TrimSpace(c.Header(header)); value != "" {
+			if idx := strings.Index(value, ","); idx >= 0 {
+				value = value[:idx]
+			}
+			value = strings.ToLower(strings.TrimSpace(value))
+			if value == "http" || value == "https" {
+				return value
+			}
+		}
 	}
 
-	expectedOrigin := scheme + "://" + host
-	return origin == expectedOrigin
+	if strings.EqualFold(strings.TrimSpace(c.Header("X-Forwarded-Ssl")), "on") {
+		return "https"
+	}
+
+	if httpCtx, ok := c.(HTTPContext); ok {
+		if req := httpCtx.Request(); req != nil {
+			if req.TLS != nil {
+				return "https"
+			}
+			if req.URL != nil {
+				switch strings.ToLower(req.URL.Scheme) {
+				case "http", "https":
+					return strings.ToLower(req.URL.Scheme)
+				}
+			}
+		}
+	}
+
+	return "http"
+}
+
+func matchesAnyOriginPattern(origin string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if matchesOriginPattern(origin, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesOriginPattern(origin, pattern string) bool {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "*" {
+		return true
+	}
+	if origin == "" || pattern == "" {
+		return false
+	}
+
+	originURL, err := parseOriginURL(origin)
+	if err != nil {
+		return false
+	}
+
+	if strings.Contains(pattern, "://") {
+		patternURL, err := parseOriginURL(pattern)
+		if err != nil {
+			return false
+		}
+		if !strings.EqualFold(originURL.Scheme, patternURL.Scheme) {
+			return false
+		}
+		if effectivePort(originURL) != effectivePort(patternURL) {
+			return false
+		}
+		return matchHostPattern(originURL.Hostname(), patternURL.Hostname())
+	}
+
+	return matchHostPattern(originURL.Hostname(), pattern)
+}
+
+func originMatchesRequest(origin, scheme, host string) bool {
+	originURL, err := parseOriginURL(origin)
+	if err != nil {
+		return false
+	}
+
+	requestHost, requestPort := normalizeHostAndPort(host, scheme)
+	if requestHost == "" {
+		return false
+	}
+
+	return strings.EqualFold(originURL.Scheme, scheme) &&
+		normalizeHostname(originURL.Hostname()) == requestHost &&
+		effectivePort(originURL) == requestPort
+}
+
+func parseOriginURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme == "" || u.Hostname() == "" {
+		return nil, url.InvalidHostError(raw)
+	}
+	return u, nil
+}
+
+func matchHostPattern(hostname, pattern string) bool {
+	hostname = normalizeHostname(hostname)
+	pattern = normalizeHostname(pattern)
+	if hostname == "" || pattern == "" {
+		return false
+	}
+
+	if strings.HasPrefix(pattern, "*.") {
+		base := strings.TrimPrefix(pattern, "*.")
+		return hostname != base && strings.HasSuffix(hostname, "."+base)
+	}
+
+	return hostname == pattern
+}
+
+func normalizeHostname(host string) string {
+	host = strings.TrimSpace(host)
+	host = strings.Trim(host, "[]")
+	host = strings.TrimSuffix(host, ".")
+	return strings.ToLower(host)
+}
+
+func normalizeHostAndPort(host, scheme string) (string, string) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return "", ""
+	}
+
+	if parsedHost, parsedPort, err := net.SplitHostPort(host); err == nil {
+		return normalizeHostname(parsedHost), parsedPort
+	}
+
+	return normalizeHostname(host), defaultPortForScheme(scheme)
+}
+
+func effectivePort(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	if port := u.Port(); port != "" {
+		return port
+	}
+	return defaultPortForScheme(u.Scheme)
+}
+
+func defaultPortForScheme(scheme string) string {
+	switch strings.ToLower(strings.TrimSpace(scheme)) {
+	case "http", "ws":
+		return "80"
+	case "https", "wss":
+		return "443"
+	default:
+		return ""
+	}
 }

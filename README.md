@@ -204,6 +204,102 @@ if err != nil {
 }
 ```
 
+### Fiber SSE Runtime Stream
+
+Use `eventstream` for transport-neutral runtime events and `ssefiber` for a
+Fiber-first SSE endpoint.
+
+`ssefiber` is the supported v1 transport for native go-router handlers on
+Fiber. If you need bidirectional messaging or transport-specific room/session
+behavior, use the websocket support instead. If you need server-to-browser
+push with replay, cursor resume, and browser failover, use SSE.
+
+```go
+import (
+    "encoding/json"
+
+    "github.com/gofiber/fiber/v2"
+    "github.com/goliatone/go-router"
+    "github.com/goliatone/go-router/eventstream"
+    "github.com/goliatone/go-router/ssefiber"
+)
+
+func mountRuntimeStream(app router.Server[*fiber.App]) error {
+    stream := eventstream.New(
+        eventstream.WithBufferSize(512),
+        eventstream.WithSubscriberBuffer(32),
+        eventstream.WithMatcher(eventstream.ExactMatch),
+    )
+
+    if err := ssefiber.MountFiber(
+        app.Router(),
+        ssefiber.WithPath("/api/runtime/events"),
+        ssefiber.WithStream(stream),
+        ssefiber.WithScopeResolver(func(ctx router.Context) (eventstream.Scope, error) {
+            return eventstream.Scope{
+                "tenant": ctx.Header("X-Tenant-ID"),
+                "channel": "admin.commands",
+            }, nil
+        }),
+    ); err != nil {
+        return err
+    }
+
+    acceptedPayload, _ := json.Marshal(map[string]any{
+        "command": "esign.agreements.notify_reviewers",
+        "status": "accepted",
+        "command_id": "cmd_123",
+        "resource_id": "agreement_42",
+    })
+    stream.Publish(eventstream.Scope{
+        "tenant": "t1",
+        "channel": "admin.commands",
+    }, eventstream.Event{
+        Name:    "lifecycle",
+        Payload: acceptedPayload,
+    })
+
+    resourcePayload, _ := json.Marshal(map[string]any{
+        "resource": "esign.agreement",
+        "resource_id": "agreement_42",
+        "change": "state_changed",
+        "state": "review_closed",
+    })
+    stream.Publish(eventstream.Scope{
+        "tenant": "t1",
+        "channel": "admin.commands",
+    }, eventstream.Event{
+        Name:    "resource_state",
+        Payload: resourcePayload,
+    })
+
+    return nil
+}
+```
+
+Browser usage:
+
+```ts
+import createSSEClient from "@goliatone/go-router-sse-client";
+
+const client = createSSEClient({
+    url: "/api/runtime/events",
+    getHeaders: () => ({
+        Authorization: `Bearer ${token}`,
+    }),
+    onEvent: (event) => {
+        if (event.name === "lifecycle") {
+            reconcileCommandState(event.payload);
+        }
+    },
+    onRequestSnapshot: () => {
+        refreshAuthoritativeSnapshot();
+    },
+});
+
+client.start();
+```
+
 ### Adapting net/http Handlers
 
 Use `HandlerFromHTTP` to reuse standard `http.Handler` code. For direct access to

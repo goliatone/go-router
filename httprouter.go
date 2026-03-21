@@ -612,6 +612,18 @@ func (r *HTTPRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFunc
 
 func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func(WebSocketContext) error) RouteInfo {
 	fullPath := r.joinPath(r.prefix, path)
+	if conflict := r.detectRouteConflict(GET, fullPath); conflict != nil {
+		err := newRouteConflictError(GET, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
+		switch r.conflictPolicy {
+		case HTTPRouterConflictLogAndSkip, HTTPRouterConflictLogAndContinue:
+			if r.logger != nil {
+				r.logger.Warn("route conflict skipped: %v", err)
+			}
+			return noopRouteInfo
+		case HTTPRouterConflictPanic:
+			panic(err)
+		}
+	}
 
 	r.logger.Info("registering websocket route", "path", path, "fullPath", fullPath)
 
@@ -949,11 +961,7 @@ func (c *httpRouterContext) RedirectToRoute(routeName string, params ViewContext
 // RedirectBack attempts to redirect to the 'Referer' header, falling back
 // to the given 'fallback' if the header is empty.
 func (c *httpRouterContext) RedirectBack(fallback string, status ...int) error {
-	referer := c.Header("Referer")
-	if referer == "" {
-		referer = fallback
-	}
-	return c.Redirect(referer, status...)
+	return c.Redirect(resolveRedirectBackTarget(c, fallback), status...)
 }
 
 func (c *httpRouterContext) ParamsInt(name string, defaultValue int) int {
@@ -1092,6 +1100,9 @@ func (c *httpRouterContext) Context() context.Context {
 }
 
 func (c *httpRouterContext) Header(key string) string {
+	if strings.EqualFold(key, "Host") {
+		return c.r.Host
+	}
 	return c.r.Header.Get(key)
 }
 

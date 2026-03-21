@@ -476,6 +476,14 @@ func (c *fiberWebSocketContext) UpgradeData(key string) (any, bool) {
 	return val, ok
 }
 
+func (c *fiberWebSocketContext) Next() error {
+	c.index++
+	if c.index >= len(c.handlers) {
+		return nil
+	}
+	return c.handlers[c.index].Handler(c)
+}
+
 // FiberWebSocketFactory implements WebSocketContextFactory for Fiber
 type FiberWebSocketFactory struct {
 	logger Logger
@@ -558,37 +566,22 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 			}
 		}
 
-		// Create websocket upgrader config
-		wsConfig := websocket.Config{
-			ReadBufferSize:  config.ReadBufferSize,
-			WriteBufferSize: config.WriteBufferSize,
-			Subprotocols:    config.Subprotocols,
-			Origins:         config.Origins,
-		}
-
-		// Set origin checker
-		if config.CheckOrigin != nil {
-			wsConfig.Filter = func(c *fiber.Ctx) bool {
-				origin := c.Get("Origin")
-				return config.CheckOrigin(origin)
-			}
-		} else {
-			wsConfig.Filter = func(c *fiber.Ctx) bool {
-				return validateFiberOrigin(c, config.Origins)
-			}
-		}
-
-		// Create WebSocket handler with access to upgradeData via closure
-		wsHandler := createFiberWSHandler(config, handler, upgradeData)
-
-		// Execute the WebSocket handler
-		return wsHandler(c)
+		return runFiberWebSocketUpgrade(c, &defaultLogger{}, nil, config, upgradeData, handler)
 	}
 }
 
-// createFiberWSHandler creates the actual WebSocket handler function
-func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext) error, upgradeData UpgradeData) fiber.Handler {
-	// Create websocket upgrader config (duplicated from above for clarity)
+func handleFiberMiddlewareWebSocketUpgrade(c Context, config WebSocketConfig, upgradeData UpgradeData) error {
+	fiberCtx, ok := c.(*fiberContext)
+	if !ok || fiberCtx == nil || fiberCtx.ctx == nil {
+		return fmt.Errorf("expected fiberContext, got %T", c)
+	}
+
+	return runFiberWebSocketUpgrade(fiberCtx.ctx, fiberCtx.logger, fiberCtx, config, upgradeData, func(ws WebSocketContext) error {
+		return ws.Next()
+	})
+}
+
+func buildFiberWebSocketConfig(config WebSocketConfig) websocket.Config {
 	wsConfig := websocket.Config{
 		ReadBufferSize:  config.ReadBufferSize,
 		WriteBufferSize: config.WriteBufferSize,
@@ -608,118 +601,130 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 		}
 	}
 
-	// Return a handler that captures the fiber context during upgrade
-	return func(c *fiber.Ctx) error {
-		// Capture a safe context before hijack so post-upgrade handlers have a stable context.
-		safeCtx := c.UserContext()
-		if safeCtx == nil {
-			safeCtx = context.Background()
+	return wsConfig
+}
+
+func captureFiberContextForWebSocket(c *fiber.Ctx, logger Logger, prototype *fiberContext) (*fiberContext, context.Context) {
+	if logger == nil {
+		logger = &defaultLogger{}
+	}
+
+	safeCtx := c.UserContext()
+	if prototype != nil && prototype.cachedCtx != nil {
+		safeCtx = prototype.cachedCtx
+	}
+	if safeCtx == nil {
+		safeCtx = context.Background()
+	}
+
+	captured := NewFiberContext(c, logger).(*fiberContext)
+	if prototype != nil {
+		captured.mergeStrategy = prototype.mergeStrategy
+		captured.handlers = prototype.handlers
+		captured.index = prototype.index
+		captured.store = prototype.store
+		if prototype.logger != nil {
+			captured.logger = prototype.logger
+		}
+		if prototype.meta != nil {
+			captured.meta = prototype.meta
+		}
+	}
+	captured.SetContext(safeCtx)
+	captured.captureRequestMeta()
+	return captured, safeCtx
+}
+
+func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberContext, config WebSocketConfig, upgradeData UpgradeData, invoke func(WebSocketContext) error) error {
+	if logger == nil {
+		logger = &defaultLogger{}
+	}
+
+	wsConfig := buildFiberWebSocketConfig(config)
+	capturedFiberCtx, safeCtx := captureFiberContextForWebSocket(c, logger, prototype)
+
+	wsHandler := websocket.New(func(conn *websocket.Conn) {
+		baseWsCtx := &fiberWebSocketContext{
+			fiberContext:  capturedFiberCtx,
+			config:        config,
+			conn:          conn,
+			isUpgraded:    true,
+			connectionID:  fmt.Sprintf("fiber-ws-%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano()),
+			closeHandlers: make([]func(code int, text string) error, 0),
+			upgradeData:   upgradeData,
+			userCtx:       safeCtx,
 		}
 
-		// Capture the fiber context before the upgrade
-		logger := &defaultLogger{} // Use default logger if not available
-		capturedFiberCtx := NewFiberContext(c, logger).(*fiberContext)
-		// Seed cached context so later calls don't touch a hijacked fasthttp ctx.
-		capturedFiberCtx.SetContext(safeCtx)
-		capturedFiberCtx.captureRequestMeta()
+		if config.MaxMessageSize > 0 {
+			conn.SetReadLimit(config.MaxMessageSize)
+		}
 
-		wsHandler := websocket.New(func(conn *websocket.Conn) {
-			// Create base WebSocket context with properly initialized fiber context
-			baseWsCtx := &fiberWebSocketContext{
-				fiberContext:  capturedFiberCtx, // Use the captured context instead of nil
-				config:        config,
-				conn:          conn,
-				isUpgraded:    true,
-				connectionID:  fmt.Sprintf("fiber-ws-%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano()),
-				closeHandlers: make([]func(code int, text string) error, 0),
-				upgradeData:   upgradeData,
-				userCtx:       safeCtx,
-			}
-
-			// Create enhanced WebSocket context (legacy support, or if we want to keep the wrapper)
-			// Since we added upgradeData to fiberWebSocketContext, we can use it directly.
-			// But for compatibility with existing code that might check for enhancedWebSocketContext (unlikely but possible),
-			// we will just use baseWsCtx as it implements WebSocketContext.
-
-			if config.MaxMessageSize > 0 {
-				conn.SetReadLimit(config.MaxMessageSize)
-			}
-
-			conn.SetPingHandler(func(appData string) error {
-				writeTimeout := baseWsCtx.getWriteTimeout()
-				deadline := time.Now().Add(writeTimeout)
-				baseWsCtx.writeMu.Lock()
-				if err := conn.SetWriteDeadline(deadline); err != nil {
-					baseWsCtx.writeMu.Unlock()
-					return err
-				}
-				if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
-					baseWsCtx.writeMu.Unlock()
-					return err
-				}
+		conn.SetPingHandler(func(appData string) error {
+			writeTimeout := baseWsCtx.getWriteTimeout()
+			deadline := time.Now().Add(writeTimeout)
+			baseWsCtx.writeMu.Lock()
+			if err := conn.SetWriteDeadline(deadline); err != nil {
 				baseWsCtx.writeMu.Unlock()
-				baseWsCtx.mu.RLock()
-				pingHandler := baseWsCtx.pingHandler
-				baseWsCtx.mu.RUnlock()
-				if pingHandler != nil {
-					return pingHandler([]byte(appData))
-				}
-				return nil
-			})
+				return err
+			}
+			if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
+				baseWsCtx.writeMu.Unlock()
+				return err
+			}
+			baseWsCtx.writeMu.Unlock()
+			baseWsCtx.mu.RLock()
+			pingHandler := baseWsCtx.pingHandler
+			baseWsCtx.mu.RUnlock()
+			if pingHandler != nil {
+				return pingHandler([]byte(appData))
+			}
+			return nil
+		})
 
-			conn.SetPongHandler(func(appData string) error {
-				// Update read deadline on pong receipt
-				if config.PongWait > 0 {
-					deadline := time.Now().Add(config.PongWait)
-					if err := conn.SetReadDeadline(deadline); err != nil {
-						return err
-					}
-				}
-				// Call custom handler if set
-				baseWsCtx.mu.RLock()
-				pongHandler := baseWsCtx.pongHandler
-				baseWsCtx.mu.RUnlock()
-				if pongHandler != nil {
-					return pongHandler([]byte(appData))
-				}
-				return nil
-			})
-
-			conn.SetCloseHandler(func(code int, text string) error {
-				// Call all registered close handlers
-				baseWsCtx.mu.RLock()
-				closeHandlers := append([]func(code int, text string) error{}, baseWsCtx.closeHandlers...)
-				baseWsCtx.mu.RUnlock()
-				for _, closeHandler := range closeHandlers {
-					if err := closeHandler(code, text); err != nil {
-						// Log error but continue with other handlers
-						logger.Info("Close handler error", "error", err)
-					}
-				}
-				return nil
-			})
-
-			// Store negotiated subprotocol
-			baseWsCtx.subprotocol = conn.Subprotocol()
-
-			// Call OnConnect if configured (NOW handled here since we bypassed middleware)
-			if config.OnConnect != nil {
-				if err := config.OnConnect(baseWsCtx); err != nil {
-					logger.Info("OnConnect handler error", "error", err)
-					conn.Close()
-					return
+		conn.SetPongHandler(func(appData string) error {
+			if config.PongWait > 0 {
+				deadline := time.Now().Add(config.PongWait)
+				if err := conn.SetReadDeadline(deadline); err != nil {
+					return err
 				}
 			}
-
-			// Call the main handler
-			if err := handler(baseWsCtx); err != nil {
-				logger.Info("WebSocket handler error", "error", err)
+			baseWsCtx.mu.RLock()
+			pongHandler := baseWsCtx.pongHandler
+			baseWsCtx.mu.RUnlock()
+			if pongHandler != nil {
+				return pongHandler([]byte(appData))
 			}
-		}, wsConfig)
+			return nil
+		})
 
-		// Execute the WebSocket handler
-		return wsHandler(c)
-	}
+		conn.SetCloseHandler(func(code int, text string) error {
+			baseWsCtx.mu.RLock()
+			closeHandlers := append([]func(code int, text string) error{}, baseWsCtx.closeHandlers...)
+			baseWsCtx.mu.RUnlock()
+			for _, closeHandler := range closeHandlers {
+				if err := closeHandler(code, text); err != nil {
+					logger.Info("Close handler error", "error", err)
+				}
+			}
+			return nil
+		})
+
+		baseWsCtx.subprotocol = conn.Subprotocol()
+
+		if config.OnConnect != nil {
+			if err := config.OnConnect(baseWsCtx); err != nil {
+				logger.Info("OnConnect handler error", "error", err)
+				_ = conn.Close()
+				return
+			}
+		}
+
+		if err := invoke(baseWsCtx); err != nil {
+			logger.Info("WebSocket handler error", "error", err)
+		}
+	}, wsConfig)
+
+	return wsHandler(c)
 }
 
 // getWriteTimeout returns the write timeout to use

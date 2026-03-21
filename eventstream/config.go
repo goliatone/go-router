@@ -243,6 +243,11 @@ func (s *stream) Subscribe(ctx context.Context, scope Scope, afterCursor string)
 		subscribeHook.CursorGapReason = cursorGapReason
 		s.mu.Unlock()
 		s.dispatchSubscribeHook(subscribeHook)
+		s.dispatchDropHook(&DropEvent{
+			Scope:    cloneScope(scope),
+			ScopeKey: scopeKey,
+			Reason:   cursorGapReason,
+		})
 		return newGapSubscription(scope, scopeKey, cursorGapReason), nil
 	}
 

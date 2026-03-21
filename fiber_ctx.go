@@ -430,7 +430,7 @@ func (c *fiberContext) RedirectBack(fallback string, status ...int) error {
 	if ctx == nil {
 		return fmt.Errorf("context unavailable")
 	}
-	return ctx.RedirectBack(fallback, status...)
+	return c.Redirect(resolveRedirectBackTarget(c, fallback), status...)
 }
 
 func (c *fiberContext) ParamsInt(name string, defaultValue int) int {

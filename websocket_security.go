@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -184,26 +185,18 @@ func validateProtocolSecurity(c Context, policy WebSocketSecurityPolicy) error {
 		return nil // No protocols requested
 	}
 
-	protocols := strings.Split(requestedProtocols, ",")
-	for _, protocol := range protocols {
+	protocols := strings.SplitSeq(requestedProtocols, ",")
+	for protocol := range protocols {
 		protocol = strings.TrimSpace(protocol)
 
 		// Check disallowed protocols
-		for _, disallowed := range policy.DisallowedProtocols {
-			if protocol == disallowed {
-				return NewWebSocketSecurityError("protocol_disallowed", "Protocol is explicitly disallowed")
-			}
+		if slices.Contains(policy.DisallowedProtocols, protocol) {
+			return NewWebSocketSecurityError("protocol_disallowed", "Protocol is explicitly disallowed")
 		}
 
 		// Check allowed protocols (if specified)
 		if len(policy.AllowedProtocols) > 0 {
-			allowed := false
-			for _, allowedProtocol := range policy.AllowedProtocols {
-				if protocol == allowedProtocol {
-					allowed = true
-					break
-				}
-			}
+			allowed := slices.Contains(policy.AllowedProtocols, protocol)
 			if !allowed {
 				return NewWebSocketSecurityError("protocol_not_allowed", "Protocol is not in the allowed list")
 			}

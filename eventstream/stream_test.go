@@ -14,8 +14,7 @@ import (
 func TestExactMatchScopeIsolation(t *testing.T) {
 	stream := eventstream.New()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, eventstream.Scope{"tenant": "t1"}, "")
 	require.NoError(t, err)
@@ -34,8 +33,7 @@ func TestSubscribeReplayLiveCutoverIsOrdered(t *testing.T) {
 	first := stream.Publish(scope, eventstream.Event{Name: "first"})
 	second := stream.Publish(scope, eventstream.Event{Name: "second"})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, scope, first.Cursor)
 	require.NoError(t, err)
@@ -58,8 +56,7 @@ func TestBufferSizeBoundsRetainedRecordsPerScope(t *testing.T) {
 	stats := stream.SnapshotStats()
 	assert.EqualValues(t, 2, stats.BufferedRecords)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, scope, first.Cursor)
 	require.NoError(t, err)
@@ -71,8 +68,7 @@ func TestUnknownCursorWithoutMatchedReplayStartsLive(t *testing.T) {
 	stream := eventstream.New()
 	stream.Publish(eventstream.Scope{"tenant": "t2"}, eventstream.Event{Name: "other-tenant"})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, eventstream.Scope{"tenant": "t1"}, "missing")
 	require.NoError(t, err)
@@ -116,13 +112,12 @@ func TestSlowConsumerIsDroppedAndCounted(t *testing.T) {
 		eventstream.WithBufferSize(16),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, eventstream.Scope{"tenant": "t1"}, "")
 	require.NoError(t, err)
 
-	for idx := 0; idx < 32; idx++ {
+	for range 32 {
 		stream.Publish(eventstream.Scope{"tenant": "t1"}, eventstream.Event{Name: "burst"})
 	}
 
@@ -153,8 +148,7 @@ func TestCanonicalScopeKeyEscapesReservedCharacters(t *testing.T) {
 
 	assert.NotEqual(t, first.ScopeKey, second.ScopeKey)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, eventstream.Scope{"a": "b=c"}, first.Cursor)
 	require.NoError(t, err)
@@ -176,8 +170,7 @@ func TestDeliveredRecordsAreDetachedFromRetainedState(t *testing.T) {
 	published.Event.Payload[0] = '['
 	published.Event.Metadata["source"] = "mutated"
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, scope, "")
 	require.NoError(t, err)

@@ -3,6 +3,7 @@ package router
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"strings"
 )
@@ -62,9 +63,7 @@ func NewNamespaceResolver[NS ~string](namespaces map[NS]string, routes map[NS]ma
 			continue
 		}
 		cloned := make(map[string]string, len(table))
-		for routeKey, routePath := range table {
-			cloned[routeKey] = routePath
-		}
+		maps.Copy(cloned, table)
 		routeCopy[ns] = cloned
 	}
 

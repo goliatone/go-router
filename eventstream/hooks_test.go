@@ -115,8 +115,7 @@ func TestHooksEmitCursorNotFoundDropForGapSubscriptions(t *testing.T) {
 	scope := eventstream.Scope{"tenant": "t1"}
 	stream.Publish(scope, eventstream.Event{Name: "first"})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, scope, "missing")
 	require.NoError(t, err)

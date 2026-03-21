@@ -3,6 +3,7 @@ package router_test
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,8 +13,10 @@ import (
 )
 
 // Helper function to create bool pointers
+//
+//go:fix inline
 func boolPtr(b bool) *bool {
-	return &b
+	return new(b)
 }
 
 // Example test structs
@@ -84,7 +87,7 @@ type User struct {
 	Age      int       `bun:"age" json:"age"`
 	Password string    `bun:"password" json:"-" crud:"-"`
 	// has-one
-	Profile Profile `bun:"rel:has-one,join:id=user_id" json:"profile,omitempty"`
+	Profile Profile `bun:"rel:has-one,join:id=user_id" json:"profile"`
 	// has-many
 	Posts []Post `bun:"rel:has-many,join:id=user_id" json:"posts,omitempty"`
 	// belongs-to
@@ -101,7 +104,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 	}{
 		{
 			name:   "simple base model",
-			inType: reflect.TypeOf(BaseModel{}),
+			inType: reflect.TypeFor[BaseModel](),
 			checkFn: func(t *testing.T, got router.SchemaMetadata) {
 				// We expect 2 properties: created_at, updated_at
 				if len(got.Properties) != 2 {
@@ -118,7 +121,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 		},
 		{
 			name:   "user model with relationships",
-			inType: reflect.TypeOf(User{}),
+			inType: reflect.TypeFor[User](),
 			checkFn: func(t *testing.T, got router.SchemaMetadata) {
 				// Check a few expected properties
 				if _, ok := got.Properties["id"]; !ok {
@@ -185,7 +188,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 		},
 		{
 			name:   "order with m2m relationship",
-			inType: reflect.TypeOf(Order{}),
+			inType: reflect.TypeFor[Order](),
 			checkFn: func(t *testing.T, got router.SchemaMetadata) {
 				// Check properties: id plus relation field
 				if len(got.Properties) != 2 {
@@ -223,7 +226,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 		},
 		{
 			name:   "m2m pivot table name preservation",
-			inType: reflect.TypeOf(BugTestM2M{}),
+			inType: reflect.TypeFor[BugTestM2M](),
 			checkFn: func(t *testing.T, got router.SchemaMetadata) {
 				// Verify simple_pivot (no comma) is preserved
 				if rel, ok := got.Relationships["simple_items"]; ok && rel != nil {
@@ -249,7 +252,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 		},
 		{
 			name:   "required field consistency with omitempty",
-			inType: reflect.TypeOf(BugTestRequired{}),
+			inType: reflect.TypeFor[BugTestRequired](),
 			checkFn: func(t *testing.T, got router.SchemaMetadata) {
 				// Check required_only: should be required
 				if prop, ok := got.Properties["required_only"]; ok {
@@ -294,12 +297,7 @@ func TestExtractSchemaFromType(t *testing.T) {
 
 // Helper function for testing Required slice membership
 func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 // TestPropertyInfoJSONSerialization tests that all PropertyInfo fields are properly serialized to JSON
@@ -439,7 +437,7 @@ func TestBackwardCompatibility(t *testing.T) {
 		}
 
 		// Call with no options (existing behavior)
-		result := router.ExtractSchemaFromType(reflect.TypeOf(SimpleStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[SimpleStruct]())
 
 		// Verify core functionality works exactly as before
 		if result.Name != "SimpleStruct" {
@@ -491,14 +489,14 @@ func TestBackwardCompatibility(t *testing.T) {
 		}
 
 		// Test that we can still call with no options
-		result1 := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		result1 := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 		if result1.Name != "TestStruct" {
 			t.Error("Function call with no options failed")
 		}
 
 		// Test that we can still call with options (variadic remains compatible)
 		opts := router.ExtractSchemaFromTypeOptions{}
-		result2 := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result2 := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 		if result2.Name != "TestStruct" {
 			t.Error("Function call with empty options failed")
 		}
@@ -509,7 +507,7 @@ func TestBackwardCompatibility(t *testing.T) {
 			Field string `json:"field"`
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 		prop := result.Properties["field"]
 
 		// New fields should be empty/nil by default (backward compatible)
@@ -581,7 +579,7 @@ func TestBackwardCompatibility(t *testing.T) {
 
 	t.Run("Complex relationships unchanged", func(t *testing.T) {
 		// Use the existing User struct from the test file
-		result := router.ExtractSchemaFromType(reflect.TypeOf(User{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[User]())
 
 		// Verify relationships are still extracted correctly
 		if len(result.Relationships) == 0 {
@@ -623,7 +621,7 @@ func TestBackwardCompatibility(t *testing.T) {
 			Metadata  map[string]any `json:"metadata"`
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(SpecialTypesStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[SpecialTypesStruct]())
 
 		// UUID should have correct type and format
 		if uuidProp, ok := result.Properties["uuid"]; ok {
@@ -683,7 +681,7 @@ func TestBackwardCompatibility(t *testing.T) {
 			Field3 string `crud:"crud_only"`
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TagPriorityStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TagPriorityStruct]())
 
 		// JSON tag should take priority over bun tag
 		if _, ok := result.Properties["json_name"]; !ok {
@@ -716,10 +714,10 @@ func TestExtendedOptions(t *testing.T) {
 	t.Run("Default values work correctly", func(t *testing.T) {
 		// Test with empty options struct
 		opts := router.ExtractSchemaFromTypeOptions{}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should behave exactly like no options
-		defaultResult := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		defaultResult := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 
 		// Compare key properties to ensure identical behavior
 		if result.Name != defaultResult.Name {
@@ -742,7 +740,7 @@ func TestExtendedOptions(t *testing.T) {
 		}
 
 		// Should not panic or error when options are set
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Basic validation that it still works
 		if result.Name != "TestStruct" {
@@ -770,7 +768,7 @@ func TestExtendedOptions(t *testing.T) {
 		}
 
 		// Should not panic or error when options are set
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Basic validation that it still works
 		if result.Name != "TestStruct" {
@@ -799,15 +797,15 @@ func TestExtendedOptions(t *testing.T) {
 		}
 
 		opts := router.ExtractSchemaFromTypeOptions{
-			SkipUnexportedFields: boolPtr(false), // Allow unexported fields
-			SkipAnonymousFields:  boolPtr(false), // Allow anonymous fields
+			SkipUnexportedFields: new(false), // Allow unexported fields
+			SkipAnonymousFields:  new(false), // Allow anonymous fields
 			CustomFieldFilter:    customFieldFilter,
 			FieldNameTransformer: fieldNameTransformer,
 			PropertyTypeMapper:   propertyTypeMapper,
 		}
 
 		// Should not panic or error when options are set
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Basic validation that it still works
 		if result.Name != "TestStruct" {
@@ -838,15 +836,15 @@ func TestExtendedOptions(t *testing.T) {
 			TagPriority: []string{"validate", "json", "bun"},
 
 			// Field filtering and transformation
-			SkipUnexportedFields: boolPtr(false),
-			SkipAnonymousFields:  boolPtr(false),
+			SkipUnexportedFields: new(false),
+			SkipAnonymousFields:  new(false),
 			CustomFieldFilter:    func(field reflect.StructField) bool { return true },
 			FieldNameTransformer: func(fieldName string) string { return fieldName },
 			PropertyTypeMapper:   func(t reflect.Type) router.PropertyInfo { return router.PropertyInfo{} },
 		}
 
 		// Should not panic or error when all options are set
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Basic validation that it still works
 		if result.Name != "TestStruct" {
@@ -860,7 +858,7 @@ func TestExtendedOptions(t *testing.T) {
 	t.Run("Default values match TDD specification", func(t *testing.T) {
 		// Test that the default values match the TDD plan specification
 		opts := router.ExtractSchemaFromTypeOptions{}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Based on TDD plan, these should be the defaults:
 		// - IncludeOriginalNames: false
@@ -908,9 +906,9 @@ func TestCustomTagHandlers(t *testing.T) {
 		}
 
 		rules := make(map[string]any)
-		parts := strings.Split(tag, ",")
+		parts := strings.SplitSeq(tag, ",")
 
-		for _, part := range parts {
+		for part := range parts {
 			part = strings.TrimSpace(part)
 			if part == "required" {
 				rules["required"] = true
@@ -918,12 +916,12 @@ func TestCustomTagHandlers(t *testing.T) {
 				rules["email"] = true
 			} else if part == "optional" {
 				rules["optional"] = true
-			} else if strings.HasPrefix(part, "min=") {
-				if minVal := strings.TrimPrefix(part, "min="); minVal != "" {
+			} else if after, ok := strings.CutPrefix(part, "min="); ok {
+				if minVal := after; minVal != "" {
 					rules["min"] = minVal
 				}
-			} else if strings.HasPrefix(part, "max=") {
-				if maxVal := strings.TrimPrefix(part, "max="); maxVal != "" {
+			} else if after, ok := strings.CutPrefix(part, "max="); ok {
+				if maxVal := after; maxVal != "" {
 					rules["max"] = maxVal
 				}
 			}
@@ -958,7 +956,7 @@ func TestCustomTagHandlers(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Test ID field with validation rules
 		if idProp, ok := result.Properties["id"]; ok {
@@ -1051,7 +1049,7 @@ func TestCustomTagHandlers(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(EmptyTagStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[EmptyTagStruct](), opts)
 
 		// Check that empty tags don't create entries
 		for fieldName, prop := range result.Properties {
@@ -1078,7 +1076,7 @@ func TestCustomTagHandlers(t *testing.T) {
 		}
 
 		// Should not panic when encountering tags without handlers
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStructWithUnhandledTag{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStructWithUnhandledTag](), opts)
 
 		if fieldProp, ok := result.Properties["field"]; ok {
 			if fieldProp.CustomTagData != nil {
@@ -1099,7 +1097,7 @@ func TestCustomTagHandlers(t *testing.T) {
 		}
 
 		// Should not panic
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should work normally but without custom tag processing
 		if len(result.Properties) == 0 {
@@ -1122,7 +1120,7 @@ func TestCustomTagHandlers(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Serialize to JSON
 		jsonBytes, err := json.Marshal(result)
@@ -1168,7 +1166,7 @@ func TestTagPriorityProcessing(t *testing.T) {
 
 	t.Run("Default tag priority (json, bun, crud)", func(t *testing.T) {
 		// Test with default tag priority
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 
 		// Field1 should use json tag (jsonName) since json has priority over xml and yaml
 		if _, ok := result.Properties["jsonName"]; !ok {
@@ -1212,7 +1210,7 @@ func TestTagPriorityProcessing(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			TagPriority: []string{"yaml", "xml", "json"},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Field1 should use yaml tag (yamlName) since yaml has highest priority
 		if _, ok := result.Properties["yamlName"]; !ok {
@@ -1256,7 +1254,7 @@ func TestTagPriorityProcessing(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			TagPriority: []string{"bun", "crud", "json"},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Field1 has no bun or crud tags, should use json tag
 		if _, ok := result.Properties["jsonName"]; !ok {
@@ -1292,7 +1290,7 @@ func TestTagPriorityProcessing(t *testing.T) {
 		}
 
 		// Test with default priority (json first)
-		result1 := router.ExtractSchemaFromType(reflect.TypeOf(OmitemptyTestStruct{}))
+		result1 := router.ExtractSchemaFromType(reflect.TypeFor[OmitemptyTestStruct]())
 
 		// Field1 uses json tag which has omitempty, so should not be required
 		if field1Prop, ok := result1.Properties["jsonName"]; ok {
@@ -1312,7 +1310,7 @@ func TestTagPriorityProcessing(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			TagPriority: []string{"yaml", "json"},
 		}
-		result2 := router.ExtractSchemaFromType(reflect.TypeOf(OmitemptyTestStruct{}), opts)
+		result2 := router.ExtractSchemaFromType(reflect.TypeFor[OmitemptyTestStruct](), opts)
 
 		// Field1 uses yaml tag which has no omitempty, so might be required
 		if _, ok := result2.Properties["yamlName"]; !ok {
@@ -1333,7 +1331,7 @@ func TestTagPriorityProcessing(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			TagPriority: []string{}, // Empty priority list
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// All fields should use their Go field names when no tag priority is set
 		expectedFields := []string{"Field1", "Field2", "Field3", "Field4", "Field5"}
@@ -1348,7 +1346,7 @@ func TestTagPriorityProcessing(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			TagPriority: []string{"nonexistent", "json", "bun"},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should fall back to next priority (json) since "nonexistent" tag doesn't exist
 		// Field1 should use json tag
@@ -1377,7 +1375,7 @@ func TestCustomFieldFiltering(t *testing.T) {
 
 	t.Run("Default behavior: skip unexported fields", func(t *testing.T) {
 		// Default options should skip unexported fields
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 
 		// Should not include unexported field
 		if _, exists := result.Properties["internalField"]; exists {
@@ -1395,9 +1393,9 @@ func TestCustomFieldFiltering(t *testing.T) {
 
 	t.Run("SkipUnexportedFields=false: include unexported fields", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
-			SkipUnexportedFields: boolPtr(false), // Include unexported fields
+			SkipUnexportedFields: new(false), // Include unexported fields
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should include unexported field now
 		if _, exists := result.Properties["internalField"]; !exists {
@@ -1415,13 +1413,13 @@ func TestCustomFieldFiltering(t *testing.T) {
 
 	t.Run("CustomFieldFilter: exclude fields with internal prefix", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
-			SkipUnexportedFields: boolPtr(false), // Include unexported fields
+			SkipUnexportedFields: new(false), // Include unexported fields
 			CustomFieldFilter: func(field reflect.StructField) bool {
 				// Custom logic: exclude fields that start with "internal" (case-insensitive)
 				return !strings.HasPrefix(strings.ToLower(field.Name), "internal")
 			},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should exclude fields starting with "internal"
 		excludedFields := []string{"internalField", "internal_data"}
@@ -1450,7 +1448,7 @@ func TestCustomFieldFiltering(t *testing.T) {
 					fieldName == "name"
 			},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should only include ID, Name, and ProductionField
 		expectedFields := []string{"id", "name", "production_field"}
@@ -1475,13 +1473,13 @@ func TestCustomFieldFiltering(t *testing.T) {
 
 	t.Run("CustomFieldFilter combined with SkipUnexportedFields", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
-			SkipUnexportedFields: boolPtr(true), // Skip unexported fields (default)
+			SkipUnexportedFields: new(true), // Skip unexported fields (default)
 			CustomFieldFilter: func(field reflect.StructField) bool {
 				// Additional filtering: exclude debug fields
 				return !strings.Contains(strings.ToLower(field.Name), "debug")
 			},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should not include unexported field (filtered by SkipUnexportedFields)
 		if _, exists := result.Properties["internalField"]; exists {
@@ -1514,13 +1512,13 @@ func TestCustomFieldFiltering(t *testing.T) {
 		}
 
 		opts := router.ExtractSchemaFromTypeOptions{
-			SkipAnonymousFields: boolPtr(false), // Include anonymous fields
+			SkipAnonymousFields: new(false), // Include anonymous fields
 			CustomFieldFilter: func(field reflect.StructField) bool {
 				// Custom filter: exclude anonymous fields manually
 				return !field.Anonymous
 			},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestWithEmbedded{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestWithEmbedded](), opts)
 
 		// Should not include the anonymous field despite SkipAnonymousFields=false
 		// because CustomFieldFilter excludes it
@@ -1544,7 +1542,7 @@ func TestCustomFieldFiltering(t *testing.T) {
 				return false
 			},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should have no properties
 		if len(result.Properties) != 0 {
@@ -1564,13 +1562,13 @@ func TestCustomFieldFiltering(t *testing.T) {
 
 	t.Run("CustomFieldFilter returns true for all fields", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
-			SkipUnexportedFields: boolPtr(false), // Include unexported fields
+			SkipUnexportedFields: new(false), // Include unexported fields
 			CustomFieldFilter: func(field reflect.StructField) bool {
 				// Include all fields
 				return true
 			},
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should include all fields (both exported and unexported)
 		allFields := []string{"id", "name", "email", "internalField", "internal_data", "debug_info", "production_field"}
@@ -1583,10 +1581,10 @@ func TestCustomFieldFiltering(t *testing.T) {
 
 	t.Run("CustomFieldFilter with nil function", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
-			SkipUnexportedFields: boolPtr(true), // Explicitly set to true since providing options overrides defaults
-			CustomFieldFilter:    nil,           // nil function should not cause panic
+			SkipUnexportedFields: new(true), // Explicitly set to true since providing options overrides defaults
+			CustomFieldFilter:    nil,       // nil function should not cause panic
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should work normally without custom filtering
 		if len(result.Properties) == 0 {
@@ -1626,14 +1624,14 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 	t.Run("Custom property type mapper overrides default behavior", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			PropertyTypeMapper: func(t reflect.Type) router.PropertyInfo {
-				if t == reflect.TypeOf(CustomType{}) {
+				if t == reflect.TypeFor[CustomType]() {
 					return router.PropertyInfo{Type: "custom", Format: "special"}
 				}
 				return router.PropertyInfo{} // Use default handling
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Test that CustomType field uses custom mapping
 		if customProp, ok := result.Properties["custom_field"]; ok {
@@ -1669,11 +1667,11 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			PropertyTypeMapper: func(t reflect.Type) router.PropertyInfo {
 				switch t {
-				case reflect.TypeOf(CustomType{}):
+				case reflect.TypeFor[CustomType]():
 					return router.PropertyInfo{Type: "custom_object", Format: "special_format"}
-				case reflect.TypeOf(""):
+				case reflect.TypeFor[string]():
 					return router.PropertyInfo{Type: "custom_string", Format: "text"}
-				case reflect.TypeOf(0):
+				case reflect.TypeFor[int]():
 					return router.PropertyInfo{Type: "custom_integer", Format: "number"}
 				default:
 					return router.PropertyInfo{} // Use default handling
@@ -1681,7 +1679,7 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Test CustomType mapping
 		if customProp, ok := result.Properties["custom_field"]; ok {
@@ -1722,7 +1720,7 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// All fields should use default behavior
 		if stringProp, ok := result.Properties["string_field"]; ok {
@@ -1748,14 +1746,14 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			PropertyTypeMapper: func(t reflect.Type) router.PropertyInfo {
 				// Handle pointer to string specially
-				if t == reflect.TypeOf((*string)(nil)) {
+				if t == reflect.TypeFor[*string]() {
 					return router.PropertyInfo{Type: "custom_pointer_string", Format: "nullable_text"}
 				}
 				return router.PropertyInfo{} // Use default handling
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Test that pointer field uses custom mapping
 		if pointerProp, ok := result.Properties["pointer_field"]; ok {
@@ -1780,7 +1778,7 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 	t.Run("Custom property type mapper preserves other PropertyInfo fields", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			PropertyTypeMapper: func(t reflect.Type) router.PropertyInfo {
-				if t == reflect.TypeOf(CustomType{}) {
+				if t == reflect.TypeFor[CustomType]() {
 					return router.PropertyInfo{
 						Type:        "custom",
 						Format:      "special",
@@ -1792,7 +1790,7 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Test that custom mapping preserves all set fields
 		if customProp, ok := result.Properties["custom_field"]; ok {
@@ -1819,7 +1817,7 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 		}
 
 		// Should not panic
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should work normally with default behavior
 		if len(result.Properties) == 0 {
@@ -1845,14 +1843,14 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 			IncludeOriginalTypes: true,
 			IncludeTypeMetadata:  true,
 			PropertyTypeMapper: func(t reflect.Type) router.PropertyInfo {
-				if t == reflect.TypeOf(CustomType{}) {
+				if t == reflect.TypeFor[CustomType]() {
 					return router.PropertyInfo{Type: "custom", Format: "special"}
 				}
 				return router.PropertyInfo{} // Use default handling
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Test that custom mapping works with metadata options
 		if customProp, ok := result.Properties["custom_field"]; ok {
@@ -1876,14 +1874,14 @@ func TestCustomPropertyTypeMapping(t *testing.T) {
 	t.Run("Custom property type mapper JSON serialization", func(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			PropertyTypeMapper: func(t reflect.Type) router.PropertyInfo {
-				if t == reflect.TypeOf(CustomType{}) {
+				if t == reflect.TypeFor[CustomType]() {
 					return router.PropertyInfo{Type: "custom", Format: "special"}
 				}
 				return router.PropertyInfo{} // Use default handling
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Serialize to JSON
 		jsonBytes, err := json.Marshal(result)

@@ -101,12 +101,12 @@ func TestRegressionBug4HubConcurrentMapAccess(t *testing.T) {
 
 	// Perform concurrent operations that read from the clients map
 	// In the original bug, this would cause "concurrent map read and map write" panics
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
 
-			for j := 0; j < operations; j++ {
+			for j := range operations {
 				// Mix of operations that access the clients map
 				switch j % 4 {
 				case 0:
@@ -121,7 +121,7 @@ func TestRegressionBug4HubConcurrentMapAccess(t *testing.T) {
 					hub.Broadcast([]byte("test message"))
 				case 3:
 					// JSON broadcast operations (reads clients map internally)
-					hub.BroadcastJSON(map[string]interface{}{
+					hub.BroadcastJSON(map[string]any{
 						"worker": workerID,
 						"op":     j,
 					})
@@ -170,13 +170,11 @@ func TestCriticalBugsIntegration(t *testing.T) {
 
 	// Concurrent hub operations should not cause panics
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			hub.ClientCount()
 			hub.BroadcastJSON(map[string]string{"test": "integration"})
-		}()
+		})
 	}
 	wg.Wait()
 

@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"strconv"
@@ -211,15 +212,11 @@ func (ma *MetadataAggregator) Clone() *MetadataAggregator {
 	}
 	if len(ma.relationProviders) > 0 {
 		cloned.relationProviders = make(map[reflect.Type]RelationMetadataProvider, len(ma.relationProviders))
-		for t, provider := range ma.relationProviders {
-			cloned.relationProviders[t] = provider
-		}
+		maps.Copy(cloned.relationProviders, ma.relationProviders)
 	}
 	if len(ma.RelationDescriptors) > 0 {
 		cloned.RelationDescriptors = make(map[string]*RelationDescriptor, len(ma.RelationDescriptors))
-		for name, descriptor := range ma.RelationDescriptors {
-			cloned.RelationDescriptors[name] = descriptor
-		}
+		maps.Copy(cloned.RelationDescriptors, ma.RelationDescriptors)
 	}
 	if ma.uiOptions != nil {
 		cloned.uiOptions = ma.uiOptions
@@ -355,9 +352,7 @@ func (ma *MetadataAggregator) Compile() {
 
 			if existingPath, exists := paths[normalizedPath]; exists {
 				existing := existingPath.(map[string]any)
-				for k, v := range pathItem {
-					existing[k] = v
-				}
+				maps.Copy(existing, pathItem)
 			} else {
 				paths[normalizedPath] = pathItem
 			}
@@ -881,15 +876,11 @@ func cloneEndpointHint(hint *EndpointHint) *EndpointHint {
 	clone := *hint
 	if len(hint.Params) > 0 {
 		clone.Params = make(map[string]string, len(hint.Params))
-		for k, v := range hint.Params {
-			clone.Params[k] = v
-		}
+		maps.Copy(clone.Params, hint.Params)
 	}
 	if len(hint.DynamicParams) > 0 {
 		clone.DynamicParams = make(map[string]string, len(hint.DynamicParams))
-		for k, v := range hint.DynamicParams {
-			clone.DynamicParams[k] = v
-		}
+		maps.Copy(clone.DynamicParams, hint.DynamicParams)
 	}
 	return &clone
 }

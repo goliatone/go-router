@@ -62,7 +62,7 @@ func ValidateRouteDefinitionsWithOptions(routes []*RouteDefinition, opts RouteVa
 	var errs []error
 	opts = opts.withDefaults()
 
-	for i := 0; i < len(routes); i++ {
+	for i := range routes {
 		for j := i + 1; j < len(routes); j++ {
 			left := routes[i]
 			right := routes[j]
@@ -152,7 +152,7 @@ func detectBareIDParamLint(paramRoute, staticRoute *RouteDefinition) error {
 			continue
 		}
 
-		for k := 0; k < len(paramParts); k++ {
+		for k := range paramParts {
 			if k == i {
 				continue
 			}

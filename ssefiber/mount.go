@@ -315,15 +315,9 @@ func buildConfig(opts ...Option) Config {
 	cfg.HeartbeatQueryParam = normalizeQueryParam(cfg.HeartbeatQueryParam, defaultHeartbeatQueryParam)
 	cfg.RetryQueryParam = normalizeQueryParam(cfg.RetryQueryParam, defaultRetryQueryParam)
 	cfg.MinHeartbeatInterval = normalizeDuration(cfg.MinHeartbeatInterval, defaultMinHeartbeatInterval)
-	cfg.MaxHeartbeatInterval = normalizeDuration(cfg.MaxHeartbeatInterval, defaultMaxHeartbeatInterval)
-	if cfg.MaxHeartbeatInterval < cfg.MinHeartbeatInterval {
-		cfg.MaxHeartbeatInterval = cfg.MinHeartbeatInterval
-	}
+	cfg.MaxHeartbeatInterval = max(normalizeDuration(cfg.MaxHeartbeatInterval, defaultMaxHeartbeatInterval), cfg.MinHeartbeatInterval)
 	cfg.MinRetryInterval = normalizeDuration(cfg.MinRetryInterval, defaultMinRetryInterval)
-	cfg.MaxRetryInterval = normalizeDuration(cfg.MaxRetryInterval, defaultMaxRetryInterval)
-	if cfg.MaxRetryInterval < cfg.MinRetryInterval {
-		cfg.MaxRetryInterval = cfg.MinRetryInterval
-	}
+	cfg.MaxRetryInterval = max(normalizeDuration(cfg.MaxRetryInterval, defaultMaxRetryInterval), cfg.MinRetryInterval)
 	cfg.HeartbeatInterval = clampDuration(
 		normalizeDuration(cfg.HeartbeatInterval, defaultHeartbeatInterval),
 		cfg.MinHeartbeatInterval,
@@ -404,8 +398,8 @@ func writeFrame(w io.Writer, id string, event string, data []byte) error {
 		}
 	}
 
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(data), "\n")
+	for line := range lines {
 		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
 			return err
 		}

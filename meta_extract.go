@@ -95,7 +95,7 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 		}
 	}
 
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -109,8 +109,8 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 		info     *RelationshipInfo
 	}
 
-	for i := range t.NumField() {
-		field := t.Field(i)
+	for field := range t.Fields() {
+		field := field
 
 		if *opt.SkipUnexportedFields && !field.IsExported() {
 			continue
@@ -161,8 +161,8 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 			isRelationshipField bool
 		)
 
-		if idx := strings.Index(bunTag, "m2m:"); idx != -1 {
-			pivotStr := bunTag[idx+len("m2m:"):]
+		if _, after, ok := strings.Cut(bunTag, "m2m:"); ok {
+			pivotStr := after
 			pname, remain := splitByComa(pivotStr)
 
 			sourceTable := opt.GetTableName(t)
@@ -224,7 +224,7 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 				relInfo.Cardinality = "many"
 			}
 
-			if idx := strings.Index(bunTag, "join:"); idx != -1 {
+			if found := strings.Contains(bunTag, "join:"); found {
 				joinPart := extractSubAfter(bunTag, "join:")
 				relInfo.JoinClause = joinPart
 
@@ -282,7 +282,7 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 		if !prop.Required {
 			prop.Required = isRequired
 		}
-		if !prop.Nullable && field.Type.Kind() == reflect.Ptr {
+		if !prop.Nullable && field.Type.Kind() == reflect.Pointer {
 			prop.Nullable = true
 		}
 		if !prop.ReadOnly {
@@ -623,18 +623,18 @@ func addKeyValueDirective(target map[string]string, directive string) map[string
 }
 
 func splitByComa(s string) (before, after string) {
-	if idx := strings.Index(s, ","); idx != -1 {
-		return s[:idx], s[idx+1:]
+	if before0, after0, ok := strings.Cut(s, ","); ok {
+		return before0, after0
 	}
 	return s, ""
 }
 
 func extractSubAfter(s, prefix string) string {
-	idx := strings.Index(s, prefix)
-	if idx == -1 {
+	_, after, ok := strings.Cut(s, prefix)
+	if !ok {
 		return ""
 	}
-	return s[idx+len(prefix):]
+	return after
 }
 
 func getBaseTypeName(t reflect.Type) string {
@@ -642,7 +642,7 @@ func getBaseTypeName(t reflect.Type) string {
 }
 
 func baseReflectType(t reflect.Type) reflect.Type {
-	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 		t = t.Elem()
 	}
 	return t
@@ -652,7 +652,7 @@ func isSliceType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Slice, reflect.Array:
 		return true
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return isSliceType(t.Elem())
 	default:
 		return false
@@ -675,7 +675,7 @@ func buildTransformPath(t reflect.Type) []string {
 
 	for {
 		switch t.Kind() {
-		case reflect.Ptr:
+		case reflect.Pointer:
 			path = append(path, "pointer")
 			t = t.Elem()
 		case reflect.Slice, reflect.Array:
@@ -699,7 +699,7 @@ func buildTransformPath(t reflect.Type) []string {
 // extractPropertyInfoWithTransformPath does the actual property extraction with a pre-built path
 func extractPropertyInfoWithTransformPath(t reflect.Type, transformPath []string, includeTypeMetadata bool) PropertyInfo {
 	// Handle pointer types
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		return extractPropertyInfoWithTransformPath(t.Elem(), transformPath, includeTypeMetadata)
 	}
 
@@ -797,13 +797,13 @@ func extractPropertyInfoWithTransformPath(t reflect.Type, transformPath []string
 // handleSpecialType handles special Go types that need specific OpenAPI formats
 func handleSpecialType(t reflect.Type) (PropertyInfo, bool) {
 	switch t {
-	case reflect.TypeOf(time.Time{}):
+	case reflect.TypeFor[time.Time]():
 		return PropertyInfo{
 			Type:   "string",
 			Format: "date-time",
 		}, true
 
-	case reflect.TypeOf(uuid.UUID{}):
+	case reflect.TypeFor[uuid.UUID]():
 		return PropertyInfo{
 			Type:   "string",
 			Format: "uuid",
@@ -826,20 +826,20 @@ func isWriteOnly(field reflect.StructField) bool {
 // getTableName derives table name from struct type following Bun conventions
 func getTableName(t reflect.Type) string {
 	// Handle pointer and slice types
-	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 		t = t.Elem()
 	}
 
 	// Check for bun.BaseModel embedded struct with table tag
 	if t.Kind() == reflect.Struct {
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
+		for field := range t.Fields() {
+			field := field
 			if field.Anonymous && field.Type.Name() == "BaseModel" {
 				if tableTag := field.Tag.Get("bun"); tableTag != "" {
-					parts := strings.Split(tableTag, ",")
-					for _, part := range parts {
-						if strings.HasPrefix(part, "table:") {
-							return strings.TrimPrefix(part, "table:")
+					parts := strings.SplitSeq(tableTag, ",")
+					for part := range parts {
+						if after, ok := strings.CutPrefix(part, "table:"); ok {
+							return after
 						}
 					}
 				}
@@ -992,8 +992,8 @@ func getFieldNameFromTags(field reflect.StructField, tagPriority []string) strin
 	for _, tagName := range tagPriority {
 		if tagValue := field.Tag.Get(tagName); tagValue != "" {
 			// Extract the field name part (before any comma-separated options)
-			if idx := strings.IndexByte(tagValue, ','); idx != -1 {
-				return tagValue[:idx]
+			if before, _, ok := strings.Cut(tagValue, ","); ok {
+				return before
 			}
 			return tagValue
 		}

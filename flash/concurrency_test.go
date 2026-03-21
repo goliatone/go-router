@@ -23,10 +23,10 @@ func TestFlash_ConcurrentAccess_DoesNotRace(t *testing.T) {
 
 	errCh := make(chan error, goroutines*iterations)
 
-	for g := 0; g < goroutines; g++ {
+	for g := range goroutines {
 		go func(g int) {
 			defer wg.Done()
-			for i := 0; i < iterations; i++ {
+			for i := range iterations {
 				ctx := router.NewMockContext()
 				ctx.On("Cookie", mock.Anything).Return(nil)
 				ctx.On("Locals", mock.Anything, mock.Anything).Return(nil)

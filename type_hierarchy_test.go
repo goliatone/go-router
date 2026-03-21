@@ -23,7 +23,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTypeMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Test complex type transformation path
 		if prop, ok := result.Properties["data"]; ok {
@@ -61,7 +61,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 
 	t.Run("IncludeTypeMetadata disabled by default", func(t *testing.T) {
 		// Use default options (should not include type metadata)
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 
 		// TransformPath and GoPackage should be empty when option is disabled
 		if prop, ok := result.Properties["data"]; ok {
@@ -88,7 +88,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTypeMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(PointerStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[PointerStruct](), opts)
 
 		// Test single pointer
 		if prop, ok := result.Properties["single_pointer"]; ok {
@@ -142,7 +142,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTypeMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(SliceStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[SliceStruct](), opts)
 
 		// Test string slice
 		if prop, ok := result.Properties["string_slice"]; ok {
@@ -187,7 +187,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTypeMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(MapStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[MapStruct](), opts)
 
 		// Test string map
 		if prop, ok := result.Properties["string_map"]; ok {
@@ -222,7 +222,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTypeMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(ComplexStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[ComplexStruct](), opts)
 
 		// Test super complex type: *[]*map[string]*[]CustomType
 		if prop, ok := result.Properties["super_complex"]; ok {
@@ -244,7 +244,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTypeMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(BuiltinStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[BuiltinStruct](), opts)
 
 		// Built-in types should not have package information
 		for fieldName, prop := range result.Properties {
@@ -265,7 +265,7 @@ func TestTypeHierarchyMetadata(t *testing.T) {
 			IncludeTagMetadata:   true,
 			IncludeTypeMetadata:  true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(IntegrationStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[IntegrationStruct](), opts)
 
 		// Verify all metadata types are populated together
 		if prop, ok := result.Properties["complex_field"]; ok {

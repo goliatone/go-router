@@ -198,7 +198,7 @@ func (d *DeadlineManager) pingLoop() {
 // sendPing sends a ping message
 func (d *DeadlineManager) sendPing() error {
 	d.ctx.SetWriteDeadline(time.Now().Add(d.writeWait))
-	return d.ctx.WritePing([]byte(fmt.Sprintf("%d", time.Now().Unix())))
+	return d.ctx.WritePing(fmt.Appendf(nil, "%d", time.Now().Unix()))
 }
 
 // HealthCheck performs a health check on the connection

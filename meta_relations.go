@@ -2,6 +2,7 @@ package router
 
 import (
 	"errors"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -141,8 +142,8 @@ func (p *DefaultRelationProvider) buildNode(t reflect.Type, name string, visited
 
 	visited[base] = true
 
-	for i := 0; i < base.NumField(); i++ {
-		field := base.Field(i)
+	for field := range base.Fields() {
+		field := field
 		if !field.IsExported() {
 			continue
 		}
@@ -156,7 +157,7 @@ func (p *DefaultRelationProvider) buildNode(t reflect.Type, name string, visited
 		}
 
 		childType := field.Type
-		for childType.Kind() == reflect.Ptr || childType.Kind() == reflect.Slice || childType.Kind() == reflect.Array {
+		for childType.Kind() == reflect.Pointer || childType.Kind() == reflect.Slice || childType.Kind() == reflect.Array {
 			childType = childType.Elem()
 		}
 
@@ -207,8 +208,8 @@ func defaultFieldResolver(t reflect.Type) map[string]string {
 
 	fields := make(map[string]string)
 
-	for i := 0; i < base.NumField(); i++ {
-		field := base.Field(i)
+	for field := range base.Fields() {
+		field := field
 		if !field.IsExported() {
 			continue
 		}
@@ -218,9 +219,7 @@ func defaultFieldResolver(t reflect.Type) map[string]string {
 
 		if field.Anonymous {
 			embedded := defaultFieldResolver(field.Type)
-			for k, v := range embedded {
-				fields[k] = v
-			}
+			maps.Copy(fields, embedded)
 			continue
 		}
 
@@ -271,7 +270,7 @@ func displayName(t reflect.Type, fallback string) string {
 }
 
 func indirectType(t reflect.Type) reflect.Type {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t

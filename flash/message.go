@@ -90,7 +90,7 @@ func GetMessagesFrom(data router.ViewContext) ([]Message, bool) {
 	}
 
 	out := make([]Message, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		t, _ := getString(data, fmt.Sprintf("toast_%d_type", i))
 		title, _ := getString(data, fmt.Sprintf("toast_%d_title", i))
 		text, _ := getString(data, fmt.Sprintf("toast_%d_text", i))

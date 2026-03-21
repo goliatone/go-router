@@ -19,7 +19,7 @@ func TestMetadataAggregatorIncludesSharedParameters(t *testing.T) {
 		Title string `json:"title"`
 	}
 
-	metadata := router.GetResourceMetadata(reflect.TypeOf(Book{}))
+	metadata := router.GetResourceMetadata(reflect.TypeFor[Book]())
 	if len(metadata.Parameters) == 0 {
 		t.Fatalf("expected shared parameters to be populated, got none")
 	}

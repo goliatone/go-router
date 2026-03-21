@@ -24,7 +24,7 @@ type echoData struct {
 
 type strictValueRequest struct {
 	Data echoData           `json:"data"`
-	Meta cmdrpc.RequestMeta `json:"meta,omitempty"`
+	Meta cmdrpc.RequestMeta `json:"meta"`
 }
 
 type strictValueMethodServer struct {

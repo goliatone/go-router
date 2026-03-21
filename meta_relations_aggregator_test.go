@@ -2,6 +2,7 @@ package router
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -24,7 +25,7 @@ func (s relationStubMetadataProvider) GetMetadata() ResourceMetadata {
 func TestMetadataAggregatorUsesDefaultRelationProvider(t *testing.T) {
 	resetRelationFilters()
 
-	resourceType := reflect.TypeOf(relationTestAuthor{})
+	resourceType := reflect.TypeFor[relationTestAuthor]()
 	descriptor := &RelationDescriptor{Includes: []string{"books"}}
 
 	aggregator := NewMetadataAggregator().
@@ -52,7 +53,7 @@ func TestMetadataAggregatorUsesDefaultRelationProvider(t *testing.T) {
 func TestMetadataAggregatorPrefersOverrideProvider(t *testing.T) {
 	resetRelationFilters()
 
-	resourceType := reflect.TypeOf(relationTestAuthor{})
+	resourceType := reflect.TypeFor[relationTestAuthor]()
 	defaultDescriptor := &RelationDescriptor{Includes: []string{"default"}}
 	overrideDescriptor := &RelationDescriptor{Includes: []string{"override"}}
 
@@ -81,7 +82,7 @@ func TestMetadataAggregatorPrefersOverrideProvider(t *testing.T) {
 func TestMetadataAggregatorAppliesFilters(t *testing.T) {
 	resetRelationFilters()
 
-	resourceType := reflect.TypeOf(relationTestAuthor{})
+	resourceType := reflect.TypeFor[relationTestAuthor]()
 	descriptor := &RelationDescriptor{Includes: []string{"books"}}
 
 	RegisterRelationFilter(func(_ reflect.Type, desc *RelationDescriptor) *RelationDescriptor {
@@ -110,13 +111,7 @@ func TestMetadataAggregatorAppliesFilters(t *testing.T) {
 	if got == nil {
 		t.Fatalf("expected descriptor after filters")
 	}
-	found := false
-	for _, include := range got.Includes {
-		if include == "filtered" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(got.Includes, "filtered")
 	if !found {
 		t.Fatalf("expected filter to append 'filtered' to includes, got %v", got.Includes)
 	}

@@ -24,9 +24,9 @@ type DeeplyNestedStruct struct {
 }
 
 type NestedObject struct {
-	Name   string                 `json:"name" validate:"required,min=1"`
-	Values map[string]interface{} `json:"values"`
-	Links  []*LinkObject          `json:"links" bun:"rel:has-many"`
+	Name   string         `json:"name" validate:"required,min=1"`
+	Values map[string]any `json:"values"`
+	Links  []*LinkObject  `json:"links" bun:"rel:has-many"`
 }
 
 type LinkObject struct {
@@ -84,28 +84,28 @@ type IntegrationCustomType struct {
 // Real-world like models from actual projects
 type UserAccountModel struct {
 	IntegrationBaseModel
-	ID                uuid.UUID              `json:"id" bun:"id,pk,type:uuid,default:gen_random_uuid()" validate:"required"`
-	Email             string                 `json:"email" bun:"email,unique,notnull" validate:"required,email"`
-	Username          string                 `json:"username" bun:"username,unique,notnull" validate:"required,min=3,max=50"`
-	PasswordHash      string                 `json:"-" bun:"password_hash,notnull" crud:"-"`
-	FirstName         string                 `json:"first_name" bun:"first_name" validate:"required,min=1,max=100"`
-	LastName          string                 `json:"last_name" bun:"last_name" validate:"required,min=1,max=100"`
-	PhoneNumber       *string                `json:"phone_number,omitempty" bun:"phone_number" validate:"omitempty,phone"`
-	DateOfBirth       *time.Time             `json:"date_of_birth,omitempty" bun:"date_of_birth"`
-	IsActive          bool                   `json:"is_active" bun:"is_active,default:true"`
-	IsVerified        bool                   `json:"is_verified" bun:"is_verified,default:false"`
-	LastLoginAt       *time.Time             `json:"last_login_at,omitempty" bun:"last_login_at"`
-	PreferencesJSON   map[string]interface{} `json:"preferences" bun:"preferences,type:jsonb"`
-	Profile           *UserProfile           `json:"profile,omitempty" bun:"rel:has-one,join:id=user_id"`
-	Orders            []Order                `json:"orders,omitempty" bun:"rel:has-many,join:id=user_id"`
-	Addresses         []Address              `json:"addresses,omitempty" bun:"rel:has-many,join:id=user_id"`
-	PaymentMethods    []PaymentMethod        `json:"payment_methods,omitempty" bun:"rel:has-many,join:id=user_id"`
-	Roles             []Role                 `json:"roles,omitempty" bun:"m2m:user_roles,join:User=Role"`
-	Teams             []Team                 `json:"teams,omitempty" bun:"m2m:user_teams,join:User=Team"`
-	Notifications     []Notification         `json:"notifications,omitempty" bun:"rel:has-many,join:id=user_id"`
-	ActivityLogs      []ActivityLog          `json:"activity_logs,omitempty" bun:"rel:has-many,join:id=user_id"`
-	internalField     string                 // unexported field for testing
-	InternalDebugData string                 `json:"internal_debug_data" internal:"true"`
+	ID                uuid.UUID       `json:"id" bun:"id,pk,type:uuid,default:gen_random_uuid()" validate:"required"`
+	Email             string          `json:"email" bun:"email,unique,notnull" validate:"required,email"`
+	Username          string          `json:"username" bun:"username,unique,notnull" validate:"required,min=3,max=50"`
+	PasswordHash      string          `json:"-" bun:"password_hash,notnull" crud:"-"`
+	FirstName         string          `json:"first_name" bun:"first_name" validate:"required,min=1,max=100"`
+	LastName          string          `json:"last_name" bun:"last_name" validate:"required,min=1,max=100"`
+	PhoneNumber       *string         `json:"phone_number,omitempty" bun:"phone_number" validate:"omitempty,phone"`
+	DateOfBirth       *time.Time      `json:"date_of_birth,omitempty" bun:"date_of_birth"`
+	IsActive          bool            `json:"is_active" bun:"is_active,default:true"`
+	IsVerified        bool            `json:"is_verified" bun:"is_verified,default:false"`
+	LastLoginAt       *time.Time      `json:"last_login_at,omitempty" bun:"last_login_at"`
+	PreferencesJSON   map[string]any  `json:"preferences" bun:"preferences,type:jsonb"`
+	Profile           *UserProfile    `json:"profile,omitempty" bun:"rel:has-one,join:id=user_id"`
+	Orders            []Order         `json:"orders,omitempty" bun:"rel:has-many,join:id=user_id"`
+	Addresses         []Address       `json:"addresses,omitempty" bun:"rel:has-many,join:id=user_id"`
+	PaymentMethods    []PaymentMethod `json:"payment_methods,omitempty" bun:"rel:has-many,join:id=user_id"`
+	Roles             []Role          `json:"roles,omitempty" bun:"m2m:user_roles,join:User=Role"`
+	Teams             []Team          `json:"teams,omitempty" bun:"m2m:user_teams,join:User=Team"`
+	Notifications     []Notification  `json:"notifications,omitempty" bun:"rel:has-many,join:id=user_id"`
+	ActivityLogs      []ActivityLog   `json:"activity_logs,omitempty" bun:"rel:has-many,join:id=user_id"`
+	internalField     string          // unexported field for testing
+	InternalDebugData string          `json:"internal_debug_data" internal:"true"`
 }
 
 type IntegrationBaseModel struct {
@@ -115,13 +115,13 @@ type IntegrationBaseModel struct {
 }
 
 type UserProfile struct {
-	ID         int64                  `json:"id" bun:"id,pk,autoincrement"`
-	UserID     uuid.UUID              `json:"user_id" bun:"user_id,type:uuid,notnull"`
-	AvatarURL  *string                `json:"avatar_url,omitempty" bun:"avatar_url"`
-	Bio        *string                `json:"bio,omitempty" bun:"bio"`
-	Website    *string                `json:"website,omitempty" bun:"website" validate:"omitempty,url"`
-	Location   *string                `json:"location,omitempty" bun:"location"`
-	SocialMeta map[string]interface{} `json:"social_meta" bun:"social_meta,type:jsonb"`
+	ID         int64          `json:"id" bun:"id,pk,autoincrement"`
+	UserID     uuid.UUID      `json:"user_id" bun:"user_id,type:uuid,notnull"`
+	AvatarURL  *string        `json:"avatar_url,omitempty" bun:"avatar_url"`
+	Bio        *string        `json:"bio,omitempty" bun:"bio"`
+	Website    *string        `json:"website,omitempty" bun:"website" validate:"omitempty,url"`
+	Location   *string        `json:"location,omitempty" bun:"location"`
+	SocialMeta map[string]any `json:"social_meta" bun:"social_meta,type:jsonb"`
 }
 
 type Address struct {
@@ -138,16 +138,16 @@ type Address struct {
 }
 
 type PaymentMethod struct {
-	ID             int64                  `json:"id" bun:"id,pk,autoincrement"`
-	UserID         uuid.UUID              `json:"user_id" bun:"user_id,type:uuid,notnull"`
-	Type           string                 `json:"type" bun:"type,notnull" validate:"oneof=card bank paypal crypto"`
-	Provider       string                 `json:"provider" bun:"provider,notnull"`
-	LastFour       *string                `json:"last_four,omitempty" bun:"last_four"`
-	ExpiryMonth    *int                   `json:"expiry_month,omitempty" bun:"expiry_month" validate:"omitempty,min=1,max=12"`
-	ExpiryYear     *int                   `json:"expiry_year,omitempty" bun:"expiry_year" validate:"omitempty,min=2024"`
-	IsDefault      bool                   `json:"is_default" bun:"is_default,default:false"`
-	IsVerified     bool                   `json:"is_verified" bun:"is_verified,default:false"`
-	MetadataFields map[string]interface{} `json:"metadata" bun:"metadata,type:jsonb"`
+	ID             int64          `json:"id" bun:"id,pk,autoincrement"`
+	UserID         uuid.UUID      `json:"user_id" bun:"user_id,type:uuid,notnull"`
+	Type           string         `json:"type" bun:"type,notnull" validate:"oneof=card bank paypal crypto"`
+	Provider       string         `json:"provider" bun:"provider,notnull"`
+	LastFour       *string        `json:"last_four,omitempty" bun:"last_four"`
+	ExpiryMonth    *int           `json:"expiry_month,omitempty" bun:"expiry_month" validate:"omitempty,min=1,max=12"`
+	ExpiryYear     *int           `json:"expiry_year,omitempty" bun:"expiry_year" validate:"omitempty,min=2024"`
+	IsDefault      bool           `json:"is_default" bun:"is_default,default:false"`
+	IsVerified     bool           `json:"is_verified" bun:"is_verified,default:false"`
+	MetadataFields map[string]any `json:"metadata" bun:"metadata,type:jsonb"`
 }
 
 type Role struct {
@@ -163,38 +163,38 @@ type Role struct {
 }
 
 type Team struct {
-	ID          int64                  `json:"id" bun:"id,pk,autoincrement"`
-	Name        string                 `json:"name" bun:"name,notnull" validate:"required"`
-	Description *string                `json:"description,omitempty" bun:"description"`
-	IsActive    bool                   `json:"is_active" bun:"is_active,default:true"`
-	Settings    map[string]interface{} `json:"settings" bun:"settings,type:jsonb"`
-	Members     []UserAccountModel     `json:"members,omitempty" bun:"m2m:user_teams,join:Team=User"`
-	Lead        *UserAccountModel      `json:"lead,omitempty" bun:"rel:belongs-to,join:lead_id=id"`
+	ID          int64              `json:"id" bun:"id,pk,autoincrement"`
+	Name        string             `json:"name" bun:"name,notnull" validate:"required"`
+	Description *string            `json:"description,omitempty" bun:"description"`
+	IsActive    bool               `json:"is_active" bun:"is_active,default:true"`
+	Settings    map[string]any     `json:"settings" bun:"settings,type:jsonb"`
+	Members     []UserAccountModel `json:"members,omitempty" bun:"m2m:user_teams,join:Team=User"`
+	Lead        *UserAccountModel  `json:"lead,omitempty" bun:"rel:belongs-to,join:lead_id=id"`
 }
 
 type Notification struct {
-	ID        int64                  `json:"id" bun:"id,pk,autoincrement"`
-	UserID    uuid.UUID              `json:"user_id" bun:"user_id,type:uuid,notnull"`
-	Title     string                 `json:"title" bun:"title,notnull" validate:"required"`
-	Message   string                 `json:"message" bun:"message,notnull" validate:"required"`
-	Type      string                 `json:"type" bun:"type,notnull" validate:"oneof=info warning error success"`
-	IsRead    bool                   `json:"is_read" bun:"is_read,default:false"`
-	ReadAt    *time.Time             `json:"read_at,omitempty" bun:"read_at"`
-	Data      map[string]interface{} `json:"data,omitempty" bun:"data,type:jsonb"`
-	ExpiresAt *time.Time             `json:"expires_at,omitempty" bun:"expires_at"`
+	ID        int64          `json:"id" bun:"id,pk,autoincrement"`
+	UserID    uuid.UUID      `json:"user_id" bun:"user_id,type:uuid,notnull"`
+	Title     string         `json:"title" bun:"title,notnull" validate:"required"`
+	Message   string         `json:"message" bun:"message,notnull" validate:"required"`
+	Type      string         `json:"type" bun:"type,notnull" validate:"oneof=info warning error success"`
+	IsRead    bool           `json:"is_read" bun:"is_read,default:false"`
+	ReadAt    *time.Time     `json:"read_at,omitempty" bun:"read_at"`
+	Data      map[string]any `json:"data,omitempty" bun:"data,type:jsonb"`
+	ExpiresAt *time.Time     `json:"expires_at,omitempty" bun:"expires_at"`
 }
 
 type ActivityLog struct {
-	ID         int64                  `json:"id" bun:"id,pk,autoincrement"`
-	UserID     uuid.UUID              `json:"user_id" bun:"user_id,type:uuid,notnull"`
-	Action     string                 `json:"action" bun:"action,notnull" validate:"required"`
-	Resource   string                 `json:"resource" bun:"resource,notnull" validate:"required"`
-	ResourceID *string                `json:"resource_id,omitempty" bun:"resource_id"`
-	IPAddress  string                 `json:"ip_address" bun:"ip_address" validate:"ip"`
-	UserAgent  string                 `json:"user_agent" bun:"user_agent"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty" bun:"metadata,type:jsonb"`
-	Success    bool                   `json:"success" bun:"success"`
-	ErrorMsg   *string                `json:"error_message,omitempty" bun:"error_message"`
+	ID         int64          `json:"id" bun:"id,pk,autoincrement"`
+	UserID     uuid.UUID      `json:"user_id" bun:"user_id,type:uuid,notnull"`
+	Action     string         `json:"action" bun:"action,notnull" validate:"required"`
+	Resource   string         `json:"resource" bun:"resource,notnull" validate:"required"`
+	ResourceID *string        `json:"resource_id,omitempty" bun:"resource_id"`
+	IPAddress  string         `json:"ip_address" bun:"ip_address" validate:"ip"`
+	UserAgent  string         `json:"user_agent" bun:"user_agent"`
+	Metadata   map[string]any `json:"metadata,omitempty" bun:"metadata,type:jsonb"`
+	Success    bool           `json:"success" bun:"success"`
+	ErrorMsg   *string        `json:"error_message,omitempty" bun:"error_message"`
 }
 
 // TestDeeplyNestedStructures tests schema extraction with complex nested structures
@@ -206,15 +206,15 @@ func TestDeeplyNestedStructures(t *testing.T) {
 				return nil
 			}
 			rules := make(map[string]any)
-			parts := strings.Split(tag, ",")
-			for _, part := range parts {
+			parts := strings.SplitSeq(tag, ",")
+			for part := range parts {
 				part = strings.TrimSpace(part)
 				if part == "required" {
 					rules["required"] = true
-				} else if strings.HasPrefix(part, "min=") {
-					rules["min"] = strings.TrimPrefix(part, "min=")
-				} else if strings.HasPrefix(part, "oneof=") {
-					rules["oneof"] = strings.Split(strings.TrimPrefix(part, "oneof="), " ")
+				} else if after, ok := strings.CutPrefix(part, "min="); ok {
+					rules["min"] = after
+				} else if after, ok := strings.CutPrefix(part, "oneof="); ok {
+					rules["oneof"] = strings.Split(after, " ")
 				}
 			}
 			return rules
@@ -225,14 +225,14 @@ func TestDeeplyNestedStructures(t *testing.T) {
 			IncludeOriginalTypes: true,
 			IncludeTagMetadata:   true,
 			IncludeTypeMetadata:  true,
-			SkipAnonymousFields:  boolPtr(false), // Include embedded structs
+			SkipAnonymousFields:  new(false), // Include embedded structs
 			CustomTagHandlers: map[string]func(tag string) any{
 				"validate": parseValidationRules,
 			},
 			TagPriority: []string{"json", "bun", "validate"},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(DeeplyNestedStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[DeeplyNestedStruct](), opts)
 
 		// Verify basic structure
 		if result.Name != "DeeplyNestedStruct" {
@@ -329,8 +329,8 @@ func TestDeeplyNestedStructures(t *testing.T) {
 		}
 
 		start := time.Now()
-		for i := 0; i < 100; i++ {
-			_ = router.ExtractSchemaFromType(reflect.TypeOf(DeeplyNestedStruct{}), opts)
+		for range 100 {
+			_ = router.ExtractSchemaFromType(reflect.TypeFor[DeeplyNestedStruct](), opts)
 		}
 		duration := time.Since(start)
 
@@ -352,8 +352,8 @@ func TestRealWorldModels(t *testing.T) {
 				return nil
 			}
 			rules := make(map[string]any)
-			parts := strings.Split(tag, ",")
-			for _, part := range parts {
+			parts := strings.SplitSeq(tag, ",")
+			for part := range parts {
 				part = strings.TrimSpace(part)
 				switch {
 				case part == "required":
@@ -386,13 +386,13 @@ func TestRealWorldModels(t *testing.T) {
 			IncludeOriginalTypes: true,
 			IncludeTagMetadata:   true,
 			IncludeTypeMetadata:  true,
-			SkipAnonymousFields:  boolPtr(false), // Include embedded structs
+			SkipAnonymousFields:  new(false), // Include embedded structs
 			CustomTagHandlers: map[string]func(tag string) any{
 				"validate": parseValidationRules,
 				"internal": parseInternalTag,
 			},
 			TagPriority:          []string{"json", "bun", "validate"},
-			SkipUnexportedFields: boolPtr(true),
+			SkipUnexportedFields: new(true),
 			CustomFieldFilter: func(field reflect.StructField) bool {
 				// Skip fields marked as internal
 				if internal := field.Tag.Get("internal"); internal == "true" {
@@ -402,7 +402,7 @@ func TestRealWorldModels(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(UserAccountModel{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[UserAccountModel](), opts)
 
 		// Verify comprehensive model extraction
 		if result.Name != "UserAccountModel" {
@@ -486,13 +486,13 @@ func TestRealWorldModels(t *testing.T) {
 	t.Run("Multiple related models integration", func(t *testing.T) {
 		// Test that related models also work correctly
 		models := []reflect.Type{
-			reflect.TypeOf(UserProfile{}),
-			reflect.TypeOf(Address{}),
-			reflect.TypeOf(PaymentMethod{}),
-			reflect.TypeOf(Role{}),
-			reflect.TypeOf(Team{}),
-			reflect.TypeOf(Notification{}),
-			reflect.TypeOf(ActivityLog{}),
+			reflect.TypeFor[UserProfile](),
+			reflect.TypeFor[Address](),
+			reflect.TypeFor[PaymentMethod](),
+			reflect.TypeFor[Role](),
+			reflect.TypeFor[Team](),
+			reflect.TypeFor[Notification](),
+			reflect.TypeFor[ActivityLog](),
 		}
 
 		opts := router.ExtractSchemaFromTypeOptions{
@@ -538,11 +538,11 @@ func TestRealWorldModels(t *testing.T) {
 // TestIntegrationPerformance tests that new features don't significantly impact performance
 func TestIntegrationPerformance(t *testing.T) {
 	t.Run("Performance comparison: default vs enhanced options", func(t *testing.T) {
-		testType := reflect.TypeOf(UserAccountModel{})
+		testType := reflect.TypeFor[UserAccountModel]()
 
 		// Measure default performance
 		start := time.Now()
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			_ = router.ExtractSchemaFromType(testType)
 		}
 		defaultDuration := time.Since(start)
@@ -565,7 +565,7 @@ func TestIntegrationPerformance(t *testing.T) {
 		}
 
 		start = time.Now()
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			_ = router.ExtractSchemaFromType(testType, enhancedOpts)
 		}
 		enhancedDuration := time.Since(start)
@@ -584,7 +584,7 @@ func TestIntegrationPerformance(t *testing.T) {
 	})
 
 	t.Run("Memory allocation comparison", func(t *testing.T) {
-		testType := reflect.TypeOf(DeeplyNestedStruct{})
+		testType := reflect.TypeFor[DeeplyNestedStruct]()
 
 		// Test with different option combinations
 		testCases := []struct {
@@ -642,16 +642,16 @@ func TestIntegrationPerformance(t *testing.T) {
 	t.Run("Large scale processing", func(t *testing.T) {
 		// Test processing many different types
 		types := []reflect.Type{
-			reflect.TypeOf(UserAccountModel{}),
-			reflect.TypeOf(DeeplyNestedStruct{}),
-			reflect.TypeOf(UserProfile{}),
-			reflect.TypeOf(Address{}),
-			reflect.TypeOf(PaymentMethod{}),
-			reflect.TypeOf(Role{}),
-			reflect.TypeOf(Team{}),
-			reflect.TypeOf(Notification{}),
-			reflect.TypeOf(ActivityLog{}),
-			reflect.TypeOf(CollectionWithRelations{}),
+			reflect.TypeFor[UserAccountModel](),
+			reflect.TypeFor[DeeplyNestedStruct](),
+			reflect.TypeFor[UserProfile](),
+			reflect.TypeFor[Address](),
+			reflect.TypeFor[PaymentMethod](),
+			reflect.TypeFor[Role](),
+			reflect.TypeFor[Team](),
+			reflect.TypeFor[Notification](),
+			reflect.TypeFor[ActivityLog](),
+			reflect.TypeFor[CollectionWithRelations](),
 		}
 
 		opts := router.ExtractSchemaFromTypeOptions{
@@ -662,7 +662,7 @@ func TestIntegrationPerformance(t *testing.T) {
 		}
 
 		start := time.Now()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			for _, modelType := range types {
 				result := router.ExtractSchemaFromType(modelType, opts)
 				if len(result.Properties) == 0 {
@@ -700,7 +700,7 @@ func TestIntegrationEdgeCases(t *testing.T) {
 		}
 
 		// Should not panic or hang
-		result := router.ExtractSchemaFromType(reflect.TypeOf(CircularNode{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[CircularNode](), opts)
 
 		if len(result.Properties) == 0 {
 			t.Error("CircularNode should have properties")
@@ -712,7 +712,7 @@ func TestIntegrationEdgeCases(t *testing.T) {
 
 	t.Run("Complex generic-like structures", func(t *testing.T) {
 		type Container struct {
-			Data         map[string][]map[string]*interface{} `json:"data"`
+			Data         map[string][]map[string]*any         `json:"data"`
 			NestedMaps   map[string]map[string]map[string]any `json:"nested_maps"`
 			NestedSlices [][]string                           `json:"nested_slices"`
 			MixedNested  []map[string][]*time.Time            `json:"mixed_nested"`
@@ -723,7 +723,7 @@ func TestIntegrationEdgeCases(t *testing.T) {
 			IncludeTypeMetadata:  true,
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(Container{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[Container](), opts)
 
 		// Verify complex nested types are handled
 		for fieldName, prop := range result.Properties {
@@ -755,8 +755,8 @@ func TestIntegrationEdgeCases(t *testing.T) {
 				},
 			},
 			TagPriority:          []string{"json", "bun", "validate"},
-			SkipUnexportedFields: boolPtr(false),
-			SkipAnonymousFields:  boolPtr(false),
+			SkipUnexportedFields: new(false),
+			SkipAnonymousFields:  new(false),
 			CustomFieldFilter: func(field reflect.StructField) bool {
 				return !strings.HasPrefix(field.Name, "Skip")
 			},
@@ -771,7 +771,7 @@ func TestIntegrationEdgeCases(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(UserAccountModel{}), complexOpts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[UserAccountModel](), complexOpts)
 
 		// Should not panic and should produce reasonable results
 		if len(result.Properties) == 0 {

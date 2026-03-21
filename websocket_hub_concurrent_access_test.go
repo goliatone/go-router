@@ -19,12 +19,12 @@ func TestHubConcurrentAccess(t *testing.T) {
 	operations := 50
 
 	// Workers that perform concurrent operations on the hub
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
 
-			for j := 0; j < operations; j++ {
+			for j := range operations {
 				// Mix of operations that access the clients map
 				switch j % 4 {
 				case 0:
@@ -39,7 +39,7 @@ func TestHubConcurrentAccess(t *testing.T) {
 					hub.Broadcast([]byte("test message"))
 				case 3:
 					// JSON broadcast operations (reads clients map internally)
-					hub.BroadcastJSON(map[string]interface{}{
+					hub.BroadcastJSON(map[string]any{
 						"worker": workerID,
 						"op":     j,
 					})
@@ -74,7 +74,7 @@ func TestHubStressOperations(t *testing.T) {
 	duration := 100 * time.Millisecond
 
 	// Multiple concurrent readers
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(readerID int) {
 			defer wg.Done()

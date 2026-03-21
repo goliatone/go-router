@@ -144,8 +144,7 @@ func TestHandlerEmitsFullStreamGapPayloadAndCloses(t *testing.T) {
 	)
 
 	ctx := newStreamMockContext(t)
-	reqCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	reqCtx := t.Context()
 
 	ctx.HeadersM["Last-Event-ID"] = "missing"
 	ctx.reqCtx = reqCtx

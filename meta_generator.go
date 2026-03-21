@@ -50,13 +50,13 @@ func GetResourceMetadata(typ reflect.Type) *ResourceMetadata {
 // If found, it uses the specified resource name. Otherwise, it derives the name from the type's name.
 func GetResourceName(typ reflect.Type) (string, string) {
 	// If T is a pointer, get the element type
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 
 	resourceName := ""
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
+	for field := range typ.Fields() {
+		field := field
 		crudTag := field.Tag.Get(TAG_CRUD)
 		if crudTag == "" {
 			continue
@@ -156,8 +156,8 @@ func parseLabelDirective(allTags map[string]string) (string, bool) {
 		return "", false
 	}
 
-	directives := strings.Split(tagValue, ",")
-	for _, directive := range directives {
+	directives := strings.SplitSeq(tagValue, ",")
+	for directive := range directives {
 		directive = strings.TrimSpace(directive)
 		if directive == "" {
 			continue

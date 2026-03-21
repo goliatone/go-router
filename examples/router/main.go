@@ -153,9 +153,9 @@ func (fn metadataProviderFunc) GetMetadata() router.ResourceMetadata {
 }
 
 func newMetadataAggregator() *router.MetadataAggregator {
-	userMD := router.GetResourceMetadata(reflect.TypeOf(User{}))
-	companyMD := router.GetResourceMetadata(reflect.TypeOf(Company{}))
-	profileMD := router.GetResourceMetadata(reflect.TypeOf(Profile{}))
+	userMD := router.GetResourceMetadata(reflect.TypeFor[User]())
+	companyMD := router.GetResourceMetadata(reflect.TypeFor[Company]())
+	profileMD := router.GetResourceMetadata(reflect.TypeFor[Profile]())
 
 	aggregator := router.NewMetadataAggregator().
 		WithRelationProvider(router.NewDefaultRelationProvider()).

@@ -241,7 +241,7 @@ func TestEventHistory(t *testing.T) {
 		h := router.NewEventHistory(100, 1*time.Hour)
 
 		// Add events
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			event := &router.EventMessage{
 				ID:        generateTestID(),
 				Type:      "test",
@@ -283,7 +283,7 @@ func TestEventHistory(t *testing.T) {
 		h := router.NewEventHistory(3, 1*time.Hour)
 
 		// Add more than max size
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			h.Add(&router.EventMessage{
 				Type:      "test",
 				Data:      i,
@@ -463,7 +463,7 @@ func TestEventBatcher(t *testing.T) {
 		batcher := router.NewEventBatcher(3, 1*time.Second, processor)
 
 		// Add 5 events
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			batcher.Add(&router.EventMessage{
 				Type: "test",
 				Data: i,
@@ -510,7 +510,7 @@ func TestEventBatcher(t *testing.T) {
 		batcher := router.NewEventBatcher(100, 200*time.Millisecond, processor)
 
 		// Add 2 events (less than batch size)
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			batcher.Add(&router.EventMessage{
 				Type: "test",
 				Data: i,
@@ -541,7 +541,7 @@ func TestEventThrottler(t *testing.T) {
 		throttler := router.NewEventThrottler(3, 100*time.Millisecond)
 
 		// First 3 should be allowed
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			if !throttler.Allow("test") {
 				t.Errorf("Event %d should be allowed", i+1)
 			}
@@ -565,7 +565,7 @@ func TestEventThrottler(t *testing.T) {
 		throttler := router.NewEventThrottler(2, 100*time.Millisecond)
 
 		// Each type has its own limit
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			if !throttler.Allow("type1") {
 				t.Error("type1 should be allowed")
 			}

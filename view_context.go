@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"maps"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -11,9 +12,7 @@ import (
 
 // Update updates this context with the key/value-pairs from another context.
 func (c ViewContext) Update(other ViewContext) ViewContext {
-	for k, v := range other {
-		c[k] = v
-	}
+	maps.Copy(c, other)
 	return c
 }
 

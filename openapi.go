@@ -552,8 +552,8 @@ func joinPaths(parts ...string) string {
 		if trimmed == "" {
 			continue
 		}
-		subParts := strings.Split(trimmed, "/")
-		for _, part := range subParts {
+		subParts := strings.SplitSeq(trimmed, "/")
+		for part := range subParts {
 			if part = strings.TrimSpace(part); part != "" {
 				cleanParts = append(cleanParts, part)
 			}

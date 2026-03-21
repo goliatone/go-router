@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -73,13 +74,11 @@ func validateSubprotocols(c Context, config WebSocketConfig) (string, bool) {
 	}
 
 	// Parse comma-separated protocols
-	clientProtocols := strings.Split(requestedProtocols, ",")
-	for _, clientProto := range clientProtocols {
+	clientProtocols := strings.SplitSeq(requestedProtocols, ",")
+	for clientProto := range clientProtocols {
 		clientProto = strings.TrimSpace(clientProto)
-		for _, serverProto := range config.Subprotocols {
-			if clientProto == serverProto {
-				return clientProto, true
-			}
+		if slices.Contains(config.Subprotocols, clientProto) {
+			return clientProto, true
 		}
 	}
 
@@ -243,8 +242,8 @@ func matchHostPattern(hostname, pattern string) bool {
 		return false
 	}
 
-	if strings.HasPrefix(pattern, "*.") {
-		base := strings.TrimPrefix(pattern, "*.")
+	if after, ok := strings.CutPrefix(pattern, "*."); ok {
+		base := after
 		return hostname != base && strings.HasSuffix(hostname, "."+base)
 	}
 

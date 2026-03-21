@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -296,7 +297,7 @@ func TestConcurrentWebSocketConnections(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, numClients)
 
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -539,7 +540,7 @@ func TestWebSocketBroadcasting(t *testing.T) {
 	numClients := 3
 	clients := make([]*websocket.Conn, numClients)
 
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws-broadcast"
 		ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 		if err != nil {
@@ -676,13 +677,7 @@ func TestWebSocketConnectionLifecycle(t *testing.T) {
 
 	expectedEvents := []string{"connected", "message_received", "message_sent"}
 	for _, expected := range expectedEvents {
-		found := false
-		for _, event := range events {
-			if event == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(events, expected)
 		if !found {
 			t.Errorf("Expected event %s not found in %v", expected, events)
 		}
@@ -949,7 +944,7 @@ func TestWebSocketPerformance(t *testing.T) {
 	start := time.Now()
 	var wg sync.WaitGroup
 
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -962,7 +957,7 @@ func TestWebSocketPerformance(t *testing.T) {
 			}
 			defer ws.Close()
 
-			for j := 0; j < messagesPerClient; j++ {
+			for j := range messagesPerClient {
 				msg := fmt.Sprintf("Client %d Message %d", id, j)
 				if err := ws.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
 					break

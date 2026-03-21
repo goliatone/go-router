@@ -3,6 +3,7 @@ package eventstream
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"sort"
@@ -465,9 +466,7 @@ func cloneDropReasons(in map[string]int64) map[string]int64 {
 		return map[string]int64{}
 	}
 	out := make(map[string]int64, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
+	maps.Copy(out, in)
 	return out
 }
 
@@ -495,9 +494,7 @@ func cloneEvent(event Event) Event {
 	}
 	if len(event.Metadata) > 0 {
 		out.Metadata = make(map[string]string, len(event.Metadata))
-		for key, value := range event.Metadata {
-			out.Metadata[key] = value
-		}
+		maps.Copy(out.Metadata, event.Metadata)
 	}
 	return out
 }

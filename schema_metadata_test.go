@@ -21,7 +21,7 @@ func TestSchemaOriginalNamesAndTypes(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeOriginalNames: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Verify OriginalName is populated for user_id property
 		if prop, ok := result.Properties["user_id"]; ok {
@@ -46,7 +46,7 @@ func TestSchemaOriginalNamesAndTypes(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeOriginalTypes: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Verify OriginalType is populated for int field
 		if prop, ok := result.Properties["user_id"]; ok {
@@ -90,7 +90,7 @@ func TestSchemaOriginalNamesAndTypes(t *testing.T) {
 			IncludeOriginalNames: true,
 			IncludeOriginalTypes: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Verify both OriginalName and OriginalType are populated
 		if prop, ok := result.Properties["user_id"]; ok {
@@ -110,7 +110,7 @@ func TestSchemaOriginalNamesAndTypes(t *testing.T) {
 
 	t.Run("Options disabled by default", func(t *testing.T) {
 		// Use default options (should not include original names/types)
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 
 		// OriginalName should still be populated (existing behavior)
 		if prop, ok := result.Properties["user_id"]; ok {
@@ -141,14 +141,14 @@ func TestSchemaOriginalNamesAndTypes(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeOriginalTypes: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(ComplexStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[ComplexStruct](), opts)
 
 		// Test pointer type
 		if prop, ok := result.Properties["pointer"]; ok {
 			if prop.OriginalType != "*string" {
 				t.Errorf("Expected OriginalType=*string for pointer property, got %s", prop.OriginalType)
 			}
-			if prop.OriginalKind != reflect.Ptr {
+			if prop.OriginalKind != reflect.Pointer {
 				t.Errorf("Expected OriginalKind=reflect.Ptr for pointer property, got %v", prop.OriginalKind)
 			}
 		}

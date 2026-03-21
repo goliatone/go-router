@@ -21,7 +21,7 @@ func TestGetResourceMetadataCapturesLabelField(t *testing.T) {
 		CreatedAt string `json:"created_at"`
 	}
 
-	metadata := router.GetResourceMetadata(reflect.TypeOf(LabelledResource{}))
+	metadata := router.GetResourceMetadata(reflect.TypeFor[LabelledResource]())
 	if metadata == nil {
 		t.Fatalf("GetResourceMetadata returned nil metadata")
 	}
@@ -46,7 +46,7 @@ func TestMetadataAggregatorEmitsLabelExtension(t *testing.T) {
 		Title string `json:"title" crud:"label:title"`
 	}
 
-	resourceMetadata := router.GetResourceMetadata(reflect.TypeOf(Library{}))
+	resourceMetadata := router.GetResourceMetadata(reflect.TypeFor[Library]())
 
 	aggregator := router.NewMetadataAggregator()
 	aggregator.AddProvider(metadataProviderFunc(func() router.ResourceMetadata {

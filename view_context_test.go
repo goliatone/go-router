@@ -19,12 +19,12 @@ func (s testViewContextSerializer) Serialize() ([]byte, error) {
 }
 
 type testViewContextPayload struct {
-	PageTitle string                 `json:"page_title"`
-	Line      int                    `json:"line"`
-	Price     float64                `json:"price"`
-	Nested    testViewContextNested  `json:"nested"`
-	Items     []testViewContextItem  `json:"items"`
-	Attrs     map[string]interface{} `json:"attrs"`
+	PageTitle string                `json:"page_title"`
+	Line      int                   `json:"line"`
+	Price     float64               `json:"price"`
+	Nested    testViewContextNested `json:"nested"`
+	Items     []testViewContextItem `json:"items"`
+	Attrs     map[string]any        `json:"attrs"`
 }
 
 type testViewContextNested struct {
@@ -50,10 +50,10 @@ func TestSerializeAsContext_UsesJSONTagsAndPreservesNumericKinds(t *testing.T) {
 			{Line: 7, Score: 1.5},
 			{Line: 11, Score: 2.75},
 		},
-		Attrs: map[string]interface{}{
+		Attrs: map[string]any{
 			"number": 12,
 			"ratio":  0.5,
-			"list":   []interface{}{1, 2.5},
+			"list":   []any{1, 2.5},
 		},
 	}
 

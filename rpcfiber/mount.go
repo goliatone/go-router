@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"reflect"
 	"strings"
@@ -526,7 +527,7 @@ func decodePayload(raw json.RawMessage, prototype any) (any, error) {
 		return nil, errors.New("invalid method request type")
 	}
 
-	if value.Kind() == reflect.Ptr {
+	if value.Kind() == reflect.Pointer {
 		if err := json.Unmarshal(raw, prototype); err != nil {
 			return nil, err
 		}
@@ -555,7 +556,7 @@ func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta, policy MetaMe
 		return payload
 	}
 
-	if value.Kind() == reflect.Ptr {
+	if value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			return payload
 		}
@@ -958,7 +959,7 @@ func parseScope(value any) map[string]any {
 func splitAndNormalizeList(values ...string) []string {
 	out := make([]string, 0, len(values))
 	for _, raw := range values {
-		for _, part := range strings.Split(raw, ",") {
+		for part := range strings.SplitSeq(raw, ",") {
 			part = strings.TrimSpace(part)
 			if part != "" {
 				out = append(out, part)
@@ -1000,9 +1001,7 @@ func mergeAnyMap(base, update map[string]any) map[string]any {
 	}
 
 	out := cloneAnyMap(base)
-	for key, value := range update {
-		out[key] = value
-	}
+	maps.Copy(out, update)
 	return out
 }
 
@@ -1015,9 +1014,7 @@ func mergeStringMap(base, update map[string]string) map[string]string {
 	}
 
 	out := cloneStringMap(base)
-	for key, value := range update {
-		out[key] = value
-	}
+	maps.Copy(out, update)
 	return out
 }
 
@@ -1041,9 +1038,7 @@ func cloneAnyMap(in map[string]any) map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
+	maps.Copy(out, in)
 	return out
 }
 
@@ -1052,9 +1047,7 @@ func cloneStringMap(in map[string]string) map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
+	maps.Copy(out, in)
 	return out
 }
 

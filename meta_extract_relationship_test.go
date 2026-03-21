@@ -51,7 +51,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 	}{
 		{
 			name:   "belongs-to relationship with explicit join",
-			inType: reflect.TypeOf(TestOrder{}),
+			inType: reflect.TypeFor[TestOrder](),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["user"]
 				if !exists || rel == nil {
@@ -77,7 +77,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 		},
 		{
 			name:   "has-many relationship with explicit join",
-			inType: reflect.TypeOf(TestOrder{}),
+			inType: reflect.TypeFor[TestOrder](),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["items"]
 				if !exists || rel == nil {
@@ -106,7 +106,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 		},
 		{
 			name:   "many-to-many with explicit join columns",
-			inType: reflect.TypeOf(TestProductCategory{}),
+			inType: reflect.TypeFor[TestProductCategory](),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["products"]
 				if !exists || rel == nil {
@@ -135,7 +135,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 		},
 		{
 			name:   "many-to-many with simple pivot table name",
-			inType: reflect.TypeOf(TestProduct{}),
+			inType: reflect.TypeFor[TestProduct](),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["categories"]
 				if !exists || rel == nil {
@@ -156,7 +156,7 @@ func TestRelationshipMetadataExtraction(t *testing.T) {
 		},
 		{
 			name:   "relationship with crud tag overrides",
-			inType: reflect.TypeOf(TestComplexRelation{}),
+			inType: reflect.TypeFor[TestComplexRelation](),
 			checkFn: func(t *testing.T, got SchemaMetadata) {
 				rel, exists := got.Relationships["custom_user"]
 				if !exists || rel == nil {

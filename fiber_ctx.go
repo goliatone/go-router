@@ -210,9 +210,7 @@ func (c *fiberContext) captureRequestMeta() {
 		meta.queries[keyStr] = string(value)
 	})
 
-	for k, v := range ctx.AllParams() {
-		meta.params[k] = v
-	}
+	maps.Copy(meta.params, ctx.AllParams())
 
 	ctx.Request().Header.VisitAllCookie(func(key, value []byte) {
 		meta.cookies[string(key)] = string(value)
@@ -516,9 +514,7 @@ func (c *fiberContext) Queries() map[string]string {
 	}
 	if meta := c.getMeta(); meta != nil && meta.queries != nil {
 		out := make(map[string]string, len(meta.queries))
-		for k, v := range meta.queries {
-			out[k] = v
-		}
+		maps.Copy(out, meta.queries)
 		return out
 	}
 	return map[string]string{}

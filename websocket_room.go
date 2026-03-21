@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 )
@@ -435,9 +436,7 @@ func (r *Room) GetAllMetadata() map[string]any {
 	defer r.metadataMu.RUnlock()
 
 	meta := make(map[string]any)
-	for k, v := range r.metadata {
-		meta[k] = v
-	}
+	maps.Copy(meta, r.metadata)
 	return meta
 }
 

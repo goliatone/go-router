@@ -265,8 +265,8 @@ func (f fallbackFS) Open(name string) (fs.File, error) {
 		return file, err
 	}
 
-	if strings.HasSuffix(clean, f.ext) {
-		altName := strings.TrimSuffix(clean, f.ext)
+	if before, ok := strings.CutSuffix(clean, f.ext); ok {
+		altName := before
 		if altName == "" {
 			altName = "."
 		}

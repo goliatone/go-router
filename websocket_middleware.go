@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -181,9 +182,7 @@ func inheritWebSocketRouteState(src Context, dst WebSocketContext) {
 		target.httpRouterContext.router = source.router
 		if source.locals != nil {
 			locals := make(ViewContext, len(source.locals))
-			for k, v := range source.locals {
-				locals[k] = v
-			}
+			maps.Copy(locals, source.locals)
 			target.httpRouterContext.locals = locals
 		}
 		target.SetContext(source.Context())

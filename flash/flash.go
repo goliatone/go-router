@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -154,13 +155,13 @@ func (f *Flash) setCookieWithFlag(c router.Context, data router.ViewContext, fla
 func (f *Flash) setCookie(c router.Context, data router.ViewContext) {
 	merged := f.mergePending(c, data)
 
-	var flashValue string
+	var flashValue strings.Builder
 	for key, value := range merged {
-		flashValue += "\x00" + key + ":" + fmt.Sprintf("%v", value) + "\x00"
+		flashValue.WriteString("\x00" + key + ":" + fmt.Sprintf("%v", value) + "\x00")
 	}
 	c.Cookie(&router.Cookie{
 		Name:        f.config.Name,
-		Value:       url.QueryEscape(flashValue),
+		Value:       url.QueryEscape(flashValue.String()),
 		SameSite:    f.config.SameSite,
 		Secure:      f.config.Secure,
 		Path:        f.config.Path,
@@ -247,9 +248,7 @@ func normalizeConfig(config Config) Config {
 
 func cloneViewContext(in router.ViewContext) router.ViewContext {
 	out := router.ViewContext{}
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 

@@ -17,7 +17,7 @@ func TestTagMetadataCollection(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTagMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Verify AllTags is populated for id property
 		if prop, ok := result.Properties["id"]; ok {
@@ -46,7 +46,7 @@ func TestTagMetadataCollection(t *testing.T) {
 
 	t.Run("IncludeTagMetadata disabled by default", func(t *testing.T) {
 		// Use default options (should not include tag metadata)
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}))
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct]())
 
 		// AllTags should be empty/nil when option is disabled
 		if prop, ok := result.Properties["id"]; ok {
@@ -68,7 +68,7 @@ func TestTagMetadataCollection(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTagMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(MultiFieldStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[MultiFieldStruct](), opts)
 
 		// Check Field1 tags
 		if prop, ok := result.Properties["field1"]; ok {
@@ -123,7 +123,7 @@ func TestTagMetadataCollection(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTagMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(NoTagsStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[NoTagsStruct](), opts)
 
 		// Even when IncludeTagMetadata is enabled, fields with no tags should have empty AllTags
 		if prop, ok := result.Properties["PlainField"]; ok {
@@ -143,7 +143,7 @@ func TestTagMetadataCollection(t *testing.T) {
 		opts := router.ExtractSchemaFromTypeOptions{
 			IncludeTagMetadata: true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(EmptyTagStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[EmptyTagStruct](), opts)
 
 		// Empty tag values should still be included in AllTags
 		if prop, ok := result.Properties["Field"]; ok { // Empty json tag means field name is used
@@ -172,7 +172,7 @@ func TestTagMetadataCollection(t *testing.T) {
 			IncludeOriginalTypes: true,
 			IncludeTagMetadata:   true,
 		}
-		result := router.ExtractSchemaFromType(reflect.TypeOf(IntegrationStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[IntegrationStruct](), opts)
 
 		// Verify all three types of metadata are populated together
 		if prop, ok := result.Properties["user_id"]; ok {

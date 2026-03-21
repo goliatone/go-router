@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 )
 
@@ -363,11 +364,8 @@ func (f RoomFilter) Matches(room *Room) bool {
 		roomTags := room.Tags()
 		hasMatch := false
 		for _, filterTag := range f.Tags {
-			for _, roomTag := range roomTags {
-				if filterTag == roomTag {
-					hasMatch = true
-					break
-				}
+			if slices.Contains(roomTags, filterTag) {
+				hasMatch = true
 			}
 			if hasMatch {
 				break

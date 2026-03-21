@@ -57,9 +57,9 @@ func stringMapValue(t *testing.T, value any, key string) string {
 }
 
 func TestMetadataAggregator_RelationshipExtensions(t *testing.T) {
-	articleMD := GetResourceMetadata(reflect.TypeOf(uiSpecArticle{}))
-	authorMD := GetResourceMetadata(reflect.TypeOf(uiSpecAuthor{}))
-	tagMD := GetResourceMetadata(reflect.TypeOf(uiSpecTag{}))
+	articleMD := GetResourceMetadata(reflect.TypeFor[uiSpecArticle]())
+	authorMD := GetResourceMetadata(reflect.TypeFor[uiSpecAuthor]())
+	tagMD := GetResourceMetadata(reflect.TypeFor[uiSpecTag]())
 
 	agg := NewMetadataAggregator()
 	agg.AddProviders(
@@ -225,10 +225,10 @@ func TestMetadataAggregator_RelationshipExtensions(t *testing.T) {
 }
 
 func TestMetadataAggregator_UISchemaOptionsOverrides(t *testing.T) {
-	articleMD := GetResourceMetadata(reflect.TypeOf(uiSpecArticle{}))
-	authorMD := GetResourceMetadata(reflect.TypeOf(uiSpecAuthor{}))
-	editorMD := GetResourceMetadata(reflect.TypeOf(uiSpecEditor{}))
-	tagMD := GetResourceMetadata(reflect.TypeOf(uiSpecTag{}))
+	articleMD := GetResourceMetadata(reflect.TypeFor[uiSpecArticle]())
+	authorMD := GetResourceMetadata(reflect.TypeFor[uiSpecAuthor]())
+	editorMD := GetResourceMetadata(reflect.TypeFor[uiSpecEditor]())
+	tagMD := GetResourceMetadata(reflect.TypeFor[uiSpecTag]())
 
 	agg := NewMetadataAggregator().WithUISchemaOptions(UISchemaOptions{
 		EndpointOverrides: map[string]map[string]*EndpointHint{
@@ -286,9 +286,9 @@ func TestMetadataAggregator_UISchemaOptionsOverrides(t *testing.T) {
 }
 
 func TestMetadataAggregator_RelationFilterRemovesRelationship(t *testing.T) {
-	articleMD := GetResourceMetadata(reflect.TypeOf(uiSpecArticle{}))
-	authorMD := GetResourceMetadata(reflect.TypeOf(uiSpecAuthor{}))
-	tagMD := GetResourceMetadata(reflect.TypeOf(uiSpecTag{}))
+	articleMD := GetResourceMetadata(reflect.TypeFor[uiSpecArticle]())
+	authorMD := GetResourceMetadata(reflect.TypeFor[uiSpecAuthor]())
+	tagMD := GetResourceMetadata(reflect.TypeFor[uiSpecTag]())
 
 	agg := NewMetadataAggregator().WithUISchemaOptions(UISchemaOptions{
 		RelationFilters: []RelationshipInfoFilter{
@@ -323,10 +323,10 @@ func TestMetadataAggregator_RelationFilterRemovesRelationship(t *testing.T) {
 }
 
 func TestMetadataAggregator_DefaultEndpointFallback(t *testing.T) {
-	articleMD := GetResourceMetadata(reflect.TypeOf(uiSpecArticle{}))
-	authorMD := GetResourceMetadata(reflect.TypeOf(uiSpecAuthor{}))
-	editorMD := GetResourceMetadata(reflect.TypeOf(uiSpecEditor{}))
-	tagMD := GetResourceMetadata(reflect.TypeOf(uiSpecTag{}))
+	articleMD := GetResourceMetadata(reflect.TypeFor[uiSpecArticle]())
+	authorMD := GetResourceMetadata(reflect.TypeFor[uiSpecAuthor]())
+	editorMD := GetResourceMetadata(reflect.TypeFor[uiSpecEditor]())
+	tagMD := GetResourceMetadata(reflect.TypeFor[uiSpecTag]())
 
 	agg := NewMetadataAggregator()
 	agg.AddProviders(

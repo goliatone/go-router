@@ -35,7 +35,7 @@ func TestDefaultRelationProvider_BuildRelationDescriptor(t *testing.T) {
 	resetRelationFilters()
 
 	provider := NewDefaultRelationProvider()
-	descriptor, err := provider.BuildRelationDescriptor(reflect.TypeOf(relationTestAuthor{}))
+	descriptor, err := provider.BuildRelationDescriptor(reflect.TypeFor[relationTestAuthor]())
 	if err != nil {
 		t.Fatalf("unexpected error building relation descriptor: %v", err)
 	}
@@ -99,12 +99,12 @@ func TestRelationFiltersAreApplied(t *testing.T) {
 		return descriptor
 	})
 
-	descriptor, err := provider.BuildRelationDescriptor(reflect.TypeOf(&relationTestAuthor{}))
+	descriptor, err := provider.BuildRelationDescriptor(reflect.TypeFor[*relationTestAuthor]())
 	if err != nil {
 		t.Fatalf("unexpected error building descriptor: %v", err)
 	}
 
-	descriptor = ApplyRelationFilters(reflect.TypeOf(&relationTestAuthor{}), descriptor)
+	descriptor = ApplyRelationFilters(reflect.TypeFor[*relationTestAuthor](), descriptor)
 
 	if _, ok := descriptor.Tree.Children["books"]; ok {
 		t.Fatalf("expected books relation to be removed by filter")

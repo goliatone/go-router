@@ -51,10 +51,7 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode, enf
 	existingParts := splitPathSegments(existingPath)
 	newParts := splitPathSegments(newPath)
 
-	minLen := len(existingParts)
-	if len(newParts) < minLen {
-		minLen = len(newParts)
-	}
+	minLen := min(len(newParts), len(existingParts))
 
 	firstParamPairIndex := -1
 	firstParamPairExistingSegment := ""

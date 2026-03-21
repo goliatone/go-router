@@ -24,7 +24,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Expected transformed field names
 		expectedFields := []string{"prefix_user_id", "prefix_username", "prefix_email", "prefix_status"}
@@ -64,7 +64,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Expected transformed field names (uppercase)
 		expectedFields := []string{"USER_ID", "USERNAME", "EMAIL", "STATUS"}
@@ -106,7 +106,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(CamelCaseStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[CamelCaseStruct](), opts)
 
 		// Expected snake_case field names
 		expectedFields := []string{"user_id", "first_name", "last_name", "is_active"}
@@ -139,7 +139,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStructWithMultipleTags{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStructWithMultipleTags](), opts)
 
 		// Field1 should use yaml tag (highest priority), then be transformed
 		if _, exists := result.Properties["transformed_yamlName"]; !exists {
@@ -172,7 +172,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(NoTagStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[NoTagStruct](), opts)
 
 		// Expected transformed Go field names
 		expectedFields := []string{"api_userid", "api_username"}
@@ -209,7 +209,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(UserStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[UserStruct](), opts)
 
 		// Check that relationship field name is transformed
 		if _, exists := result.Relationships["rel_profile"]; !exists {
@@ -234,7 +234,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should behave exactly like no transformation
 		expectedFields := []string{"user_id", "userName", "email", "status"}
@@ -252,7 +252,7 @@ func TestFieldNameTransformation(t *testing.T) {
 		}
 
 		// Should not panic
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should work normally without transformation
 		if len(result.Properties) == 0 {
@@ -278,7 +278,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Check that metadata is preserved for transformed field
 		if prop, exists := result.Properties["meta_user_id"]; !exists {
@@ -304,7 +304,7 @@ func TestFieldNameTransformation(t *testing.T) {
 			},
 		}
 
-		result := router.ExtractSchemaFromType(reflect.TypeOf(TestStruct{}), opts)
+		result := router.ExtractSchemaFromType(reflect.TypeFor[TestStruct](), opts)
 
 		// Should handle empty string gracefully - might skip fields or use fallback
 		// The exact behavior depends on implementation, but should not panic

@@ -125,20 +125,20 @@ func TestContextStore_ThreadSafety(t *testing.T) {
 	wg.Add(goroutines * 2) // Writers and readers
 
 	// Writers
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				store.Set("key", id)
 			}
 		}(i)
 	}
 
 	// Readers
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				_ = store.Get("key", "")
 			}
 		}()
@@ -155,10 +155,10 @@ func TestContextStore_MultipleKeys(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for j := range iterations {
 				key := "key" + string(rune(j))
 				store.Set(key, id)
 				_ = store.Get(key, "")

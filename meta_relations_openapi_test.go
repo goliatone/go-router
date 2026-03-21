@@ -66,7 +66,7 @@ func TestGenerateOpenAPIIncludesRelationExtension(t *testing.T) {
 		metadata: ResourceMetadata{
 			Name:         "author",
 			PluralName:   "authors",
-			ResourceType: reflect.TypeOf(openapiRelationResource{}),
+			ResourceType: reflect.TypeFor[openapiRelationResource](),
 			Schema: SchemaMetadata{
 				Name:       "author",
 				Properties: map[string]PropertyInfo{},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"time"
@@ -317,12 +318,8 @@ func (m *MockContext) LocalsMerge(key any, value map[string]any) map[string]any 
 	if existingMap, ok := existing.(map[string]any); ok {
 		// Merge maps - new values override existing ones
 		merged := make(map[string]any)
-		for k, v := range existingMap {
-			merged[k] = v
-		}
-		for k, v := range value {
-			merged[k] = v
-		}
+		maps.Copy(merged, existingMap)
+		maps.Copy(merged, value)
 		m.LocalsMock[key] = merged
 		return merged
 	}

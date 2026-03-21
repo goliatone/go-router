@@ -60,8 +60,7 @@ func TestSubscribeReplaysAfterKnownCursor(t *testing.T) {
 	first := stream.Publish(eventstream.Scope{"tenant": "t1"}, eventstream.Event{Name: "first"})
 	second := stream.Publish(eventstream.Scope{"tenant": "t1", "resource": "agreement:123"}, eventstream.Event{Name: "second"})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, eventstream.Scope{"tenant": "t1"}, first.Cursor)
 	require.NoError(t, err)
@@ -83,8 +82,7 @@ func TestSubscribeReturnsGapForMissingCursorWhenMatchedReplayExists(t *testing.T
 	stream := eventstream.New()
 	stream.Publish(eventstream.Scope{"tenant": "t1"}, eventstream.Event{Name: "first"})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	sub, err := stream.Subscribe(ctx, eventstream.Scope{"tenant": "t1"}, "missing")
 	require.NoError(t, err)

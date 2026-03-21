@@ -386,7 +386,7 @@ func TestParameterExtractionEdgeCases(t *testing.T) {
 			name: "Many parameters",
 			params: func() map[string]string {
 				params := make(map[string]string)
-				for i := 0; i < 50; i++ {
+				for i := range 50 {
 					params[fmt.Sprintf("param%d", i)] = fmt.Sprintf("value%d", i)
 				}
 				return params
@@ -606,7 +606,7 @@ func TestContextIntegration_MemoryManagement(t *testing.T) {
 
 	// Create multiple contexts with different route information
 	contexts := make([]context.Context, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ctx := WithRouteName(baseCtx, fmt.Sprintf("route.%d", i))
 		ctx = WithRouteParams(ctx, map[string]string{
 			"id":    fmt.Sprintf("%d", i),

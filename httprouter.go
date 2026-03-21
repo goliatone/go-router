@@ -815,8 +815,8 @@ func (c *httpRouterContext) Path() string { return c.r.URL.Path }
 func (c *httpRouterContext) IP() string {
 	// check proxy header
 	if xff := c.r.Header.Get("X-Forwarded-For"); xff != "" {
-		if idx := strings.Index(xff, ","); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
+		if before, _, ok := strings.Cut(xff, ","); ok {
+			return strings.TrimSpace(before)
 		}
 		return strings.TrimSpace(xff)
 	}

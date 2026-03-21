@@ -32,7 +32,7 @@ type FileTransfer struct {
 	Progress    int64     `json:"progress"`
 	State       string    `json:"state"` // "pending", "active", "completed", "failed"
 	StartTime   time.Time `json:"start_time"`
-	EndTime     time.Time `json:"end_time,omitempty"`
+	EndTime     time.Time `json:"end_time"`
 	Error       string    `json:"error,omitempty"`
 	Checksum    string    `json:"checksum,omitempty"`
 	ChunkSize   int       `json:"chunk_size"`
@@ -282,10 +282,7 @@ func (m *FileTransferManager) StartDownload(ctx context.Context, client WSClient
 func (m *FileTransferManager) sendChunks(ctx context.Context, client WSClient, transfer *FileTransfer, data []byte) {
 	for i := 0; i < transfer.TotalChunks; i++ {
 		start := i * transfer.ChunkSize
-		end := start + transfer.ChunkSize
-		if end > len(data) {
-			end = len(data)
-		}
+		end := min(start+transfer.ChunkSize, len(data))
 
 		chunk := data[start:end]
 

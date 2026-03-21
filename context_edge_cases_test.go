@@ -17,12 +17,12 @@ func TestEdgeCases_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines*numIterations)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(routineID int) {
 			defer wg.Done()
 
-			for j := 0; j < numIterations; j++ {
+			for j := range numIterations {
 				// Create unique context for this goroutine/iteration
 				ctx := context.Background()
 				routeName := fmt.Sprintf("route.%d.%d", routineID, j)
@@ -361,7 +361,7 @@ func TestEdgeCases_MemoryLeaks(t *testing.T) {
 	// This test creates many contexts and ensures they can be garbage collected
 	const numContexts = 1000
 
-	for i := 0; i < numContexts; i++ {
+	for i := range numContexts {
 		ctx := context.Background()
 
 		// Create context with data

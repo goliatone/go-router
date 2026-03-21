@@ -93,3 +93,49 @@ func TestHooksRecoverFromPanics(t *testing.T) {
 		return stream.SnapshotStats().DropReasons["client_disconnect"] == 1
 	}, time.Second, 10*time.Millisecond)
 }
+
+func TestHooksEmitCursorNotFoundDropForGapSubscriptions(t *testing.T) {
+	var mu sync.Mutex
+	drops := make([]eventstream.DropEvent, 0)
+	subscribes := make([]eventstream.SubscribeEvent, 0)
+
+	stream := eventstream.New(eventstream.WithHooks(eventstream.Hooks{
+		OnSubscribe: func(event eventstream.SubscribeEvent) {
+			mu.Lock()
+			defer mu.Unlock()
+			subscribes = append(subscribes, event)
+		},
+		OnDrop: func(event eventstream.DropEvent) {
+			mu.Lock()
+			defer mu.Unlock()
+			drops = append(drops, event)
+		},
+	}))
+
+	scope := eventstream.Scope{"tenant": "t1"}
+	stream.Publish(scope, eventstream.Event{Name: "first"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sub, err := stream.Subscribe(ctx, scope, "missing")
+	require.NoError(t, err)
+	require.True(t, sub.CursorGap)
+
+	assert.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(subscribes) == 1 && len(drops) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Len(t, subscribes, 1)
+	assert.True(t, subscribes[0].CursorGap)
+	assert.Equal(t, "cursor_not_found", subscribes[0].CursorGapReason)
+
+	require.Len(t, drops, 1)
+	assert.Equal(t, "cursor_not_found", drops[0].Reason)
+	assert.Equal(t, "tenant=t1", drops[0].ScopeKey)
+}

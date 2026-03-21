@@ -96,3 +96,32 @@ func TestIsSameOriginUsesRequestHostOnHTTPRouter(t *testing.T) {
 		t.Fatal("expected mismatched origin to fail same-origin check")
 	}
 }
+
+func TestValidateHostSecurityRequiresAllowedHostsInStrictMode(t *testing.T) {
+	ctx := NewMockContext()
+	ctx.HeadersM["Host"] = "app.example.com"
+	ctx.HeadersM["X-Forwarded-Proto"] = "https"
+
+	policy := ProductionWebSocketSecurityPolicy()
+	if err := validateHostSecurity(ctx, policy); err == nil {
+		t.Fatal("expected strict host validation to require allowed hosts")
+	}
+}
+
+func TestValidateHostSecurityMatchesAllowedHosts(t *testing.T) {
+	ctx := NewMockContext()
+	ctx.HeadersM["Host"] = "api.example.com"
+	ctx.HeadersM["X-Forwarded-Proto"] = "https"
+
+	policy := ProductionWebSocketSecurityPolicy()
+	policy.AllowedHosts = []string{"api.example.com", "*.internal.example.com:8443"}
+
+	if err := validateHostSecurity(ctx, policy); err != nil {
+		t.Fatalf("expected allowed host to pass strict validation, got %v", err)
+	}
+
+	ctx.HeadersM["Host"] = "evil.example.com"
+	if err := validateHostSecurity(ctx, policy); err == nil {
+		t.Fatal("expected unknown host to fail strict validation")
+	}
+}

@@ -129,6 +129,26 @@ func TestHTTPRouter_ConflictPolicy_LogAndSkip(t *testing.T) {
 	}
 }
 
+func TestHTTPRouter_WebSocketConflictPolicy_LogAndSkip(t *testing.T) {
+	adapter := router.NewHTTPServer(router.WithHTTPRouterConflictPolicy(router.HTTPRouterConflictLogAndSkip))
+	r := adapter.Router()
+
+	r.Get("/ws/:id", func(ctx router.Context) error {
+		return ctx.SendString("ok")
+	})
+	r.WebSocket("/ws/history", router.DefaultWebSocketConfig(), func(ws router.WebSocketContext) error {
+		return nil
+	})
+
+	routes := r.Routes()
+	if len(routes) != 1 {
+		t.Fatalf("expected conflicting websocket route to be skipped, got %d routes", len(routes))
+	}
+	if routes[0].Path != "/ws/:id" {
+		t.Fatalf("unexpected route path: %s", routes[0].Path)
+	}
+}
+
 func TestHTTPRouter_SetNameUpdatesNamedRouteLookup(t *testing.T) {
 	adapter := router.NewHTTPServer()
 	r := adapter.Router()
@@ -162,6 +182,43 @@ func TestHTTPRouter_SetNameUpdatesNamedRouteLookup(t *testing.T) {
 
 	if location := resp.Header.Get("Location"); location != "/users/123" {
 		t.Fatalf("Expected redirect location %q, got %q", "/users/123", location)
+	}
+}
+
+func TestHTTPRouter_RedirectBackRejectsExternalReferer(t *testing.T) {
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	r.Get("/jump", func(ctx router.Context) error {
+		return ctx.RedirectBack("/fallback")
+	})
+
+	server := httptest.NewServer(adapter.WrappedRouter())
+	defer server.Close()
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/jump", nil)
+	if err != nil {
+		t.Fatalf("failed to build request: %v", err)
+	}
+	req.Header.Set("Referer", "https://evil.example.com/steal")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected status %d, got %d", http.StatusFound, resp.StatusCode)
+	}
+	if got := resp.Header.Get("Location"); got != "/fallback" {
+		t.Fatalf("expected fallback redirect, got %q", got)
 	}
 }
 

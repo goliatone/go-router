@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/goliatone/go-router"
@@ -177,5 +178,30 @@ func TestStatic_HTTP_InvalidFSRootReturns500(t *testing.T) {
 
 	if rr.Code != 500 {
 		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+}
+
+func TestStatic_HTTP_BrowseRendersDirectoryListing(t *testing.T) {
+	tempDir := writeStaticFixture(t)
+
+	adapter := router.NewHTTPServer()
+	r := adapter.Router()
+
+	r.Static("/public", tempDir, router.Static{Browse: true})
+
+	h := adapter.WrappedRouter()
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/public/nested/", nil)
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != 200 {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "file.txt") {
+		t.Fatalf("expected directory listing to contain file entry, got %q", body)
+	}
+	if got := rr.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("content-type = %q, want %q", got, "text/html; charset=utf-8")
 	}
 }

@@ -1263,6 +1263,17 @@ func TestFiberContext_Redirects(t *testing.T) {
 			wantCode: 302,
 			wantLoc:  "/previous",
 		},
+		{
+			name: "Redirect Back Rejects External Referer",
+			handler: func(c router.Context) error {
+				return c.RedirectBack("/fallback")
+			},
+			headers: map[string]string{
+				"Referer": "https://evil.example.com/previous?x=1",
+			},
+			wantCode: 302,
+			wantLoc:  "/fallback",
+		},
 	}
 
 	for _, tt := range tests {

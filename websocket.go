@@ -129,8 +129,8 @@ type WebSocketConfig struct {
 //  4. The server remains responsive under load
 func DefaultWebSocketConfig() WebSocketConfig {
 	return WebSocketConfig{
-		Origins:                  []string{"*"},
-		CheckOrigin:              nil, // nil means same-origin policy
+		Origins:                  []string{},
+		CheckOrigin:              nil, // nil + empty Origins means same-origin policy
 		Subprotocols:             []string{},
 		ReadBufferSize:           4096,
 		WriteBufferSize:          4096,
@@ -199,9 +199,6 @@ func GetUpgradeDataWithDefault(ws WebSocketContext, key string, defaultValue any
 func (c *WebSocketConfig) ApplyDefaults() {
 	defaults := DefaultWebSocketConfig()
 
-	if len(c.Origins) == 0 {
-		c.Origins = defaults.Origins
-	}
 	if len(c.Subprotocols) == 0 {
 		c.Subprotocols = defaults.Subprotocols
 	}

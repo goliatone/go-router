@@ -55,3 +55,39 @@ jobs:
           gofmt -s -l .
           exit 1
         fi
+
+  sseclient:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "npm"
+        cache-dependency-path: sseclient/package-lock.json
+
+    - name: Verify version sync
+      run: |
+        ROOT_VERSION=$(cat .version)
+        SSE_VERSION=$(node -p "require('./sseclient/package.json').version")
+        WS_VERSION=$(node -p "require('./client/package.json').version")
+        HANDLER_VERSION=$(sed -n 's/^[[:space:]]*WebSocketClientVersion = "\([^"]*\)".*/\1/p' websocket_client_handlers.go | head -n 1)
+
+        test "$ROOT_VERSION" = "$SSE_VERSION"
+        test "$ROOT_VERSION" = "$WS_VERSION"
+        test "$ROOT_VERSION" = "$HANDLER_VERSION"
+
+    - name: Install SSE client dependencies
+      working-directory: sseclient
+      run: npm ci
+
+    - name: Run SSE client tests
+      working-directory: sseclient
+      run: npm test
+
+    - name: Build SSE client
+      working-directory: sseclient
+      run: npm run build

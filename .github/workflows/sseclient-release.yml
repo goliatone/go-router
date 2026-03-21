@@ -1,0 +1,67 @@
+name: Publish SSE Client
+
+on:
+  push:
+    tags:
+      - "sseclient-v*.*.*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        registry-url: "https://registry.npmjs.org"
+        cache: "npm"
+        cache-dependency-path: sseclient/package-lock.json
+
+    - name: Verify release tag and version sync
+      run: |
+        ROOT_VERSION=$(cat .version)
+        PACKAGE_VERSION=$(node -p "require('./sseclient/package.json').version")
+        TAG_NAME="${GITHUB_REF_NAME:-}"
+        TAG_VERSION="${TAG_NAME#sseclient-v}"
+
+        if [ -z "$TAG_NAME" ]; then
+          echo "Missing release tag name"
+          exit 1
+        fi
+
+        if [ "$TAG_VERSION" = "$TAG_NAME" ]; then
+          echo "Tag $TAG_NAME does not match the required sseclient-vX.Y.Z format"
+          exit 1
+        fi
+
+        test "$TAG_VERSION" = "$PACKAGE_VERSION"
+        test "$PACKAGE_VERSION" = "$ROOT_VERSION"
+
+    - name: Install dependencies
+      working-directory: sseclient
+      run: npm ci
+
+    - name: Run tests
+      working-directory: sseclient
+      run: npm test
+
+    - name: Build release artifacts
+      working-directory: sseclient
+      run: npm run build
+
+    - name: Preview publish contents
+      working-directory: sseclient
+      run: npm pack --dry-run
+
+    - name: Publish to npm
+      working-directory: sseclient
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      run: npm publish --access public --provenance

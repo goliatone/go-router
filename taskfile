@@ -349,6 +349,107 @@ function version:check {
     fi
 }
 
+function _version:package:get {
+    local dir=$1
+
+    (
+        cd "$dir" || exit 1
+        node -p "require('./package.json').version"
+    )
+}
+
+function _version:package:set {
+    local dir=$1
+    local tag=$2
+
+    (
+        cd "$dir" || exit 1
+        npm version "$tag" --no-git-tag-version --allow-same-version >/dev/null
+    )
+}
+
+function _version:websocket_handler:get {
+    sed -n 's/^[[:space:]]*WebSocketClientVersion = "\([^"]*\)".*/\1/p' websocket_client_handlers.go | head -n 1
+}
+
+function _version:websocket_handler:set {
+    local tag=$1
+
+    sed -i.bak "s/WebSocketClientVersion = \"[^\"]*\"/WebSocketClientVersion = \"$tag\"/" websocket_client_handlers.go
+    rm -f websocket_client_handlers.go.bak
+}
+
+##
+## -----
+##
+## version:sync
+##
+## Sync repo-managed version metadata to all published packages.
+##
+## Arguments:
+## @arg 1 {string} [tag=$(version:get)]
+function version:sync {
+    local tag=${1:-$(version:get)}
+
+    if [ -z "$tag" ]; then
+        lgr E "version:sync requires a target version"
+        return 1
+    fi
+
+    version:set "$tag"
+
+    lgr I "Syncing package versions to ${tag}..."
+    _version:package:set client "$tag" || return 1
+    _version:package:set sseclient "$tag" || return 1
+    _version:websocket_handler:set "$tag" || return 1
+
+    version:verify-sync "$tag"
+}
+
+##
+## -----
+##
+## version:verify-sync
+##
+## Verify that repo, client packages, and embedded Go metadata agree.
+##
+## Arguments:
+## @arg 1 {string} [tag=$(version:get)]
+function version:verify-sync {
+    local expected=${1:-$(version:get)}
+    local root_version
+    local client_version
+    local sseclient_version
+    local websocket_handler_version
+
+    root_version=$(version:get)
+    client_version=$(_version:package:get client) || return 1
+    sseclient_version=$(_version:package:get sseclient) || return 1
+    websocket_handler_version=$(_version:websocket_handler:get)
+
+    if [ "$root_version" != "$expected" ]; then
+        lgr E "Root version mismatch: expected ${expected}, found ${root_version}"
+        return 1
+    fi
+
+    if [ "$client_version" != "$expected" ]; then
+        lgr E "WebSocket client version mismatch: expected ${expected}, found ${client_version}"
+        return 1
+    fi
+
+    if [ "$sseclient_version" != "$expected" ]; then
+        lgr E "SSE client version mismatch: expected ${expected}, found ${sseclient_version}"
+        return 1
+    fi
+
+    if [ "$websocket_handler_version" != "$expected" ]; then
+        lgr E "Embedded WebSocket client version mismatch: expected ${expected}, found ${websocket_handler_version}"
+        return 1
+    fi
+
+    lgr OK "Versions are synchronized at ${expected}"
+}
+
 
 ##
 ## -----
@@ -384,9 +485,13 @@ function release {
 
     # Update version file
     version:set "${tag}"
+    version:sync "${tag}" || return 1
 
     # Add updated version file to git
-    git add "${VERSION_FILE}"
+    git add "${VERSION_FILE}" \
+        client/package.json client/package-lock.json \
+        sseclient/package.json sseclient/package-lock.json \
+        websocket_client_handlers.go
     git commit -m "Bump version: v${tag}"
 
     # Create a new tag
@@ -421,9 +526,15 @@ function release {
 ## @arg 1 {string} [level=patch] Version bump level (major, minor, patch)
 ##
 function client:release {
-    local level=${1:-"patch"}
+    local tag
+
+    if [[ "${1:-}" =~ ^(major|minor|patch)$ ]]; then
+        lgr WARN "client:release uses the repo version. Run ./taskfile release ${1} first if you need to bump go-router."
+    fi
 
     lgr I "Starting client release process..."
+    tag=$(version:get)
+    version:sync "$tag" || return 1
 
     # Navigate to client directory
     cd client || {
@@ -439,34 +550,23 @@ function client:release {
     npm run build:prod
     npm run build:types
 
-    lgr I "Bumping package.json version ($level)..."
-    local new_version
-    new_version=$(npm version "$level" --no-git-tag-version | sed 's/^v//')
-
-    if [ -z "$new_version" ]; then
-        lgr E "Failed to bump version"
-        return 1
-    fi
-
-    lgr I "New version: $new_version"
-
     # Navigate back to root
     cd ..
 
-    lgr I "Updating WebSocketClientVersion in Go handler..."
-    sed -i.bak "s/WebSocketClientVersion = \"[^\"]*\"/WebSocketClientVersion = \"$new_version\"/" websocket_client_handlers.go
-    rm -f websocket_client_handlers.go.bak
-
     lgr I "Committing changes..."
-    git add client/package.json client/package-lock.json client/client.min.js client/client.d.ts websocket_client_handlers.go
-    git commit -m "release: WebSocket client v$new_version"
+    git add client/package.json client/package-lock.json client/client.js client/client.js.map client/client.min.js client/client.d.ts websocket_client_handlers.go
+    if ! git diff --cached --quiet; then
+        git commit -m "release: WebSocket client v${tag}"
+    else
+        lgr I "No WebSocket client release artifacts changed"
+    fi
 
     lgr I "Creating release tag..."
-    git tag -a "client-v$new_version" -m "WebSocket client release v$new_version"
+    git tag -a "client-v${tag}" -m "WebSocket client release v${tag}"
 
     lgr OK "Client release completed successfully!"
-    lgr I "Version updated to: $new_version"
-    lgr I "Tagged as: client-v$new_version"
+    lgr I "Version synchronized to: $tag"
+    lgr I "Tagged as: client-v${tag}"
 }
 
 ##
@@ -493,6 +593,84 @@ function client:build {
     cd client || return 1
     npm run build
     cd ..
+}
+
+##
+## -----
+##
+## sseclient:clean
+##
+## Clean SSE client build artifacts
+##
+function sseclient:clean {
+    cd sseclient || return 1
+    npm run clean
+    cd ..
+}
+
+##
+## -----
+##
+## sseclient:build
+##
+## Build the SSE client for all distributable targets
+##
+function sseclient:build {
+    cd sseclient || return 1
+    npm run build
+    cd ..
+}
+
+##
+## -----
+##
+## sseclient:release
+##
+## Build and prepare the SSE client library for tag-based npm publishing.
+## The SSE client version is synchronized with the repo version in .version.
+##
+function sseclient:release {
+    local tag
+
+    if [[ "${1:-}" =~ ^(major|minor|patch)$ ]]; then
+        lgr WARN "sseclient:release uses the repo version. Run ./taskfile release ${1} first if you need to bump go-router."
+    fi
+
+    tag=$(version:get)
+    lgr I "Starting SSE client release process for v${tag}..."
+
+    version:sync "$tag" || return 1
+
+    cd sseclient || {
+        lgr E "SSE client directory not found"
+        return 1
+    }
+
+    lgr I "Installing dependencies..."
+    npm ci || return 1
+
+    lgr I "Running SSE client tests..."
+    npm test || return 1
+
+    lgr I "Building SSE client artifacts..."
+    npm run build || return 1
+
+    cd ..
+
+    git add sseclient/package.json sseclient/package-lock.json sseclient/README.md sseclient/dist
+    if ! git diff --cached --quiet; then
+        git commit -m "release: SSE client v${tag}"
+    else
+        lgr I "No SSE client release artifacts changed"
+    fi
+
+    lgr I "Creating release tag..."
+    git tag -a "sseclient-v${tag}" -m "SSE client release v${tag}"
+
+    lgr OK "SSE client release completed successfully!"
+    lgr I "Version synchronized to: ${tag}"
+    lgr I "Tagged as: sseclient-v${tag}"
+    lgr I "Push the commit and tag to trigger npm publication"
 }
 
 ##########################################

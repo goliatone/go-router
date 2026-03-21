@@ -300,6 +300,21 @@ const client = createSSEClient({
 client.start();
 ```
 
+Embedded asset serving:
+
+```go
+router.RegisterSSEHandlers(app.Router())
+```
+
+This exposes the bundled browser client from the router package itself:
+
+- `/sseclient/client.min.js`
+- `/sseclient/client.js`
+- `/sseclient/client.js.map`
+- `/sseclient/client.mjs`
+- `/sseclient/client.d.ts`
+- `/sseclient/info`
+
 ### Adapting net/http Handlers
 
 Use `HandlerFromHTTP` to reuse standard `http.Handler` code. For direct access to

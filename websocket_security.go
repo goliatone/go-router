@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 )
@@ -34,6 +35,7 @@ type WebSocketSecurityPolicy struct {
 	RequireSecureOrigin  bool // Only allow HTTPS origins
 	AllowLocalhostOrigin bool // Allow localhost for development
 	StrictHostValidation bool // Validate Host header matches expected values
+	AllowedHosts         []string
 }
 
 // DefaultWebSocketSecurityPolicy returns a secure default policy
@@ -56,6 +58,7 @@ func DefaultWebSocketSecurityPolicy() WebSocketSecurityPolicy {
 		RequireSecureOrigin:   false, // Set to true in production
 		AllowLocalhostOrigin:  true,  // Allow for development
 		StrictHostValidation:  false,
+		AllowedHosts:          []string{},
 	}
 }
 
@@ -79,6 +82,7 @@ func ProductionWebSocketSecurityPolicy() WebSocketSecurityPolicy {
 		RequireSecureOrigin:   true,  // Only HTTPS origins
 		AllowLocalhostOrigin:  false, // No localhost in production
 		StrictHostValidation:  true,
+		AllowedHosts:          []string{}, // Must be configured per application
 	}
 }
 
@@ -249,42 +253,83 @@ func validateHeaderSecurity(c Context, policy WebSocketSecurityPolicy) error {
 
 // validateHostSecurity validates the Host header
 func validateHostSecurity(c Context, policy WebSocketSecurityPolicy) error {
-	host := c.Header("Host")
+	host := requestHost(c)
 	if host == "" {
 		return NewWebSocketSecurityError("host_required", "Host header is required")
 	}
 
-	// Basic host validation - in production, you'd validate against expected hosts
-	if strings.Contains(host, "..") || strings.Contains(host, "//") {
+	scheme := requestScheme(c)
+	normalizedHost, normalizedPort := normalizeHostAndPort(host, scheme)
+	if normalizedHost == "" {
+		return NewWebSocketSecurityError("host_invalid", "Host header contains invalid characters")
+	}
+	if strings.Contains(normalizedHost, "..") || strings.Contains(normalizedHost, "//") {
 		return NewWebSocketSecurityError("host_invalid", "Host header contains invalid characters")
 	}
 
-	// Note: policy parameter will be used for more advanced host validation
-	// in future versions (e.g., checking against allowed host patterns)
-	_ = policy // Suppress unused parameter warning for now
+	if len(policy.AllowedHosts) == 0 {
+		return NewWebSocketSecurityError("host_not_allowed", "Allowed hosts must be configured when strict host validation is enabled")
+	}
 
-	return nil
+	for _, allowed := range policy.AllowedHosts {
+		if matchesHostPolicy(host, normalizedHost, normalizedPort, scheme, allowed) {
+			return nil
+		}
+	}
+
+	return NewWebSocketSecurityError("host_not_allowed", "Host header is not in the allowed list")
+}
+
+func matchesHostPolicy(rawHost, normalizedHost, normalizedPort, scheme, allowed string) bool {
+	allowed = strings.TrimSpace(allowed)
+	if allowed == "" {
+		return false
+	}
+
+	if strings.Contains(allowed, "://") {
+		allowedURL, err := url.Parse(allowed)
+		if err != nil {
+			return false
+		}
+		if hostPatternMatches(normalizedHost, normalizedPort, allowedURL.Host, allowedURL.Scheme) {
+			return true
+		}
+	}
+
+	return hostPatternMatches(normalizedHost, normalizedPort, allowed, scheme) ||
+		strings.EqualFold(strings.TrimSpace(rawHost), allowed)
+}
+
+func hostPatternMatches(normalizedHost, normalizedPort, pattern, scheme string) bool {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return false
+	}
+
+	patternHost, patternPort, hasExplicitPort := splitAllowedHostPattern(pattern, scheme)
+	if patternHost == "" {
+		return false
+	}
+	if !matchHostPattern(normalizedHost, patternHost) {
+		return false
+	}
+	return !hasExplicitPort || normalizedPort == patternPort
+}
+
+func splitAllowedHostPattern(pattern, scheme string) (host, port string, hasExplicitPort bool) {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return "", "", false
+	}
+
+	if parsedHost, parsedPort, err := net.SplitHostPort(pattern); err == nil {
+		return normalizeHostname(parsedHost), parsedPort, true
+	}
+
+	return normalizeHostname(pattern), defaultPortForScheme(scheme), false
 }
 
 // Helper functions
-
-// matchesOriginPattern checks if an origin matches a pattern (supports wildcards)
-func matchesOriginPattern(origin, pattern string) bool {
-	if pattern == "*" {
-		return true
-	}
-	if pattern == origin {
-		return true
-	}
-
-	// Simple wildcard support for subdomains
-	if strings.HasPrefix(pattern, "*.") {
-		domain := pattern[2:]
-		return strings.HasSuffix(origin, "."+domain) || strings.HasSuffix(origin, domain)
-	}
-
-	return false
-}
 
 // isLocalhostOrigin checks if an origin is from localhost
 func isLocalhostOrigin(originURL *url.URL) bool {

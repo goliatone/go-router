@@ -1,5 +1,46 @@
 # Changelog
 
+# [0.54.0](https://github.com/goliatone/go-router/compare/v0.53.0...v0.54.0) - (2026-03-21)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Client etag handler ([7a24779](https://github.com/goliatone/go-router/commit/7a247797202b194bda9a02b2854bb7179f6e7227))  - (goliatone)
+- Httrouter ws data race ([f537c86](https://github.com/goliatone/go-router/commit/f537c8629274c4272b7f17fcbf36ad52dea574e9))  - (goliatone)
+- Websocket middleware imp ([d345d69](https://github.com/goliatone/go-router/commit/d345d699b6c205cfddb49f204205b9bd57b5b2d9))  - (goliatone)
+- Resolve redirects back to target ([6679afc](https://github.com/goliatone/go-router/commit/6679afc279bf55921ab742c1362b219047b22585))  - (goliatone)
+- Router base serve dir ([41b2b00](https://github.com/goliatone/go-router/commit/41b2b00a590c0b0d8ce0d491d65e78805dde1723))  - (goliatone)
+- Update ws client version ([a151e04](https://github.com/goliatone/go-router/commit/a151e04319bcff429d0e415974ab26d220bf24b4))  - (goliatone)
+- Websocket origins and check origin ([4f28609](https://github.com/goliatone/go-router/commit/4f28609c9ac87ed8e67bb468cab569386eff451f))  - (goliatone)
+- Websocket middleware inherit from router context ([2c44cbd](https://github.com/goliatone/go-router/commit/2c44cbd720ed1de3212e5099c65c94a4f2123988))  - (goliatone)
+- Allowed hosts to websockets ([a73a8e1](https://github.com/goliatone/go-router/commit/a73a8e179f5f30778177a0c45a66d3519903b42f))  - (goliatone)
+- Websocket same origin apply method ([e028780](https://github.com/goliatone/go-router/commit/e028780dd98b5f149a98892f5c52fb7fa35d3884))  - (goliatone)
+- Data race ([cba7490](https://github.com/goliatone/go-router/commit/cba74904664e330e64fb88cc2e59aa1ef617f186))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.54.0 ([ebb0279](https://github.com/goliatone/go-router/commit/ebb02797f9c208029fd35d9c37b4e815869209a0))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Sse client handlers ([d879e05](https://github.com/goliatone/go-router/commit/d879e0557920942f0bb8fbd2f56906fcb15d46b1))  - (goliatone)
+- Dispatch drop hook from event ([8d5ac03](https://github.com/goliatone/go-router/commit/8d5ac03b332afb8125e8f870290925d9bd563c6f))  - (goliatone)
+- Sync client package versioning to router ([f778a26](https://github.com/goliatone/go-router/commit/f778a26c1efdc232b3f270692e561e47d8d447cf))  - (goliatone)
+- Udpate sse client ([8ba5a82](https://github.com/goliatone/go-router/commit/8ba5a820dd65c16e9aa10a018aa746f9b4049906))  - (goliatone)
+- Redirect utils ([1dd0c68](https://github.com/goliatone/go-router/commit/1dd0c68fbbe0a70d17adbd9ef6584efab5b053e9))  - (goliatone)
+- Sse client and mount ([e74d19f](https://github.com/goliatone/go-router/commit/e74d19fcce1ba6c97be3f5474cb1a7218567af2e))  - (goliatone)
+- Event stream package ([c3ed1f6](https://github.com/goliatone/go-router/commit/c3ed1f65cec69494c07b3335b0e42d9517a49f84))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.53.0 ([b309360](https://github.com/goliatone/go-router/commit/b30936088a1fd85da5e6f3eed197f205899f083b))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Fix code ([ac36125](https://github.com/goliatone/go-router/commit/ac36125ff87716d8438bcf367d3b2f68a8562a44))  - (goliatone)
+- Update tests ([051c2f1](https://github.com/goliatone/go-router/commit/051c2f191a85b73771d9d307d02aa9bbeb77a94d))  - (goliatone)
+- Update examples ([5ea02df](https://github.com/goliatone/go-router/commit/5ea02dfc8b058a6ccc0a74a776d200cb704cb02c))  - (goliatone)
+- Update release tasks ([58a601b](https://github.com/goliatone/go-router/commit/58a601b622655af3841e4b01c6dead308207af8b))  - (goliatone)
+
 # [0.53.0](https://github.com/goliatone/go-router/compare/v0.52.0...v0.53.0) - (2026-03-11)
 
 ## <!-- 13 -->📦 Bumps

@@ -55,15 +55,24 @@ func WebSocketUpgrade(config WebSocketConfig) MiddlewareFunc {
 				return c.Status(400).SendString("Invalid WebSocket key")
 			}
 
+			// Fiber upgrades must execute the rest of the handler chain inside the
+			// upgrader callback because fasthttp hijacks the request lifecycle.
+			if _, ok := c.(*fiberContext); ok {
+				return handleFiberMiddlewareWebSocketUpgrade(c, config, upgradeData)
+			}
+
 			// 6. Create adapter-specific WebSocket context
 			wsCtx, err := createWebSocketContext(c, config, selectedProtocol, upgradeData)
 			if err != nil {
 				return fmt.Errorf("failed to create websocket context: %w", err)
 			}
 
-			// 7. Set up WebSocket response headers
-			if err := setupWebSocketHeaders(c, wsKey, selectedProtocol); err != nil {
-				return fmt.Errorf("failed to setup websocket headers: %w", err)
+			// 7. Some test doubles do not perform a real upgrade, so preserve the
+			// legacy header path only when the context is not already connected.
+			if !wsCtx.IsConnected() {
+				if err := setupWebSocketHeaders(c, wsKey, selectedProtocol); err != nil {
+					return fmt.Errorf("failed to setup websocket headers: %w", err)
+				}
 			}
 
 			// 8. Call event handler if configured
@@ -74,7 +83,7 @@ func WebSocketUpgrade(config WebSocketConfig) MiddlewareFunc {
 			}
 
 			// 9. Continue with WebSocket context
-			return next(wsCtx)
+			return wsCtx.Next()
 		}
 	}
 }
@@ -110,6 +119,7 @@ func createWebSocketContext(c Context, config WebSocketConfig, protocol string, 
 	if err != nil {
 		return nil, err
 	}
+	inheritWebSocketRouteState(c, wsCtx)
 
 	// Wrap with enhanced context that includes upgrade data
 	enhancedWsCtx := &enhancedWebSocketContext{
@@ -143,6 +153,41 @@ func getWebSocketFactory(c Context) WebSocketContextFactory {
 
 	// Unknown context type
 	return nil
+}
+
+func inheritWebSocketRouteState(src Context, dst WebSocketContext) {
+	switch source := src.(type) {
+	case *fiberContext:
+		target, ok := dst.(*fiberWebSocketContext)
+		if !ok || target == nil || target.fiberContext == nil {
+			return
+		}
+		target.fiberContext.mergeStrategy = source.mergeStrategy
+		target.fiberContext.handlers = source.handlers
+		target.fiberContext.index = source.index
+		target.fiberContext.store = source.store
+		target.fiberContext.logger = source.logger
+		target.fiberContext.meta = source.meta
+		target.SetContext(source.Context())
+	case *httpRouterContext:
+		target, ok := dst.(*httpRouterWebSocketContext)
+		if !ok || target == nil || target.httpRouterContext == nil {
+			return
+		}
+		target.httpRouterContext.handlers = source.handlers
+		target.httpRouterContext.index = source.index
+		target.httpRouterContext.store = source.store
+		target.httpRouterContext.passLocalsToViews = source.passLocalsToViews
+		target.httpRouterContext.router = source.router
+		if source.locals != nil {
+			locals := make(ViewContext, len(source.locals))
+			for k, v := range source.locals {
+				locals[k] = v
+			}
+			target.httpRouterContext.locals = locals
+		}
+		target.SetContext(source.Context())
+	}
 }
 
 // WebSocketContextFactory interface for creating adapter-specific WebSocket contexts

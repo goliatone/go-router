@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ type fiberWebSocketContext struct {
 	conn           *websocket.Conn
 	isUpgraded     bool
 	mu             sync.RWMutex
+	writeMu        sync.Mutex
 	connectionID   string
 	subprotocol    string
 	closeHandlers  []func(code int, text string) error
@@ -122,54 +124,63 @@ func (c *fiberWebSocketContext) WebSocketUpgrade() error {
 // WriteMessage sends a message to the WebSocket connection
 func (c *fiberWebSocketContext) WriteMessage(messageType int, data []byte) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
 	// Set write deadline
 	writeTimeout := c.getWriteTimeout()
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	if writeTimeout > 0 {
 		deadline := time.Now().Add(writeTimeout)
-		if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		if err := conn.SetWriteDeadline(deadline); err != nil {
 			return err
 		}
 	}
 
-	return c.conn.WriteMessage(messageType, data)
+	return conn.WriteMessage(messageType, data)
 }
 
 // ReadMessage reads a message from the WebSocket connection
 func (c *fiberWebSocketContext) ReadMessage() (messageType int, p []byte, err error) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	pongWait := c.config.PongWait
+	messageHandler := c.messageHandler
+	onMessage := c.config.OnMessage
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return 0, nil, ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
 	// Set read deadline for next message
-	if c.config.PongWait > 0 {
-		deadline := time.Now().Add(c.config.PongWait)
-		if err := c.conn.SetReadDeadline(deadline); err != nil {
+	if pongWait > 0 {
+		deadline := time.Now().Add(pongWait)
+		if err := conn.SetReadDeadline(deadline); err != nil {
 			return 0, nil, err
 		}
 	}
 
-	messageType, p, err = c.conn.ReadMessage()
+	messageType, p, err = conn.ReadMessage()
 
 	// Call message handler if set
-	if err == nil && c.messageHandler != nil {
-		if handlerErr := c.messageHandler(messageType, p); handlerErr != nil {
+	if err == nil && messageHandler != nil {
+		if handlerErr := messageHandler(messageType, p); handlerErr != nil {
 			// Log error but don't fail the read
 			c.logger.Info("Message handler error", "error", handlerErr)
 		}
 	}
 
 	// Call OnMessage handler if configured
-	if err == nil && c.config.OnMessage != nil {
-		if handlerErr := c.config.OnMessage(c, messageType, p); handlerErr != nil {
+	if err == nil && onMessage != nil {
+		if handlerErr := onMessage(c, messageType, p); handlerErr != nil {
 			// Log error but don't fail the read
 			c.logger.Info("OnMessage handler error", "error", handlerErr)
 		}
@@ -181,42 +192,49 @@ func (c *fiberWebSocketContext) ReadMessage() (messageType int, p []byte, err er
 // WriteJSON sends a JSON message
 func (c *fiberWebSocketContext) WriteJSON(v any) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
 	// Set write deadline
 	writeTimeout := c.getWriteTimeout()
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	if writeTimeout > 0 {
 		deadline := time.Now().Add(writeTimeout)
-		if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		if err := conn.SetWriteDeadline(deadline); err != nil {
 			return err
 		}
 	}
 
-	return c.conn.WriteJSON(v)
+	return conn.WriteJSON(v)
 }
 
 // ReadJSON reads a JSON message
 func (c *fiberWebSocketContext) ReadJSON(v any) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	pongWait := c.config.PongWait
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
 	// Set read deadline
-	if c.config.PongWait > 0 {
-		deadline := time.Now().Add(c.config.PongWait)
-		if err := c.conn.SetReadDeadline(deadline); err != nil {
+	if pongWait > 0 {
+		deadline := time.Now().Add(pongWait)
+		if err := conn.SetReadDeadline(deadline); err != nil {
 			return err
 		}
 	}
 
-	return c.conn.ReadJSON(v)
+	return conn.ReadJSON(v)
 }
 
 // Close closes the WebSocket connection
@@ -227,19 +245,24 @@ func (c *fiberWebSocketContext) Close() error {
 // CloseWithStatus closes the WebSocket connection with a status code and reason
 func (c *fiberWebSocketContext) CloseWithStatus(code int, reason string) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if !c.isUpgraded || c.conn == nil {
+		c.mu.Unlock()
 		return nil // Not connected
 	}
+	conn := c.conn
+	onDisconnect := c.config.OnDisconnect
+	closeHandlers := append([]func(code int, text string) error{}, c.closeHandlers...)
+	c.isUpgraded = false
+	c.conn = nil
+	c.mu.Unlock()
 
 	// Call OnDisconnect handler if configured
-	if c.config.OnDisconnect != nil {
-		c.config.OnDisconnect(c, nil)
+	if onDisconnect != nil {
+		onDisconnect(c, nil)
 	}
 
 	// Call close handlers
-	for _, handler := range c.closeHandlers {
+	for _, handler := range closeHandlers {
 		if err := handler(code, reason); err != nil {
 			c.logger.Info("Close handler error", "error", err)
 		}
@@ -250,31 +273,25 @@ func (c *fiberWebSocketContext) CloseWithStatus(code int, reason string) error {
 	writeTimeout := c.getWriteTimeout()
 	deadline := time.Now().Add(writeTimeout)
 
-	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	if err := conn.SetWriteDeadline(deadline); err != nil {
 		// Still try to close the connection
-		c.conn.Close()
-		c.isUpgraded = false
-		c.conn = nil
+		_ = conn.Close()
 		return err
 	}
 
-	if err := c.conn.WriteMessage(websocket.CloseMessage, message); err != nil {
+	if err := conn.WriteMessage(websocket.CloseMessage, message); err != nil {
 		// Still close the connection
-		c.conn.Close()
-		c.isUpgraded = false
-		c.conn = nil
+		_ = conn.Close()
 		return err
 	}
 
 	// Close the connection
-	if err := c.conn.Close(); err != nil {
-		c.isUpgraded = false
-		c.conn = nil
+	if err := conn.Close(); err != nil {
 		return err
 	}
-
-	c.isUpgraded = false
-	c.conn = nil
 
 	return nil
 }
@@ -282,78 +299,97 @@ func (c *fiberWebSocketContext) CloseWithStatus(code int, reason string) error {
 // SetReadDeadline sets the read deadline for the connection
 func (c *fiberWebSocketContext) SetReadDeadline(t time.Time) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
-	return c.conn.SetReadDeadline(t)
+	return conn.SetReadDeadline(t)
 }
 
 // SetWriteDeadline sets the write deadline for the connection
 func (c *fiberWebSocketContext) SetWriteDeadline(t time.Time) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
-	return c.conn.SetWriteDeadline(t)
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return conn.SetWriteDeadline(t)
 }
 
 // WritePing sends a ping message
 func (c *fiberWebSocketContext) WritePing(data []byte) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
 	// Set write deadline
 	writeTimeout := c.getWriteTimeout()
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	if writeTimeout > 0 {
 		deadline := time.Now().Add(writeTimeout)
-		if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		if err := conn.SetWriteDeadline(deadline); err != nil {
 			return err
 		}
 	}
 
-	return c.conn.WriteMessage(websocket.PingMessage, data)
+	return conn.WriteMessage(websocket.PingMessage, data)
 }
 
 // WritePong sends a pong message
 func (c *fiberWebSocketContext) WritePong(data []byte) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	conn := c.conn
+	upgraded := c.isUpgraded
+	c.mu.RUnlock()
 
-	if !c.isUpgraded || c.conn == nil {
+	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
 	}
 
 	// Set write deadline
 	writeTimeout := c.getWriteTimeout()
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	if writeTimeout > 0 {
 		deadline := time.Now().Add(writeTimeout)
-		if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		if err := conn.SetWriteDeadline(deadline); err != nil {
 			return err
 		}
 	}
 
-	return c.conn.WriteMessage(websocket.PongMessage, data)
+	return conn.WriteMessage(websocket.PongMessage, data)
 }
 
 // SetPingHandler sets the ping handler
 func (c *fiberWebSocketContext) SetPingHandler(handler func(data []byte) error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.pingHandler = handler
+	conn := c.conn
+	c.mu.Unlock()
 
 	// Update the handler on the connection if already upgraded
-	if c.conn != nil {
-		c.conn.SetPingHandler(func(appData string) error {
+	if conn != nil {
+		if handler == nil {
+			conn.SetPingHandler(nil)
+			return
+		}
+		conn.SetPingHandler(func(appData string) error {
 			return handler([]byte(appData))
 		})
 	}
@@ -362,12 +398,17 @@ func (c *fiberWebSocketContext) SetPingHandler(handler func(data []byte) error) 
 // SetPongHandler sets the pong handler
 func (c *fiberWebSocketContext) SetPongHandler(handler func(data []byte) error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.pongHandler = handler
+	conn := c.conn
+	c.mu.Unlock()
 
 	// Update the handler on the connection if already upgraded
-	if c.conn != nil {
-		c.conn.SetPongHandler(func(appData string) error {
+	if conn != nil {
+		if handler == nil {
+			conn.SetPongHandler(nil)
+			return
+		}
+		conn.SetPongHandler(func(appData string) error {
 			return handler([]byte(appData))
 		})
 	}
@@ -531,7 +572,7 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 				origin := c.Get("Origin")
 				return config.CheckOrigin(origin)
 			}
-		} else if len(config.Origins) > 0 {
+		} else {
 			wsConfig.Filter = func(c *fiber.Ctx) bool {
 				return validateFiberOrigin(c, config.Origins)
 			}
@@ -561,7 +602,7 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 			origin := c.Get("Origin")
 			return config.CheckOrigin(origin)
 		}
-	} else if len(config.Origins) > 0 {
+	} else {
 		wsConfig.Filter = func(c *fiber.Ctx) bool {
 			return validateFiberOrigin(c, config.Origins)
 		}
@@ -607,14 +648,21 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 			conn.SetPingHandler(func(appData string) error {
 				writeTimeout := baseWsCtx.getWriteTimeout()
 				deadline := time.Now().Add(writeTimeout)
+				baseWsCtx.writeMu.Lock()
 				if err := conn.SetWriteDeadline(deadline); err != nil {
+					baseWsCtx.writeMu.Unlock()
 					return err
 				}
 				if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
+					baseWsCtx.writeMu.Unlock()
 					return err
 				}
-				if baseWsCtx.pingHandler != nil {
-					return baseWsCtx.pingHandler([]byte(appData))
+				baseWsCtx.writeMu.Unlock()
+				baseWsCtx.mu.RLock()
+				pingHandler := baseWsCtx.pingHandler
+				baseWsCtx.mu.RUnlock()
+				if pingHandler != nil {
+					return pingHandler([]byte(appData))
 				}
 				return nil
 			})
@@ -628,15 +676,21 @@ func createFiberWSHandler(config WebSocketConfig, handler func(WebSocketContext)
 					}
 				}
 				// Call custom handler if set
-				if baseWsCtx.pongHandler != nil {
-					return baseWsCtx.pongHandler([]byte(appData))
+				baseWsCtx.mu.RLock()
+				pongHandler := baseWsCtx.pongHandler
+				baseWsCtx.mu.RUnlock()
+				if pongHandler != nil {
+					return pongHandler([]byte(appData))
 				}
 				return nil
 			})
 
 			conn.SetCloseHandler(func(code int, text string) error {
 				// Call all registered close handlers
-				for _, closeHandler := range baseWsCtx.closeHandlers {
+				baseWsCtx.mu.RLock()
+				closeHandlers := append([]func(code int, text string) error{}, baseWsCtx.closeHandlers...)
+				baseWsCtx.mu.RUnlock()
+				for _, closeHandler := range closeHandlers {
 					if err := closeHandler(code, text); err != nil {
 						// Log error but continue with other handlers
 						logger.Info("Close handler error", "error", err)
@@ -694,31 +748,16 @@ func (c *fiberWebSocketContext) RouteParams() map[string]string {
 
 // validateFiberOrigin validates the origin for Fiber WebSocket requests
 func validateFiberOrigin(c *fiber.Ctx, allowedOrigins []string) bool {
-	origin := c.Get("Origin")
-
-	// No origin restrictions if list is empty
+	origin := strings.TrimSpace(c.Get("Origin"))
 	if len(allowedOrigins) == 0 {
-		return true
-	}
-
-	// Check each allowed origin
-	for _, allowed := range allowedOrigins {
-		if allowed == "*" {
+		if origin == "" {
 			return true
 		}
-		if allowed == origin {
-			return true
+		host := c.Hostname()
+		if port := c.Port(); port != "" {
+			host = host + ":" + port
 		}
-		// Support wildcard subdomains
-		if len(allowed) > 2 && allowed[0] == '*' && allowed[1] == '.' {
-			domain := allowed[2:]
-			if len(origin) > len(domain) {
-				if origin[len(origin)-len(domain):] == domain {
-					return true
-				}
-			}
-		}
+		return originMatchesRequest(origin, requestScheme(NewFiberContext(c, nil)), host)
 	}
-
-	return false
+	return matchesAnyOriginPattern(origin, allowedOrigins)
 }

@@ -1,6 +1,6 @@
 {
   "name": "@goliatone/go-router-sse-client",
-  "version": "0.0.0",
+  "version": "0.53.0",
   "description": "Dedicated browser SSE client for go-router runtime streams",
   "main": "dist/client.mjs",
   "module": "dist/client.mjs",
@@ -24,7 +24,8 @@
     "build:prod": "esbuild src/client.ts --bundle --minify --target=es2018 --format=iife --global-name=__GoRouterSSEClientModule --outfile=dist/client.min.js --footer:js=\"var GoRouterSSEClient = __GoRouterSSEClientModule.default || __GoRouterSSEClientModule;\"",
     "build:types": "tsc --project tsconfig.json --declaration --emitDeclarationOnly --outDir dist",
     "clean": "rm -rf dist",
-    "test": "npm run build:module && node --test test/*.test.mjs"
+    "test": "npm run build:module && node --test test/*.test.mjs",
+    "prepublishOnly": "npm test && npm run build"
   },
   "keywords": [
     "sse",
@@ -46,5 +47,9 @@
   "bugs": {
     "url": "https://github.com/goliatone/go-router/issues"
   },
-  "homepage": "https://github.com/goliatone/go-router#readme"
+  "homepage": "https://github.com/goliatone/go-router#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

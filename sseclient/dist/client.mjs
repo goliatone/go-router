@@ -13,6 +13,7 @@ var FetchSSEClient = class {
     this.heartbeatDegradeTimer = null;
     this.heartbeatFailoverTimer = null;
     this.reconnectTimer = null;
+    this.reconnectWaiterResolve = null;
     this.reconnectAttempt = 0;
     this.serverRetryMs = null;
     this.recoveryPending = false;
@@ -33,20 +34,14 @@ var FetchSSEClient = class {
     };
   }
   start() {
-    if (this.running || this.connectLoop) {
-      return;
-    }
     if (this.diagnosticsState.failoverTriggered) {
       return;
     }
+    if (this.running) {
+      return;
+    }
     this.running = true;
-    this.connectLoop = this.run();
-    void this.connectLoop.finally(() => {
-      this.connectLoop = null;
-      if (!this.running && !this.diagnosticsState.failoverTriggered) {
-        this.setConnectionState("disconnected");
-      }
-    });
+    this.ensureConnectLoop();
   }
   stop() {
     this.running = false;
@@ -77,13 +72,23 @@ var FetchSSEClient = class {
     this.recoveryPending = true;
     this.reconnectAttempt = 0;
     this.diagnosticsState.reconnectAttempts = 0;
-    if (this.running || this.connectLoop) {
+    this.running = true;
+    if (this.connectLoop) {
       return;
     }
-    this.running = true;
+    this.ensureConnectLoop();
+  }
+  ensureConnectLoop() {
+    if (!this.running || this.connectLoop || this.diagnosticsState.failoverTriggered) {
+      return;
+    }
     this.connectLoop = this.run();
     void this.connectLoop.finally(() => {
       this.connectLoop = null;
+      if (this.running && !this.diagnosticsState.failoverTriggered) {
+        this.ensureConnectLoop();
+        return;
+      }
       if (!this.running && !this.diagnosticsState.failoverTriggered) {
         this.setConnectionState("disconnected");
       }
@@ -260,9 +265,13 @@ var FetchSSEClient = class {
     const delay = this.computeReconnectDelay(this.reconnectAttempt);
     await new Promise((resolve) => {
       this.clearReconnectTimer();
+      this.reconnectWaiterResolve = () => {
+        this.reconnectWaiterResolve = null;
+        resolve();
+      };
       this.reconnectTimer = setTimeout(() => {
         this.reconnectTimer = null;
-        resolve();
+        this.reconnectWaiterResolve?.();
       }, delay);
     });
   }
@@ -270,6 +279,11 @@ var FetchSSEClient = class {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.reconnectWaiterResolve) {
+      const resolve = this.reconnectWaiterResolve;
+      this.reconnectWaiterResolve = null;
+      resolve();
     }
   }
   setConnectionState(nextState) {

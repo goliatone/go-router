@@ -87,6 +87,7 @@ class FetchSSEClient implements SSEClient {
   private heartbeatDegradeTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatFailoverTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectWaiterResolve: (() => void) | null = null;
   private reconnectAttempt = 0;
   private serverRetryMs: number | null = null;
   private recoveryPending = false;
@@ -111,21 +112,15 @@ class FetchSSEClient implements SSEClient {
   }
 
   start(): void {
-    if (this.running || this.connectLoop) {
+    if (this.diagnosticsState.failoverTriggered) {
       return;
     }
-    if (this.diagnosticsState.failoverTriggered) {
+    if (this.running) {
       return;
     }
 
     this.running = true;
-    this.connectLoop = this.run();
-    void this.connectLoop.finally(() => {
-      this.connectLoop = null;
-      if (!this.running && !this.diagnosticsState.failoverTriggered) {
-        this.setConnectionState("disconnected");
-      }
-    });
+    this.ensureConnectLoop();
   }
 
   stop(): void {
@@ -162,15 +157,27 @@ class FetchSSEClient implements SSEClient {
     this.recoveryPending = true;
     this.reconnectAttempt = 0;
     this.diagnosticsState.reconnectAttempts = 0;
+    this.running = true;
 
-    if (this.running || this.connectLoop) {
+    if (this.connectLoop) {
       return;
     }
 
-    this.running = true;
+    this.ensureConnectLoop();
+  }
+
+  private ensureConnectLoop(): void {
+    if (!this.running || this.connectLoop || this.diagnosticsState.failoverTriggered) {
+      return;
+    }
+
     this.connectLoop = this.run();
     void this.connectLoop.finally(() => {
       this.connectLoop = null;
+      if (this.running && !this.diagnosticsState.failoverTriggered) {
+        this.ensureConnectLoop();
+        return;
+      }
       if (!this.running && !this.diagnosticsState.failoverTriggered) {
         this.setConnectionState("disconnected");
       }
@@ -376,9 +383,13 @@ class FetchSSEClient implements SSEClient {
     const delay = this.computeReconnectDelay(this.reconnectAttempt);
     await new Promise<void>((resolve) => {
       this.clearReconnectTimer();
+      this.reconnectWaiterResolve = () => {
+        this.reconnectWaiterResolve = null;
+        resolve();
+      };
       this.reconnectTimer = setTimeout(() => {
         this.reconnectTimer = null;
-        resolve();
+        this.reconnectWaiterResolve?.();
       }, delay);
     });
   }
@@ -387,6 +398,11 @@ class FetchSSEClient implements SSEClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.reconnectWaiterResolve) {
+      const resolve = this.reconnectWaiterResolve;
+      this.reconnectWaiterResolve = null;
+      resolve();
     }
   }
 

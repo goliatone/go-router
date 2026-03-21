@@ -213,6 +213,83 @@ test("fails over after reconnect exhaustion", async () => {
   assert.equal(client.getDiagnostics().failoverReason, "reconnect_exhausted");
 });
 
+test("start can restart the client after stop cancels an in-flight reconnect wait", async () => {
+  Math.random = () => 0;
+  let callCount = 0;
+
+  globalThis.fetch = async (_url, init = {}) => {
+    callCount += 1;
+    if (callCount === 1) {
+      throw new Error("network down");
+    }
+    return new Response(createStream([], init.signal, { keepOpen: true }), { status: 200 });
+  };
+
+  const client = createSSEClient({
+    url: "https://example.test/events",
+    retryMs: 1000,
+    heartbeatTimeoutMs: 1000,
+    maxReconnectAttempts: 5,
+  });
+
+  client.start();
+
+  await waitFor(() => client.getDiagnostics().connectionState === "reconnecting");
+  client.stop();
+  await waitFor(() => client.getDiagnostics().connectionState === "disconnected");
+
+  client.start();
+
+  await waitFor(() => callCount >= 2);
+  await waitFor(() => client.getDiagnostics().connectionState === "connected");
+
+  client.stop();
+});
+
+test("attemptRecovery can be called immediately from onFailover", async () => {
+  let callCount = 0;
+  let failovers = 0;
+  let recoveries = 0;
+
+  globalThis.fetch = async (_url, init = {}) => {
+    callCount += 1;
+    if (callCount === 1) {
+      return new Response("unauthorized", { status: 401 });
+    }
+    return new Response(
+      createStream(["id: 88\nevent: lifecycle\ndata: {\"ok\":true}\n\n"], init.signal, { keepOpen: true }),
+      { status: 200 },
+    );
+  };
+
+  const received = [];
+  const client = createSSEClient({
+    url: "https://example.test/events",
+    heartbeatTimeoutMs: 1000,
+    onEvent: (event) => received.push(event),
+    onFailover: () => {
+      failovers += 1;
+      client.attemptRecovery();
+    },
+    onRecovery: () => {
+      recoveries += 1;
+    },
+  });
+
+  client.start();
+
+  await waitFor(() => failovers === 1);
+  await waitFor(() => recoveries === 1);
+  await waitFor(() => received.length === 1);
+
+  assert.equal(callCount, 2);
+  assert.equal(client.getDiagnostics().connectionState, "connected");
+  assert.equal(client.getDiagnostics().failoverTriggered, false);
+  assert.equal(client.getDiagnostics().lastEventId, "88");
+
+  client.stop();
+});
+
 function createStream(chunks, signal, options = {}) {
   const { keepOpen = false } = options;
 

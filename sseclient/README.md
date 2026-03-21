@@ -2,6 +2,10 @@
 
 Dedicated browser SSE client for go-router runtime streams.
 
+Package versions track the main `go-router` release version. The publish tag
+for this package is `sseclient-vX.Y.Z`, and `X.Y.Z` must match the repo
+`.version` value.
+
 ## What It Provides
 
 - Fetch-based SSE consumption with custom request headers
@@ -102,6 +106,20 @@ npm install
 npm run build
 npm test
 ```
+
+## Release
+
+Use the repo task from the project root:
+
+```bash
+./taskfile sseclient:release
+git push
+git push --tags
+```
+
+The release task verifies version sync, runs the SSE client tests, rebuilds the
+distributables, and creates an annotated `sseclient-vX.Y.Z` tag. Pushing that
+tag triggers the npm publish workflow.
 
 Build outputs:
 

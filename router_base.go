@@ -3,12 +3,14 @@ package router
 import (
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"mime"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -451,8 +453,14 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 		filePath := strings.TrimPrefix(reqPath, prefix)
 		filePath = strings.TrimPrefix(filePath, "/") // Remove leading slash for fs.FS
 
-		if filePath == "" {
+		if filePath == "" && cfg.Browse {
+			filePath = "."
+		} else if filePath == "" {
 			filePath = cfg.Index
+		}
+		filePath = path.Clean(filePath)
+		if filePath == "/" {
+			filePath = "."
 		}
 
 		// Check if file exists and get info
@@ -474,6 +482,9 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 
 		// Handle directory
 		if stat.IsDir() {
+			if cfg.Browse {
+				return renderDirectoryListing(c, reqPath, filePath, fileSystem)
+			}
 			if !cfg.Browse {
 				// Try to serve index file
 				indexPath := path.Join(filePath, cfg.Index)
@@ -644,4 +655,60 @@ func staticConfigErrorHandler(prefix string, err error, logger Logger) HandlerFu
 		logger.Error("static handler for prefix %q is misconfigured: %v", prefix, err)
 		return c.Status(500).SendString("Static file configuration error")
 	}
+}
+
+func renderDirectoryListing(c Context, reqPath, dirPath string, fileSystem fs.FS) error {
+	entries, err := fs.ReadDir(fileSystem, dirPath)
+	if err != nil {
+		return c.Status(500).SendString("Failed to read directory")
+	}
+
+	basePath := strings.TrimSuffix(reqPath, "/")
+	if basePath == "" {
+		basePath = "/"
+	}
+
+	var body strings.Builder
+	body.WriteString("<!doctype html><html><head><meta charset=\"utf-8\"><title>Index of ")
+	body.WriteString(html.EscapeString(reqPath))
+	body.WriteString("</title></head><body><h1>Index of ")
+	body.WriteString(html.EscapeString(reqPath))
+	body.WriteString("</h1><ul>")
+
+	if basePath != "/" {
+		parent := path.Dir(basePath)
+		if parent == "." {
+			parent = "/"
+		}
+		body.WriteString("<li><a href=\"")
+		body.WriteString(html.EscapeString(parent))
+		body.WriteString("\">..</a></li>")
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		label := name
+		href := path.Join(basePath, name)
+		if entry.IsDir() {
+			label += "/"
+			href += "/"
+		}
+
+		body.WriteString("<li><a href=\"")
+		body.WriteString(html.EscapeString(href))
+		body.WriteString("\">")
+		body.WriteString(html.EscapeString(label))
+		body.WriteString("</a>")
+		if info, infoErr := entry.Info(); infoErr == nil && !info.IsDir() {
+			body.WriteString(" (")
+			body.WriteString(strconv.FormatInt(info.Size(), 10))
+			body.WriteString(" bytes)")
+		}
+		body.WriteString("</li>")
+	}
+
+	body.WriteString("</ul></body></html>")
+
+	c.SetHeader("Content-Type", "text/html; charset=utf-8")
+	return c.SendString(body.String())
 }

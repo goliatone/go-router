@@ -1,0 +1,50 @@
+{
+  "name": "@goliatone/go-router-sse-client",
+  "version": "0.0.0",
+  "description": "Dedicated browser SSE client for go-router runtime streams",
+  "main": "dist/client.mjs",
+  "module": "dist/client.mjs",
+  "types": "dist/client.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.mjs",
+      "default": "./dist/client.mjs"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run build:module && npm run build:dev && npm run build:prod && npm run build:types",
+    "build:module": "esbuild src/client.ts --bundle --target=es2020 --format=esm --outfile=dist/client.mjs",
+    "build:dev": "esbuild src/client.ts --bundle --target=es2018 --format=iife --global-name=__GoRouterSSEClientModule --outfile=dist/client.js --sourcemap --footer:js=\"var GoRouterSSEClient = __GoRouterSSEClientModule.default || __GoRouterSSEClientModule;\"",
+    "build:prod": "esbuild src/client.ts --bundle --minify --target=es2018 --format=iife --global-name=__GoRouterSSEClientModule --outfile=dist/client.min.js --footer:js=\"var GoRouterSSEClient = __GoRouterSSEClientModule.default || __GoRouterSSEClientModule;\"",
+    "build:types": "tsc --project tsconfig.json --declaration --emitDeclarationOnly --outDir dist",
+    "clean": "rm -rf dist",
+    "test": "npm run build:module && node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "sse",
+    "eventsource",
+    "gorouter",
+    "runtime-stream",
+    "typescript"
+  ],
+  "author": "GoRouter Team",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/goliatone/go-router"
+  },
+  "bugs": {
+    "url": "https://github.com/goliatone/go-router/issues"
+  },
+  "homepage": "https://github.com/goliatone/go-router#readme"
+}

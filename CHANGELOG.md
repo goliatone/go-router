@@ -1,5 +1,21 @@
 # Changelog
 
+# [0.55.0](https://github.com/goliatone/go-router/compare/v0.54.0...v0.55.0) - (2026-03-24)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.55.0 ([60fafbc](https://github.com/goliatone/go-router/commit/60fafbce2a85ef310146bf5ea9609cb43882e507))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Expose sanitize redirect target ([e16bdd7](https://github.com/goliatone/go-router/commit/e16bdd71032dfac1c715ca901055d38189a1d159))  - (goliatone)
+- Harden cookie setup ([895d472](https://github.com/goliatone/go-router/commit/895d472e40e92e52aa21a50f28beab5451c0afaf))  - (goliatone)
+- Browser security setup ([c866941](https://github.com/goliatone/go-router/commit/c866941e36a33d54891165cac2939c35fed2af5b))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.54.0 ([e2be333](https://github.com/goliatone/go-router/commit/e2be33318d14ddf3512784570f3086e2ebfa05cc))  - (goliatone)
+
 # [0.54.0](https://github.com/goliatone/go-router/compare/v0.53.0...v0.54.0) - (2026-03-21)
 
 ## <!-- 1 -->🐛 Bug Fixes

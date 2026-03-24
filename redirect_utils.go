@@ -6,12 +6,16 @@ import (
 )
 
 func resolveRedirectBackTarget(c Context, fallback string) string {
+	return ResolveRedirectBackTarget(c, fallback)
+}
+
+func ResolveRedirectBackTarget(c Context, fallback string) string {
 	referer := strings.TrimSpace(c.Referer())
 	if referer == "" {
 		return fallback
 	}
 
-	if target, ok := sanitizeRedirectTarget(referer, requestScheme(c), requestHost(c)); ok {
+	if target, ok := SanitizeRedirectTarget(referer, requestScheme(c), requestHost(c)); ok {
 		return target
 	}
 
@@ -19,6 +23,10 @@ func resolveRedirectBackTarget(c Context, fallback string) string {
 }
 
 func sanitizeRedirectTarget(raw, scheme, host string) (string, bool) {
+	return SanitizeRedirectTarget(raw, scheme, host)
+}
+
+func SanitizeRedirectTarget(raw, scheme, host string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", false

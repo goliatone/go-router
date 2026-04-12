@@ -276,6 +276,36 @@ func (r *FiberRouter) registerDeferredRoutes() {
 	r.root.deferredRoutes = r.root.deferredRoutes[:0]
 }
 
+func (r *FiberRouter) registerMissHandlers() {
+	if len(r.root.missHandlers) == 0 {
+		return
+	}
+
+	r.app.Use(func(c *fiber.Ctx) error {
+		def := r.missHandler(HTTPMethod(c.Method()))
+		if def == nil {
+			return c.Status(fiber.StatusNotFound).SendString("Not Found")
+		}
+
+		ctx := NewFiberContext(c, r.logger)
+		fc, ok := ctx.(*fiberContext)
+		if !ok {
+			return fmt.Errorf("context cast failed")
+		}
+
+		fc.setMergeStrategy(r.mergeStrategy)
+		fc.setHandlers(def.Handlers)
+		fc.index = -1
+
+		goCtx := fc.Context()
+		goCtx = WithRouteName(goCtx, "")
+		goCtx = WithRouteParams(goCtx, map[string]string{})
+		fc.SetContext(goCtx)
+
+		return fc.Next()
+	})
+}
+
 func (r *FiberRouter) detectRouteConflict(method HTTPMethod, fullPath string) *routeConflict {
 	for _, route := range r.root.routes {
 		if route.Method != method {
@@ -327,6 +357,7 @@ func (a *FiberAdapter) Init() {
 	a.router.registerDeferredRoutes()
 
 	a.router.registerLateRoutes(a.router)
+	a.router.registerMissHandlers()
 	a.initialized = true
 }
 
@@ -418,6 +449,13 @@ func (r *FiberRouter) Use(m ...MiddlewareFunc) Router[*fiber.App] {
 		})
 	}
 	return r
+}
+
+func (r *FiberRouter) HandleMiss(method HTTPMethod, handler HandlerFunc, m ...MiddlewareFunc) {
+	if handler == nil {
+		return
+	}
+	r.setMissHandler(method, handler, r.buildNamedMiddlewares(m))
 }
 
 func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {

@@ -147,6 +147,8 @@ type HTTPServer struct {
 	strictRoutes      bool
 	pathConflictMode  PathConflictMode
 	namedRoutePolicy  NamedRouteCollisionPolicy
+	notFoundHandler   http.Handler
+	methodNotAllowed  http.Handler
 }
 
 func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*httprouter.Router] {
@@ -188,6 +190,8 @@ func NewHTTPServer(opts ...func(*httprouter.Router) *httprouter.Router) Server[*
 		strictRoutes:     strictRoutes,
 		pathConflictMode: pathConflictMode,
 		namedRoutePolicy: namedRoutePolicy,
+		notFoundHandler:  router.NotFound,
+		methodNotAllowed: router.MethodNotAllowed,
 		// views:      engine,
 	}
 }
@@ -283,6 +287,39 @@ func (a *HTTPServer) getRoutePattern(method, path string) string {
 	return best.Path
 }
 
+func (a *HTTPServer) serveMissHandler(w http.ResponseWriter, r *http.Request) bool {
+	if a == nil || a.router == nil {
+		return false
+	}
+
+	def := a.router.missHandler(HTTPMethod(r.Method))
+	if def == nil {
+		return false
+	}
+
+	ctx := newHTTPRouterContext(w, r, nil, a.views)
+	ctx.router = a.router
+	ctx.passLocalsToViews = a.passLocalsToViews
+	ctx.setHandlers(def.Handlers)
+
+	goCtx := ctx.Context()
+	goCtx = WithRouteName(goCtx, "")
+	goCtx = WithRouteParams(goCtx, map[string]string{})
+	ctx.SetContext(goCtx)
+
+	if err := ctx.Next(); err != nil {
+		if a.errorHandler == nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return true
+		}
+		if handleErr := a.errorHandler(ctx, err); handleErr != nil && a.router != nil && a.router.logger != nil {
+			a.router.logger.Error("error handler failed: %v", handleErr)
+		}
+	}
+
+	return true
+}
+
 // pathMatchesPattern checks if a request path could match a route pattern
 func pathMatchesPattern(pattern, path string) bool {
 	patternParts := strings.Split(strings.Trim(pattern, "/"), "/")
@@ -354,6 +391,28 @@ func (a *HTTPServer) Init() {
 	}
 
 	a.router.registerLateRoutes(a.router)
+	if len(a.router.root.missHandlers) > 0 {
+		a.httpRouter.NotFound = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if a.serveMissHandler(w, r) {
+				return
+			}
+			if a.notFoundHandler != nil {
+				a.notFoundHandler.ServeHTTP(w, r)
+				return
+			}
+			http.NotFound(w, r)
+		})
+		a.httpRouter.MethodNotAllowed = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if a.serveMissHandler(w, r) {
+				return
+			}
+			if a.methodNotAllowed != nil {
+				a.methodNotAllowed.ServeHTTP(w, r)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		})
+	}
 
 	a.initialized = true
 }
@@ -486,6 +545,13 @@ func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
 		})
 	}
 	return r
+}
+
+func (r *HTTPRouter) HandleMiss(method HTTPMethod, handler HandlerFunc, m ...MiddlewareFunc) {
+	if handler == nil {
+		return
+	}
+	r.setMissHandler(method, handler, r.buildNamedMiddlewares(m))
 }
 
 func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {

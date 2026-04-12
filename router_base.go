@@ -20,6 +20,7 @@ type routerRoot struct {
 	namedRoutes         map[string]*namedRouteBinding
 	namedRouteConflicts map[*RouteDefinition]error
 	lateRoutes          []*lateRoute
+	missHandlers        map[HTTPMethod]*missHandler
 	deferredRoutes      []*RouteDefinition
 	deferredRegistered  bool
 }
@@ -54,6 +55,11 @@ type BaseRouter struct {
 type namedMiddleware struct {
 	Name string
 	Mw   MiddlewareFunc
+}
+
+type missHandler struct {
+	Method   HTTPMethod
+	Handlers []NamedHandler
 }
 
 // ChainHandlers builds the final handler chain:
@@ -126,6 +132,37 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 	br.root.routes = append(br.root.routes, r)
 
 	return r
+}
+
+func (br *BaseRouter) buildNamedMiddlewares(extra []MiddlewareFunc) []namedMiddleware {
+	allMw := append([]namedMiddleware{}, br.middlewares...)
+	for _, mw := range extra {
+		allMw = append(allMw, namedMiddleware{
+			Name: funcName(mw),
+			Mw:   mw,
+		})
+	}
+	return allMw
+}
+
+func (br *BaseRouter) setMissHandler(method HTTPMethod, finalHandler HandlerFunc, allMw []namedMiddleware) {
+	if finalHandler == nil {
+		return
+	}
+	if br.root.missHandlers == nil {
+		br.root.missHandlers = make(map[HTTPMethod]*missHandler)
+	}
+	br.root.missHandlers[method] = &missHandler{
+		Method:   method,
+		Handlers: chainHandlers(finalHandler, "", allMw),
+	}
+}
+
+func (br *BaseRouter) missHandler(method HTTPMethod) *missHandler {
+	if br.root.missHandlers == nil {
+		return nil
+	}
+	return br.root.missHandlers[method]
 }
 
 func (br *BaseRouter) addNamedRoute(routeName string, route *RouteDefinition) error {

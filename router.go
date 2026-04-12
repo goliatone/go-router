@@ -285,6 +285,13 @@ type Router[T any] interface {
 	WithLogger(logger Logger) Router[T]
 }
 
+// MissHandlerRegistrar allows adapters to handle unmatched requests without
+// claiming a concrete route path. This is useful for guarded fallback flows
+// that must coexist with explicit static routes.
+type MissHandlerRegistrar interface {
+	HandleMiss(method HTTPMethod, handler HandlerFunc, middlewares ...MiddlewareFunc)
+}
+
 // TODO: Maybe incorporate into Router[T]
 type PrefixedRouter interface {
 	GetPrefix() string

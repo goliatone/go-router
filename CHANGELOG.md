@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.57.0](https://github.com/goliatone/go-router/compare/v0.56.0...v0.57.0) - (2026-04-14)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Websocket same origin validation ([eb070c8](https://github.com/goliatone/go-router/commit/eb070c8b79e560077548a64c1cce5b71e9da4151))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.57.0 ([270c780](https://github.com/goliatone/go-router/commit/270c780aef1a3adba948da16a93132864d0a5c6c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.56.0 ([b04e257](https://github.com/goliatone/go-router/commit/b04e2574444f50ab67ced56bc06420f31a87f825))  - (goliatone)
+
 # [0.56.0](https://github.com/goliatone/go-router/compare/v0.55.0...v0.56.0) - (2026-04-12)
 
 ## <!-- 13 -->📦 Bumps

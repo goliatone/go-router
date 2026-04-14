@@ -1,6 +1,6 @@
 {
   "name": "@goliatone/go-router-sse-client",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "description": "Dedicated browser SSE client for go-router runtime streams",
   "main": "dist/client.mjs",
   "module": "dist/client.mjs",

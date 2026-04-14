@@ -30,7 +30,7 @@ var websocketTestHTML []byte
 
 // Version and build information
 const (
-	WebSocketClientVersion = "0.56.0"
+	WebSocketClientVersion = "0.57.0"
 	WebSocketClientBuild   = "production"
 )
 

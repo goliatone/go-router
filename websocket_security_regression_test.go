@@ -53,6 +53,56 @@ func TestFiberWebSocketRejectsCrossOriginByDefault(t *testing.T) {
 	}
 }
 
+func TestFiberWebSocketAllowsSameOriginWithExplicitOriginOnNonDefaultPort(t *testing.T) {
+	app := router.NewFiberAdapter().(*router.FiberAdapter)
+	app.Router().WebSocket("/ws", router.DefaultWebSocketConfig(), func(ws router.WebSocketContext) error {
+		return nil
+	})
+
+	address, shutdown := startFiberServer(t, app)
+	defer shutdown()
+
+	wsURL := "ws://" + address + "/ws"
+	headers := http.Header{}
+	headers.Set("Origin", "http://"+address)
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	if err != nil {
+		t.Fatalf("expected same-origin websocket dial to succeed, got %v", err)
+	}
+	_ = conn.Close()
+}
+
+func TestFiberWebSocketRejectsCrossOriginWithForbiddenStatus(t *testing.T) {
+	app := router.NewFiberAdapter().(*router.FiberAdapter)
+	app.Router().WebSocket("/ws", router.DefaultWebSocketConfig(), func(ws router.WebSocketContext) error {
+		return nil
+	})
+
+	address, shutdown := startFiberServer(t, app)
+	defer shutdown()
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+address+"/ws", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Origin", "https://evil.example.com")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("handshake request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected cross-origin handshake to return 403, got %d", resp.StatusCode)
+	}
+}
+
 func TestHTTPRouterOnMessageCloseDoesNotDeadlock(t *testing.T) {
 	config := router.DefaultWebSocketConfig()
 	closed := make(chan error, 1)

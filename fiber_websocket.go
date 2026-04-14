@@ -551,6 +551,10 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 
 	// Return a wrapper function that delegates to WebSocket
 	return func(c *fiber.Ctx) error {
+		if !validateFiberWebSocketOrigin(c, config) {
+			return c.SendStatus(fiber.StatusForbidden)
+		}
+
 		// 1. Handle OnPreUpgrade if configured
 		var upgradeData UpgradeData
 		if config.OnPreUpgrade != nil {
@@ -758,11 +762,18 @@ func validateFiberOrigin(c *fiber.Ctx, allowedOrigins []string) bool {
 		if origin == "" {
 			return true
 		}
-		host := c.Hostname()
-		if port := c.Port(); port != "" {
-			host = host + ":" + port
-		}
-		return originMatchesRequest(origin, requestScheme(NewFiberContext(c, nil)), host)
+		ctx := NewFiberContext(c, nil)
+		return originMatchesRequest(origin, requestScheme(ctx), requestHost(ctx))
 	}
 	return matchesAnyOriginPattern(origin, allowedOrigins)
+}
+
+func validateFiberWebSocketOrigin(c *fiber.Ctx, config WebSocketConfig) bool {
+	if c == nil {
+		return false
+	}
+	if config.CheckOrigin != nil {
+		return config.CheckOrigin(strings.TrimSpace(c.Get("Origin")))
+	}
+	return validateFiberOrigin(c, config.Origins)
 }

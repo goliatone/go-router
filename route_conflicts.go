@@ -60,7 +60,7 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode, enf
 	firstStaticParamExistingSegment := ""
 	firstStaticParamNewSegment := ""
 
-	for i := 0; i < minLen; i++ {
+	for i := range minLen {
 		existingSegment := existingParts[i]
 		newSegment := newParts[i]
 		existingKind := classifySegment(existingSegment)

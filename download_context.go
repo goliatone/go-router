@@ -41,6 +41,9 @@ func (c *fiberContext) WriteStream(_ context.Context, contentType string, r io.R
 
 	ctx.Context().SetBodyStream(r, size)
 	ctx.Status(http.StatusOK)
+	c.statusCode = http.StatusOK
+	c.written = true
+	c.stream = true
 	return nil
 }
 

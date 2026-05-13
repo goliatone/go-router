@@ -56,7 +56,6 @@ func GetResourceName(typ reflect.Type) (string, string) {
 
 	resourceName := ""
 	for field := range typ.Fields() {
-		field := field
 		crudTag := field.Tag.Get(TAG_CRUD)
 		if crudTag == "" {
 			continue

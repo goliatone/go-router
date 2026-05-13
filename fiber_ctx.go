@@ -1,7 +1,9 @@
 package router
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -25,6 +27,10 @@ type fiberContext struct {
 	httpReq       *http.Request
 	httpRes       http.ResponseWriter
 	meta          *fiberRequestMeta
+	statusCode    int
+	written       bool
+	bodySize      int64
+	stream        bool
 }
 
 // fiberRequestMeta caches request data needed after fasthttp hijacks the connection.
@@ -109,6 +115,7 @@ func NewFiberContext(c *fiber.Ctx, logger Logger) Context {
 		index:         -1,
 		store:         NewContextStore(),
 		logger:        logger,
+		statusCode:    http.StatusOK,
 	}
 }
 
@@ -271,7 +278,46 @@ func (c *fiberContext) Render(name string, bind any, layouts ...string) error {
 		return err
 	}
 
-	return ctx.Render(name, merged, layouts...)
+	if err := ctx.Render(name, merged, layouts...); err != nil {
+		return err
+	}
+	c.syncFiberResponseState(true, false)
+	return nil
+}
+
+func (c *fiberContext) RenderToWriter(w io.Writer, name string, bind any, layouts ...string) error {
+	if w == nil {
+		return fmt.Errorf("render: writer is nil")
+	}
+
+	ctx := c.liveCtx()
+	if ctx == nil {
+		return fmt.Errorf("context unavailable")
+	}
+
+	cfg := ctx.App().Config()
+	if cfg.Views == nil {
+		return fmt.Errorf("render: no template engine registered")
+	}
+
+	merged, err := MergeLocalsWithViewData(ctx, c.logger, c.mergeStrategy, bind)
+	if err != nil {
+		return err
+	}
+
+	if len(layouts) == 0 && cfg.ViewsLayout != "" {
+		layouts = []string{cfg.ViewsLayout}
+	}
+
+	return cfg.Views.Render(w, name, merged, layouts...)
+}
+
+func (c *fiberContext) RenderToBytes(name string, bind any, layouts ...string) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := c.RenderToWriter(buf, name, bind, layouts...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // MergeLocalsWithViewData combines a render bind value with Fiber locals using the provided strategy.
@@ -524,12 +570,19 @@ func (c *fiberContext) Status(code int) Context {
 	if ctx := c.liveCtx(); ctx != nil {
 		ctx.Status(code)
 	}
+	if code > 0 {
+		c.statusCode = code
+	}
 	return c
 }
 
 func (c *fiberContext) SendStatus(code int) error {
 	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.SendStatus(code)
+		if err := ctx.SendStatus(code); err != nil {
+			return err
+		}
+		c.syncFiberResponseState(true, false)
+		return nil
 	}
 	return fmt.Errorf("context unavailable")
 }
@@ -540,28 +593,59 @@ func (c *fiberContext) SendString(body string) error {
 
 func (c *fiberContext) Send(body []byte) error {
 	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.Send(body)
+		if err := ctx.Send(body); err != nil {
+			return err
+		}
+		c.syncFiberResponseState(true, false)
+		return nil
 	}
 	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) SendStream(r io.Reader) error {
 	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.SendStream(r)
+		if err := ctx.SendStream(r); err != nil {
+			return err
+		}
+		c.syncFiberResponseState(true, true)
+		return nil
 	}
 	return fmt.Errorf("context unavailable")
 }
 
 func (c *fiberContext) JSON(code int, v any) error {
 	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.Status(code).JSON(v)
+		if err := ctx.Status(code).JSON(v); err != nil {
+			return err
+		}
+		c.syncFiberResponseState(true, false)
+		return nil
 	}
 	return fmt.Errorf("context unavailable")
 }
 
+func (c *fiberContext) encodeResponseJSON(v any) ([]byte, error) {
+	ctx := c.liveCtx()
+	if ctx == nil {
+		return nil, fmt.Errorf("context unavailable")
+	}
+	encoder := ctx.App().Config().JSONEncoder
+	if encoder == nil {
+		encoder = json.Marshal
+	}
+	return encoder(v)
+}
+
 func (c *fiberContext) NoContent(code int) error {
 	if ctx := c.liveCtx(); ctx != nil {
-		return ctx.SendStatus(code)
+		if err := ctx.SendStatus(code); err != nil {
+			return err
+		}
+		c.statusCode = code
+		c.written = true
+		c.bodySize = 0
+		c.stream = false
+		return nil
 	}
 	return fmt.Errorf("context unavailable")
 }
@@ -647,6 +731,76 @@ func (c *fiberContext) SetHeader(key string, value string) Context {
 		ctx.Set(key, value)
 	}
 	return c
+}
+
+func (c *fiberContext) AppendResponseHeader(key string, value string) Context {
+	if ctx := c.liveCtx(); ctx != nil {
+		ctx.Response().Header.Add(key, value)
+	}
+	return c
+}
+
+func (c *fiberContext) StatusCode() int {
+	if c == nil {
+		return http.StatusOK
+	}
+	if c.statusCode > 0 {
+		return c.statusCode
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		if code := ctx.Response().StatusCode(); code > 0 {
+			return code
+		}
+	}
+	return http.StatusOK
+}
+
+func (c *fiberContext) ResponseHeaders() http.Header {
+	headers := make(http.Header)
+	if c == nil {
+		return headers
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		ctx.Response().Header.VisitAll(func(key, value []byte) {
+			headers.Add(string(key), string(value))
+		})
+	}
+	return headers
+}
+
+func (c *fiberContext) ResponseWritten() bool {
+	return c != nil && c.written
+}
+
+func (c *fiberContext) ResponseBodySize() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.bodySize
+}
+
+func (c *fiberContext) ResponseIsStream() bool {
+	return c != nil && c.stream
+}
+
+func (c *fiberContext) syncFiberResponseState(written bool, stream bool) {
+	if c == nil {
+		return
+	}
+	if ctx := c.liveCtx(); ctx != nil {
+		if code := ctx.Response().StatusCode(); code > 0 {
+			c.statusCode = code
+		}
+		if !stream {
+			c.bodySize = int64(len(ctx.Response().Body()))
+		}
+	}
+	if written {
+		c.written = true
+	}
+	if stream {
+		c.stream = true
+	}
 }
 
 func (c *fiberContext) Set(key string, value any) {

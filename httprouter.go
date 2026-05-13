@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/template"
 
 	"github.com/gofiber/utils"
 	"github.com/julienschmidt/httprouter"
@@ -739,6 +738,10 @@ type httpRouterContext struct {
 	locals            ViewContext
 	router            *HTTPRouter
 	written           bool
+	committed         bool
+	statusCode        int
+	bodySize          int64
+	stream            bool
 }
 
 func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) Context {
@@ -747,13 +750,14 @@ func NewHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.
 
 func newHTTPRouterContext(w http.ResponseWriter, r *http.Request, ps httprouter.Params, views Views) *httpRouterContext {
 	return &httpRouterContext{
-		w:      w,
-		r:      r,
-		params: ps,
-		index:  -1,
-		store:  NewContextStore(),
-		views:  views,
-		locals: make(ViewContext),
+		w:          w,
+		r:          r,
+		params:     ps,
+		index:      -1,
+		store:      NewContextStore(),
+		views:      views,
+		locals:     make(ViewContext),
+		statusCode: http.StatusOK,
 	}
 }
 
@@ -816,6 +820,36 @@ func (c *httpRouterContext) Body() []byte {
 }
 
 func (c *httpRouterContext) Render(name string, bind any, layouts ...string) error {
+	buf := new(bytes.Buffer)
+	if err := c.renderToWriter(buf, name, bind, layouts...); err != nil {
+		return err
+	}
+
+	c.SetHeader("Content-Type", "text/html; charset=utf-8")
+	n, err := buf.WriteTo(c.w)
+	if err == nil {
+		c.markHTTPResponse(0, true, n, false)
+	}
+
+	return err
+}
+
+func (c *httpRouterContext) RenderToWriter(w io.Writer, name string, bind any, layouts ...string) error {
+	if w == nil {
+		return fmt.Errorf("render: writer is nil")
+	}
+	return c.renderToWriter(w, name, bind, layouts...)
+}
+
+func (c *httpRouterContext) RenderToBytes(name string, bind any, layouts ...string) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := c.RenderToWriter(buf, name, bind, layouts...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (c *httpRouterContext) renderToWriter(w io.Writer, name string, bind any, layouts ...string) error {
 	if c.views == nil {
 		return fmt.Errorf("no template engine registered")
 	}
@@ -829,32 +863,7 @@ func (c *httpRouterContext) Render(name string, bind any, layouts ...string) err
 		return fmt.Errorf("render: error serializing vars: %w", err)
 	}
 
-	buf := new(bytes.Buffer)
-
-	if c.views != nil {
-		if err := c.views.Render(buf, name, data, layouts...); err != nil {
-			return err
-		}
-	} else {
-		// Render raw template using 'name' as filepath if no engine is set
-		var tmpl *template.Template
-		if _, err := readContent(buf, name); err != nil {
-			return err
-		}
-		tmpl, err := template.New("").Parse(buf.String())
-		if err != nil {
-			return fmt.Errorf("failed to parse: %w", err)
-		}
-		buf.Reset()
-		if err := tmpl.Execute(buf, bind); err != nil {
-			return fmt.Errorf("failed to execute: %w", err)
-		}
-	}
-
-	c.SetHeader("Content-Type", "text/html; charset=utf-8")
-	_, err = buf.WriteTo(c.w)
-
-	return err
+	return c.views.Render(w, name, data, layouts...)
 }
 
 func readContent(rf io.ReaderFrom, name string) (int64, error) {
@@ -910,42 +919,10 @@ func (c *httpRouterContext) Param(name string, defaultValue ...string) string {
 }
 
 func (c *httpRouterContext) Cookie(cookie *Cookie) {
-	if cookie == nil {
+	stdCookie := routerCookieToHTTP(cookie)
+	if stdCookie == nil {
 		return
 	}
-	// Create a standard library cookie
-	stdCookie := &http.Cookie{
-		Name:     cookie.Name,
-		Value:    cookie.Value,
-		Path:     cookie.Path,
-		Domain:   cookie.Domain,
-		Secure:   cookie.Secure,
-		HttpOnly: cookie.HTTPOnly,
-	}
-
-	// Only set MaxAge and Expires if SessionOnly is false
-	if !cookie.SessionOnly {
-		// Preserve negative MaxAge for cookie deletion semantics.
-		if cookie.MaxAge != 0 {
-			stdCookie.MaxAge = cookie.MaxAge
-		}
-		if !cookie.Expires.IsZero() {
-			stdCookie.Expires = cookie.Expires
-		}
-	}
-
-	// Handle SameSite string
-	switch strings.ToLower(cookie.SameSite) {
-	case CookieSameSiteStrictMode:
-		stdCookie.SameSite = http.SameSiteStrictMode
-	case CookieSameSiteNoneMode:
-		stdCookie.SameSite = http.SameSiteNoneMode
-	case CookieSameSiteDisabled:
-		stdCookie.SameSite = http.SameSiteDefaultMode
-	default:
-		stdCookie.SameSite = http.SameSiteLaxMode
-	}
-
 	http.SetCookie(c.w, stdCookie)
 }
 
@@ -1092,6 +1069,8 @@ func (c *httpRouterContext) Queries() map[string]string {
 func (c *httpRouterContext) Status(code int) Context {
 	if code > 0 {
 		c.w.WriteHeader(code)
+		c.statusCode = code
+		c.committed = true
 	}
 	return c
 }
@@ -1117,8 +1096,10 @@ func (c *httpRouterContext) Send(body []byte) error {
 	if body == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
-	c.written = true
-	_, err := c.w.Write(body)
+	n, err := c.w.Write(body)
+	if err == nil {
+		c.markHTTPResponse(0, true, int64(n), false)
+	}
 	return err
 }
 
@@ -1126,22 +1107,44 @@ func (c *httpRouterContext) SendStream(r io.Reader) error {
 	if r == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
-	c.written = true
-	_, err := io.Copy(c.w, r)
+	n, err := io.Copy(c.w, r)
+	if err == nil {
+		c.markHTTPResponse(0, true, n, true)
+	}
 	return err
 }
 
 func (c *httpRouterContext) JSON(code int, v any) error {
 	c.w.Header().Set("Content-Type", "application/json")
 	c.w.WriteHeader(code)
+	c.statusCode = code
+	c.committed = true
 	if v == nil {
+		c.markHTTPResponse(code, true, 0, false)
 		return nil
 	}
-	return json.NewEncoder(c.w).Encode(v)
+	body, err := c.encodeResponseJSON(v)
+	if err != nil {
+		return err
+	}
+	n, err := c.w.Write(body)
+	if err == nil {
+		c.markHTTPResponse(code, true, int64(n), false)
+	}
+	return err
+}
+
+func (c *httpRouterContext) encodeResponseJSON(v any) ([]byte, error) {
+	return httpRouterResponseJSONEncoder{}.encodeResponseJSON(v)
+}
+
+func (c *httpRouterContext) encodeResponseJSONToWriter(w io.Writer, v any) error {
+	return httpRouterResponseJSONEncoder{}.encodeResponseJSONToWriter(w, v)
 }
 
 func (c *httpRouterContext) NoContent(code int) error {
 	c.w.WriteHeader(code)
+	c.markHTTPResponse(code, true, 0, false)
 	return nil
 }
 
@@ -1221,6 +1224,61 @@ func (c *httpRouterContext) FormValue(key string, defaultValues ...string) strin
 func (c *httpRouterContext) SetHeader(key string, value string) Context {
 	c.w.Header().Set(key, value)
 	return c
+}
+
+func (c *httpRouterContext) AppendResponseHeader(key string, value string) Context {
+	c.w.Header().Add(key, value)
+	return c
+}
+
+func (c *httpRouterContext) StatusCode() int {
+	if c == nil || c.statusCode <= 0 {
+		return http.StatusOK
+	}
+	return c.statusCode
+}
+
+func (c *httpRouterContext) ResponseHeaders() http.Header {
+	if c == nil || c.w == nil {
+		return http.Header{}
+	}
+	return cloneHTTPHeader(c.w.Header())
+}
+
+func (c *httpRouterContext) ResponseWritten() bool {
+	return c != nil && (c.committed || c.written)
+}
+
+func (c *httpRouterContext) ResponseBodySize() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.bodySize
+}
+
+func (c *httpRouterContext) ResponseIsStream() bool {
+	return c != nil && c.stream
+}
+
+func (c *httpRouterContext) markHTTPResponse(code int, written bool, size int64, stream bool) {
+	if c == nil {
+		return
+	}
+	if code > 0 {
+		c.statusCode = code
+	} else if c.statusCode <= 0 {
+		c.statusCode = http.StatusOK
+	}
+	if written {
+		c.written = true
+		c.committed = true
+	}
+	if size > 0 {
+		c.bodySize += size
+	}
+	if stream {
+		c.stream = true
+	}
 }
 
 func (c *httpRouterContext) Set(key string, value any) {

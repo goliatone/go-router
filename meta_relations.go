@@ -143,7 +143,6 @@ func (p *DefaultRelationProvider) buildNode(t reflect.Type, name string, visited
 	visited[base] = true
 
 	for field := range base.Fields() {
-		field := field
 		if !field.IsExported() {
 			continue
 		}
@@ -209,7 +208,6 @@ func defaultFieldResolver(t reflect.Type) map[string]string {
 	fields := make(map[string]string)
 
 	for field := range base.Fields() {
-		field := field
 		if !field.IsExported() {
 			continue
 		}

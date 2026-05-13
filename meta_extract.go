@@ -110,7 +110,6 @@ func ExtractSchemaFromType(t reflect.Type, opts ...ExtractSchemaFromTypeOptions)
 	}
 
 	for field := range t.Fields() {
-		field := field
 
 		if *opt.SkipUnexportedFields && !field.IsExported() {
 			continue
@@ -833,7 +832,6 @@ func getTableName(t reflect.Type) string {
 	// Check for bun.BaseModel embedded struct with table tag
 	if t.Kind() == reflect.Struct {
 		for field := range t.Fields() {
-			field := field
 			if field.Anonymous && field.Type.Name() == "BaseModel" {
 				if tableTag := field.Tag.Get("bun"); tableTag != "" {
 					parts := strings.SplitSeq(tableTag, ",")

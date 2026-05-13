@@ -163,6 +163,100 @@ func TestMockContextRenderUpdatesResponseState(t *testing.T) {
 	}
 }
 
+func TestMockContextReplacementWritesUpdateResponseBodySize(t *testing.T) {
+	ctx := router.NewMockContext()
+
+	if err := ctx.SendString("first"); err != nil {
+		t.Fatalf("SendString failed: %v", err)
+	}
+	if err := ctx.Send([]byte("ok")); err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+
+	state, ok := router.AsResponseState(ctx)
+	if !ok {
+		t.Fatal("expected MockContext to support ResponseState")
+	}
+	if ctx.ResponseBodyM != "ok" {
+		t.Fatalf("expected visible response body %q, got %q", "ok", ctx.ResponseBodyM)
+	}
+	if state.ResponseBodySize() != int64(len("ok")) {
+		t.Fatalf("expected body size %d, got %d", len("ok"), state.ResponseBodySize())
+	}
+
+	if err := ctx.JSON(http.StatusAccepted, "json"); err != nil {
+		t.Fatalf("JSON failed: %v", err)
+	}
+	if ctx.ResponseBodyM != "json" {
+		t.Fatalf("expected visible JSON body %q, got %q", "json", ctx.ResponseBodyM)
+	}
+	if state.ResponseBodySize() != int64(len("json")) {
+		t.Fatalf("expected JSON body size %d, got %d", len("json"), state.ResponseBodySize())
+	}
+	if state.StatusCode() != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, state.StatusCode())
+	}
+	if state.ResponseIsStream() {
+		t.Fatal("expected replacement write not to remain marked as stream")
+	}
+}
+
+func TestMockContextNoContentClearsResponseBodyState(t *testing.T) {
+	ctx := router.NewMockContext()
+
+	if err := ctx.SendString("stale body"); err != nil {
+		t.Fatalf("SendString failed: %v", err)
+	}
+	if err := ctx.NoContent(http.StatusNoContent); err != nil {
+		t.Fatalf("NoContent failed: %v", err)
+	}
+
+	state, ok := router.AsResponseState(ctx)
+	if !ok {
+		t.Fatal("expected MockContext to support ResponseState")
+	}
+	if ctx.ResponseBodyM != "" {
+		t.Fatalf("expected no visible response body, got %q", ctx.ResponseBodyM)
+	}
+	if state.ResponseBodySize() != 0 {
+		t.Fatalf("expected no-content body size 0, got %d", state.ResponseBodySize())
+	}
+	if !state.ResponseWritten() {
+		t.Fatal("expected no-content response to be marked written")
+	}
+	if state.StatusCode() != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, state.StatusCode())
+	}
+	if state.ResponseIsStream() {
+		t.Fatal("expected no-content response not to be marked as stream")
+	}
+}
+
+func TestMockContextStreamClearsStaleResponseBodyState(t *testing.T) {
+	ctx := router.NewMockContext()
+
+	if err := ctx.SendString("stale body"); err != nil {
+		t.Fatalf("SendString failed: %v", err)
+	}
+	if err := ctx.SendStream(strings.NewReader("stream")); err != nil {
+		t.Fatalf("SendStream failed: %v", err)
+	}
+
+	state, ok := router.AsResponseState(ctx)
+	if !ok {
+		t.Fatal("expected MockContext to support ResponseState")
+	}
+	if ctx.ResponseBodyM != "" {
+		t.Fatalf("expected stream to clear stale visible body, got %q", ctx.ResponseBodyM)
+	}
+	if state.ResponseBodySize() != 0 {
+		t.Fatalf("expected stream body size 0, got %d", state.ResponseBodySize())
+	}
+	if !state.ResponseIsStream() {
+		t.Fatal("expected stream response to be marked as stream")
+	}
+}
+
 func TestMockContextCookieUpdatesResponseHeaders(t *testing.T) {
 	ctx := router.NewMockContext()
 	cookie := router.FirstPartySessionCookie("session", "abc")

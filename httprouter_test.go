@@ -1,6 +1,7 @@
 package router_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -58,6 +59,124 @@ func TestHTTPRouter_Handle(t *testing.T) {
 
 	if bodyString != expectedBody {
 		t.Errorf("Expected body '%s', got '%s'", expectedBody, bodyString)
+	}
+}
+
+func TestHTTPRouterContext_RenderPrimitivesDoNotCommitResponse(t *testing.T) {
+	engine := &captureViewEngine{}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/render", nil)
+	ctx := router.NewHTTPRouterContext(rec, req, nil, engine)
+
+	ctx.Locals("status", "from-local")
+	renderer, ok := router.AsTemplateRenderer(ctx)
+	if !ok {
+		t.Fatal("expected HTTP router context to support TemplateRenderer")
+	}
+
+	rendered, err := renderer.RenderToBytes("tpl", router.ViewContext{"title": "from-view"})
+	if err != nil {
+		t.Fatalf("RenderToBytes failed: %v", err)
+	}
+
+	if string(rendered) != "<h1>ok</h1>" {
+		t.Fatalf("expected rendered bytes, got %q", rendered)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("expected render primitive not to write response body, got %q", rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "" {
+		t.Fatalf("expected render primitive not to set response headers, got %q", rec.Header().Get("Content-Type"))
+	}
+	if _, ok := engine.last["status"]; ok {
+		t.Fatalf("expected HTTP locals not to be implicitly merged, got %#v", engine.last)
+	}
+}
+
+func TestHTTPRouterContext_RenderToWriterAndRender(t *testing.T) {
+	engine := &captureViewEngine{}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/render", nil)
+	ctx := router.NewHTTPRouterContext(rec, req, nil, engine)
+
+	renderer, ok := router.AsTemplateRenderer(ctx)
+	if !ok {
+		t.Fatal("expected HTTP router context to support TemplateRenderer")
+	}
+
+	var rendered bytes.Buffer
+	if err := renderer.RenderToWriter(&rendered, "tpl", router.ViewContext{"title": "from-view"}); err != nil {
+		t.Fatalf("RenderToWriter failed: %v", err)
+	}
+	if rendered.String() != "<h1>ok</h1>" {
+		t.Fatalf("expected writer output, got %q", rendered.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("expected RenderToWriter not to write response body, got %q", rec.Body.String())
+	}
+
+	if err := ctx.Render("tpl", router.ViewContext{"title": "from-view"}); err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if rec.Body.String() != "<h1>ok</h1>" {
+		t.Fatalf("expected Render to write live response, got %q", rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("expected Render to set HTML content type, got %q", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestHTTPRouterContext_RenderPrimitiveErrorsDoNotCommitResponse(t *testing.T) {
+	expectedErr := fmt.Errorf("render failed")
+	engine := &mockViewEngine{
+		renderFunc: func(io.Writer, string, any, ...string) error {
+			return expectedErr
+		},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/render", nil)
+	ctx := router.NewHTTPRouterContext(rec, req, nil, engine)
+
+	renderer, ok := router.AsTemplateRenderer(ctx)
+	if !ok {
+		t.Fatal("expected HTTP router context to support TemplateRenderer")
+	}
+
+	_, err := renderer.RenderToBytes("tpl", router.ViewContext{"title": "from-view"})
+	if err == nil || !strings.Contains(err.Error(), expectedErr.Error()) {
+		t.Fatalf("expected render error %q, got %v", expectedErr, err)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("expected render error not to write response body, got %q", rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "" {
+		t.Fatalf("expected render error not to set response headers, got %q", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestHTTPRouterContext_RenderToWriterPropagatesWriterError(t *testing.T) {
+	expectedErr := fmt.Errorf("writer failed")
+	engine := &mockViewEngine{
+		renderFunc: func(w io.Writer, name string, bind any, layouts ...string) error {
+			_, err := w.Write([]byte("partial"))
+			return err
+		},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/render", nil)
+	ctx := router.NewHTTPRouterContext(rec, req, nil, engine)
+
+	renderer, ok := router.AsTemplateRenderer(ctx)
+	if !ok {
+		t.Fatal("expected HTTP router context to support TemplateRenderer")
+	}
+
+	err := renderer.RenderToWriter(errorWriter{err: expectedErr}, "tpl", router.ViewContext{})
+	if err == nil || !strings.Contains(err.Error(), expectedErr.Error()) {
+		t.Fatalf("expected writer error %q, got %v", expectedErr, err)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("expected writer error not to write response body, got %q", rec.Body.String())
 	}
 }
 

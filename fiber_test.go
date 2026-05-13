@@ -1035,6 +1035,199 @@ func TestFiberContext_RenderMergeAddsLocalsWithoutCollision(t *testing.T) {
 	}
 }
 
+func TestFiberContext_RenderToBytesDoesNotCommitResponse(t *testing.T) {
+	engine := &captureViewEngine{}
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			PassLocalsToViews: true,
+			Views:             engine,
+		})
+	})
+
+	r := adapter.Router()
+	var rendered []byte
+
+	r.Get("/render-bytes", func(ctx router.Context) error {
+		ctx.Locals("status", "from-local")
+		renderer, ok := router.AsTemplateRenderer(ctx)
+		if !ok {
+			t.Fatal("expected fiber context to support TemplateRenderer")
+		}
+		var err error
+		rendered, err = renderer.RenderToBytes("tpl", router.ViewContext{"title": "from-view"})
+		return err
+	})
+
+	resp, err := adapter.WrappedRouter().Test(httptest.NewRequest("GET", "/render-bytes", nil))
+	if err != nil {
+		t.Fatalf("fiber request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("expected render primitive not to commit response body, got %q", body)
+	}
+	if string(rendered) != "<h1>ok</h1>" {
+		t.Fatalf("expected rendered bytes, got %q", rendered)
+	}
+	if engine.last["status"] != "from-local" {
+		t.Fatalf("expected locals to merge into render data, got %v", engine.last["status"])
+	}
+}
+
+func TestFiberContext_RenderToWriterAppliesDefaultLayout(t *testing.T) {
+	engine := &captureViewEngine{}
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			Views:       engine,
+			ViewsLayout: "layouts/main",
+		})
+	})
+
+	r := adapter.Router()
+	var rendered bytes.Buffer
+
+	r.Get("/render-writer-layout", func(ctx router.Context) error {
+		renderer, ok := router.AsTemplateRenderer(ctx)
+		if !ok {
+			t.Fatal("expected fiber context to support TemplateRenderer")
+		}
+		return renderer.RenderToWriter(&rendered, "tpl", router.ViewContext{"title": "from-view"})
+	})
+
+	resp, err := adapter.WrappedRouter().Test(httptest.NewRequest("GET", "/render-writer-layout", nil))
+	if err != nil {
+		t.Fatalf("fiber request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if rendered.String() != "<h1>ok</h1>" {
+		t.Fatalf("expected writer output, got %q", rendered.String())
+	}
+	if len(engine.layouts) != 1 || engine.layouts[0] != "layouts/main" {
+		t.Fatalf("expected default layout to be applied, got %#v", engine.layouts)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("expected render primitive not to commit response body, got %q", body)
+	}
+}
+
+func TestFiberContext_RenderPrimitiveErrorsDoNotCommitResponse(t *testing.T) {
+	expectedErr := fmt.Errorf("render failed")
+	engine := &mockViewEngine{
+		renderFunc: func(io.Writer, string, any, ...string) error {
+			return expectedErr
+		},
+	}
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{Views: engine})
+	})
+
+	r := adapter.Router()
+	var renderErr error
+
+	r.Get("/render-error", func(ctx router.Context) error {
+		renderer, ok := router.AsTemplateRenderer(ctx)
+		if !ok {
+			t.Fatal("expected fiber context to support TemplateRenderer")
+		}
+		_, renderErr = renderer.RenderToBytes("tpl", router.ViewContext{"title": "from-view"})
+		return nil
+	})
+
+	resp, err := adapter.WrappedRouter().Test(httptest.NewRequest("GET", "/render-error", nil))
+	if err != nil {
+		t.Fatalf("fiber request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if renderErr == nil || !strings.Contains(renderErr.Error(), expectedErr.Error()) {
+		t.Fatalf("expected render error %q, got %v", expectedErr, renderErr)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("expected render error not to commit response body, got %q", body)
+	}
+}
+
+func TestFiberContext_RenderToWriterPropagatesWriterError(t *testing.T) {
+	expectedErr := fmt.Errorf("writer failed")
+	engine := &mockViewEngine{
+		renderFunc: func(w io.Writer, name string, bind any, layouts ...string) error {
+			_, err := w.Write([]byte("partial"))
+			return err
+		},
+	}
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{Views: engine})
+	})
+
+	r := adapter.Router()
+	var renderErr error
+
+	r.Get("/writer-error", func(ctx router.Context) error {
+		renderer, ok := router.AsTemplateRenderer(ctx)
+		if !ok {
+			t.Fatal("expected fiber context to support TemplateRenderer")
+		}
+		renderErr = renderer.RenderToWriter(errorWriter{err: expectedErr}, "tpl", router.ViewContext{})
+		return nil
+	})
+
+	resp, err := adapter.WrappedRouter().Test(httptest.NewRequest("GET", "/writer-error", nil))
+	if err != nil {
+		t.Fatalf("fiber request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if renderErr == nil || !strings.Contains(renderErr.Error(), expectedErr.Error()) {
+		t.Fatalf("expected writer error %q, got %v", expectedErr, renderErr)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("expected writer error not to commit response body, got %q", body)
+	}
+}
+
+func TestFiberContext_RenderPrimitiveNoViewEngine(t *testing.T) {
+	adapter := router.NewFiberAdapter()
+	r := adapter.Router()
+	var renderErr error
+
+	r.Get("/no-engine", func(ctx router.Context) error {
+		renderer, ok := router.AsTemplateRenderer(ctx)
+		if !ok {
+			t.Fatal("expected fiber context to support TemplateRenderer")
+		}
+		_, renderErr = renderer.RenderToBytes("tpl", router.ViewContext{})
+		return nil
+	})
+
+	resp, err := adapter.WrappedRouter().Test(httptest.NewRequest("GET", "/no-engine", nil))
+	if err != nil {
+		t.Fatalf("fiber request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if renderErr == nil || !strings.Contains(renderErr.Error(), "no template engine") {
+		t.Fatalf("expected no template engine error, got %v", renderErr)
+	}
+}
+
 func ReadGolFile(path string, t *testing.T) []byte {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1056,12 +1249,14 @@ func (m *mockViewEngine) Render(w io.Writer, name string, bind any, layouts ...s
 }
 
 type captureViewEngine struct {
-	last map[string]any
+	last    map[string]any
+	layouts []string
 }
 
 func (m *captureViewEngine) Load() error { return nil }
 
 func (m *captureViewEngine) Render(w io.Writer, name string, bind any, layouts ...string) error {
+	m.layouts = append([]string(nil), layouts...)
 	switch data := bind.(type) {
 	case map[string]any:
 		m.last = data
@@ -1072,6 +1267,14 @@ func (m *captureViewEngine) Render(w io.Writer, name string, bind any, layouts .
 	}
 	_, err := w.Write([]byte("<h1>ok</h1>"))
 	return err
+}
+
+type errorWriter struct {
+	err error
+}
+
+func (w errorWriter) Write([]byte) (int, error) {
+	return 0, w.err
 }
 
 type captureLogger struct {

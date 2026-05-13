@@ -1,11 +1,15 @@
 package router
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // TestCrossAdapterConsistency_RouteName tests that RouteName() works consistently across adapters
@@ -146,6 +150,83 @@ func TestCrossAdapterConsistency_RouteName(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestCrossAdapterConsistency_TemplateRenderer(t *testing.T) {
+	bind := ViewContext{"title": "Shared", "count": 2}
+
+	fiberEngine := &consistencyViewEngine{}
+	fiberAdapter := NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{Views: fiberEngine})
+	})
+	fiberRouter := fiberAdapter.Router()
+	var fiberRendered []byte
+	fiberRouter.Get("/render-primitive", func(ctx Context) error {
+		renderer, ok := AsTemplateRenderer(ctx)
+		if !ok {
+			t.Fatal("expected Fiber context to support TemplateRenderer")
+		}
+		var err error
+		fiberRendered, err = renderer.RenderToBytes("card", bind, "layouts/base")
+		return err
+	})
+
+	fiberResp, err := fiberAdapter.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/render-primitive", nil))
+	if err != nil {
+		t.Fatalf("fiber request failed: %v", err)
+	}
+	fiberResp.Body.Close()
+
+	httpEngine := &consistencyViewEngine{}
+	httpServer := NewHTTPServer().(*HTTPServer)
+	httpServer.views = httpEngine
+	httpRouter := httpServer.Router()
+	var httpRendered []byte
+	httpRouter.Get("/render-primitive", func(ctx Context) error {
+		renderer, ok := AsTemplateRenderer(ctx)
+		if !ok {
+			t.Fatal("expected HTTP router context to support TemplateRenderer")
+		}
+		var err error
+		httpRendered, err = renderer.RenderToBytes("card", bind, "layouts/base")
+		return err
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/render-primitive", nil)
+	rec := httptest.NewRecorder()
+	httpServer.WrappedRouter().ServeHTTP(rec, req)
+
+	if !bytes.Equal(fiberRendered, httpRendered) {
+		t.Fatalf("expected equivalent render output\nfiber: %q\nhttp:  %q", fiberRendered, httpRendered)
+	}
+	if string(fiberRendered) != `<card title="Shared" count="2" layout="layouts/base">` {
+		t.Fatalf("unexpected shared render output: %q", fiberRendered)
+	}
+	if fiberEngine.name != httpEngine.name || fiberEngine.name != "card" {
+		t.Fatalf("expected both adapters to render card, got fiber=%q http=%q", fiberEngine.name, httpEngine.name)
+	}
+}
+
+type consistencyViewEngine struct {
+	name    string
+	layouts []string
+}
+
+func (e *consistencyViewEngine) Load() error { return nil }
+
+func (e *consistencyViewEngine) Render(w io.Writer, name string, bind any, layouts ...string) error {
+	data, ok := bind.(map[string]any)
+	if !ok {
+		return fmt.Errorf("unexpected bind type %T", bind)
+	}
+	e.name = name
+	e.layouts = append([]string(nil), layouts...)
+	layout := ""
+	if len(layouts) > 0 {
+		layout = layouts[0]
+	}
+	_, err := fmt.Fprintf(w, `<%s title="%v" count="%v" layout="%s">`, name, data["title"], data["count"], layout)
+	return err
 }
 
 // TestCrossAdapterConsistency_RouteParams tests that RouteParams() works consistently

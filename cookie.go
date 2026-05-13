@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -74,4 +75,41 @@ func EmbeddedThirdPartySessionCookie(name, value string) Cookie {
 		SameSite:    CookieSameSiteNoneMode,
 		SessionOnly: true,
 	}
+}
+
+func routerCookieToHTTP(cookie *Cookie) *http.Cookie {
+	if cookie == nil {
+		return nil
+	}
+
+	stdCookie := &http.Cookie{
+		Name:     cookie.Name,
+		Value:    cookie.Value,
+		Path:     cookie.Path,
+		Domain:   cookie.Domain,
+		Secure:   cookie.Secure,
+		HttpOnly: cookie.HTTPOnly,
+	}
+
+	if !cookie.SessionOnly {
+		if cookie.MaxAge != 0 {
+			stdCookie.MaxAge = cookie.MaxAge
+		}
+		if !cookie.Expires.IsZero() {
+			stdCookie.Expires = cookie.Expires
+		}
+	}
+
+	switch strings.ToLower(cookie.SameSite) {
+	case CookieSameSiteStrictMode:
+		stdCookie.SameSite = http.SameSiteStrictMode
+	case CookieSameSiteNoneMode:
+		stdCookie.SameSite = http.SameSiteNoneMode
+	case CookieSameSiteDisabled:
+		stdCookie.SameSite = http.SameSiteDefaultMode
+	default:
+		stdCookie.SameSite = http.SameSiteLaxMode
+	}
+
+	return stdCookie
 }

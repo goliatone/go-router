@@ -18,23 +18,31 @@ import (
 // testing easier
 type MockContext struct {
 	mock.Mock
-	NextCalled    bool
-	HeadersM      map[string]string
-	CookiesM      map[string]string
-	ParamsM       map[string]string
-	QueriesM      map[string]string
-	LocalsMock    map[any]any
-	StatusCodeM   int
-	ResponseBodyM string
+	NextCalled       bool
+	HeadersM         map[string]string
+	CookiesM         map[string]string
+	ParamsM          map[string]string
+	QueriesM         map[string]string
+	LocalsMock       map[any]any
+	StatusCodeM      int
+	ResponseBodyM    string
+	ResponseHeadersM http.Header
+	WrittenM         bool
+	BodySizeM        int64
+	StreamM          bool
+	RenderBodyM      string
+	RenderBytesM     []byte
 }
 
 func NewMockContext() *MockContext {
 	return &MockContext{
-		HeadersM:   make(map[string]string),
-		CookiesM:   make(map[string]string),
-		ParamsM:    make(map[string]string),
-		QueriesM:   make(map[string]string),
-		LocalsMock: make(map[any]any),
+		HeadersM:         make(map[string]string),
+		CookiesM:         make(map[string]string),
+		ParamsM:          make(map[string]string),
+		QueriesM:         make(map[string]string),
+		LocalsMock:       make(map[any]any),
+		StatusCodeM:      http.StatusOK,
+		ResponseHeadersM: make(http.Header),
 	}
 }
 
@@ -76,49 +84,161 @@ func (m *MockContext) Body() []byte {
 }
 
 func (m *MockContext) Status(code int) Context {
-	m.Called(code)
+	if m.hasExpectedCall("Status") {
+		m.Called(code)
+	}
 	m.StatusCodeM = code
 	return m
 }
 
+func (m *MockContext) setResponseBody(body string) {
+	m.ResponseBodyM = body
+	m.BodySizeM = int64(len(body))
+	m.WrittenM = true
+	m.StreamM = false
+}
+
+func (m *MockContext) clearResponseBody() {
+	m.setResponseBody("")
+}
+
 func (m *MockContext) SendString(s string) error {
-	args := m.Called(s)
-	m.ResponseBodyM = s
-	return args.Error(0)
+	var err error
+	if m.hasExpectedCall("SendString") {
+		args := m.Called(s)
+		err = args.Error(0)
+	}
+	m.setResponseBody(s)
+	return err
 }
 
 func (m *MockContext) Send(b []byte) error {
-	args := m.Called(b)
-	m.ResponseBodyM = string(b)
-	return args.Error(0)
+	var err error
+	if m.hasExpectedCall("Send") {
+		args := m.Called(b)
+		err = args.Error(0)
+	}
+	m.setResponseBody(string(b))
+	return err
 }
 
 func (m *MockContext) SendStream(r io.Reader) error {
-	args := m.Called(r)
-	return args.Error(0)
+	if m.hasExpectedCall("SendStream") {
+		args := m.Called(r)
+		if err := args.Error(0); err != nil {
+			return err
+		}
+	}
+	m.ResponseBodyM = ""
+	m.BodySizeM = 0
+	m.WrittenM = true
+	m.StreamM = true
+	return nil
 }
 
 func (m *MockContext) JSON(code int, val any) error {
-	args := m.Called(code, val)
+	var err error
+	if m.hasExpectedCall("JSON") {
+		args := m.Called(code, val)
+		err = args.Error(0)
+	}
 	m.StatusCodeM = code
-	m.ResponseBodyM = fmt.Sprintf("%v", val)
-	return args.Error(0)
+	m.setResponseBody(fmt.Sprintf("%v", val))
+	return err
 }
 
 func (m *MockContext) NoContent(code int) error {
-	args := m.Called(code)
+	var err error
+	if m.hasExpectedCall("NoContent") {
+		args := m.Called(code)
+		err = args.Error(0)
+	}
 	m.StatusCodeM = code
-	return args.Error(0)
+	m.clearResponseBody()
+	return err
 }
 
 func (m *MockContext) Render(name string, bind any, layout ...string) error {
-	if len(layout) > 0 {
+	var err error
+	if len(layout) > 0 && m.hasExpectedCall("Render") {
 		args := m.Called(name, bind, layout[0])
-		return args.Error(0)
+		err = args.Error(0)
+	} else if m.hasExpectedCall("Render") {
+		args := m.Called(name, bind)
+		err = args.Error(0)
 	}
-	args := m.Called(name, bind)
-	m.ResponseBodyM = fmt.Sprintf("rendered: %s", name)
-	return args.Error(0)
+	if err != nil {
+		return err
+	}
+	if m.RenderBytesM != nil {
+		m.ResponseBodyM = string(m.RenderBytesM)
+	} else if m.RenderBodyM != "" {
+		m.ResponseBodyM = m.RenderBodyM
+	} else {
+		m.ResponseBodyM = fmt.Sprintf("rendered: %s", name)
+	}
+	m.setResponseBody(m.ResponseBodyM)
+	return nil
+}
+
+func (m *MockContext) RenderToWriter(w io.Writer, name string, bind any, layouts ...string) error {
+	if w == nil {
+		return fmt.Errorf("render: writer is nil")
+	}
+
+	if m.hasExpectedCall("RenderToWriter") {
+		args := []any{name, bind}
+		for _, layout := range layouts {
+			args = append(args, layout)
+		}
+		called := m.Called(args...)
+		return called.Error(0)
+	}
+
+	b, err := m.RenderToBytes(name, bind, layouts...)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(b)
+	return err
+}
+
+func (m *MockContext) RenderToBytes(name string, bind any, layouts ...string) ([]byte, error) {
+	if m.hasExpectedCall("RenderToBytes") {
+		args := []any{name, bind}
+		for _, layout := range layouts {
+			args = append(args, layout)
+		}
+		called := m.Called(args...)
+		if b, ok := called.Get(0).([]byte); ok {
+			return b, called.Error(1)
+		}
+		if s, ok := called.Get(0).(string); ok {
+			return []byte(s), called.Error(1)
+		}
+		return nil, called.Error(1)
+	}
+
+	if m.RenderBytesM != nil {
+		out := make([]byte, len(m.RenderBytesM))
+		copy(out, m.RenderBytesM)
+		return out, nil
+	}
+
+	body := m.RenderBodyM
+	if body == "" {
+		body = fmt.Sprintf("rendered: %s", name)
+	}
+	return []byte(body), nil
+}
+
+func (m *MockContext) hasExpectedCall(method string) bool {
+	for _, call := range m.ExpectedCalls {
+		if call.Method == method {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *MockContext) Redirect(path string, status ...int) error {
@@ -153,7 +273,24 @@ func (m *MockContext) RedirectBack(fallback string, status ...int) error {
 }
 
 func (m *MockContext) SetHeader(key, val string) Context {
-	m.Called(key, val)
+	if m.hasExpectedCall("SetHeader") {
+		m.Called(key, val)
+	}
+	if m.ResponseHeadersM == nil {
+		m.ResponseHeadersM = make(http.Header)
+	}
+	m.ResponseHeadersM.Set(key, val)
+	return m
+}
+
+func (m *MockContext) AppendResponseHeader(key, val string) Context {
+	if m.hasExpectedCall("AppendResponseHeader") {
+		m.Called(key, val)
+	}
+	if m.ResponseHeadersM == nil {
+		m.ResponseHeadersM = make(http.Header)
+	}
+	m.ResponseHeadersM.Add(key, val)
 	return m
 }
 
@@ -172,9 +309,14 @@ func (m *MockContext) FormValue(key string, defaultValue ...string) string {
 }
 
 func (m *MockContext) SendStatus(code int) error {
-	args := m.Called(code)
+	var err error
+	if m.hasExpectedCall("SendStatus") {
+		args := m.Called(code)
+		err = args.Error(0)
+	}
 	m.StatusCodeM = code
-	return args.Error(0)
+	m.clearResponseBody()
+	return err
 }
 
 func (m *MockContext) Header(key string) string {
@@ -227,8 +369,19 @@ func (m *MockContext) CookieParser(i any) error {
 }
 
 func (m *MockContext) Cookie(cookie *Cookie) {
-	m.Called(cookie)
-	if cookie.Expires.Before(time.Now()) {
+	if cookie == nil {
+		return
+	}
+	if m.hasExpectedCall("Cookie") {
+		m.Called(cookie)
+	}
+	if m.ResponseHeadersM == nil {
+		m.ResponseHeadersM = make(http.Header)
+	}
+	if stdCookie := routerCookieToHTTP(cookie); stdCookie != nil {
+		m.ResponseHeadersM.Add("Set-Cookie", stdCookie.String())
+	}
+	if cookie.MaxAge < 0 || (!cookie.Expires.IsZero() && cookie.Expires.Before(time.Now())) {
 		delete(m.CookiesM, cookie.Name)
 		return
 	}
@@ -354,4 +507,33 @@ func (m *MockContext) RouteParams() map[string]string {
 		return make(map[string]string)
 	}
 	return args.Get(0).(map[string]string)
+}
+
+func (m *MockContext) StatusCode() int {
+	if m == nil || m.StatusCodeM <= 0 {
+		return http.StatusOK
+	}
+	return m.StatusCodeM
+}
+
+func (m *MockContext) ResponseHeaders() http.Header {
+	if m == nil || m.ResponseHeadersM == nil {
+		return http.Header{}
+	}
+	return cloneHTTPHeader(m.ResponseHeadersM)
+}
+
+func (m *MockContext) ResponseWritten() bool {
+	return m != nil && m.WrittenM
+}
+
+func (m *MockContext) ResponseBodySize() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.BodySizeM
+}
+
+func (m *MockContext) ResponseIsStream() bool {
+	return m != nil && m.StreamM
 }

@@ -1,5 +1,30 @@
 # Changelog
 
+# [0.58.0](https://github.com/goliatone/go-router/compare/v0.57.0...v0.58.0) - (2026-05-13)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Code quality ([639896c](https://github.com/goliatone/go-router/commit/639896c56bf244b6f82141d29c114767acbdeec5))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.58.0 ([40e451c](https://github.com/goliatone/go-router/commit/40e451ca7a8a10a9aa75cde4689f0e8bb8f7fda5))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- New render resposne primitives ([2b118f9](https://github.com/goliatone/go-router/commit/2b118f9c940a178407289c10d16c9859943322bb))  - (goliatone)
+- Template renderer ([4c849e3](https://github.com/goliatone/go-router/commit/4c849e3c9a8599b0235831387daa81c9cd57457e))  - (goliatone)
+- Response state ([b5823d0](https://github.com/goliatone/go-router/commit/b5823d065a4e2002979ed8d1ac71ec944ce08b0d))  - (goliatone)
+- Response capture ([3066503](https://github.com/goliatone/go-router/commit/306650307f9ecab0f193c9be62c6c139d94e7633))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.57.0 ([bdf758e](https://github.com/goliatone/go-router/commit/bdf758e2e80287e8b4306d0427e34994a400df8d))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([7dcc242](https://github.com/goliatone/go-router/commit/7dcc2421ac22104f1a497c113d3e05ead1c12de5))  - (goliatone)
+
 # [0.57.0](https://github.com/goliatone/go-router/compare/v0.56.0...v0.57.0) - (2026-04-14)
 
 ## <!-- 1 -->🐛 Bug Fixes

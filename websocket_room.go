@@ -217,7 +217,6 @@ func (r *Room) AddClient(ctx context.Context, client WSClient) error {
 func (r *Room) RemoveClient(ctx context.Context, client WSClient) error {
 	r.clientsMu.Lock()
 	delete(r.clients, client.ID())
-	isEmpty := len(r.clients) == 0
 	r.clientsMu.Unlock()
 
 	// Trigger onLeave hooks
@@ -226,11 +225,6 @@ func (r *Room) RemoveClient(ctx context.Context, client WSClient) error {
 	// Notify other clients if presence tracking is enabled
 	if r.config.TrackPresence {
 		r.broadcastPresenceUpdate(ctx, "leave", client)
-	}
-
-	// Check if room should be destroyed
-	if isEmpty && r.config.DestroyWhenEmpty {
-		// Room will be destroyed by watchEmpty goroutine
 	}
 
 	return nil
@@ -514,11 +508,16 @@ func (r *Room) Destroy() error {
 	r.clientsMu.Lock()
 	for _, client := range r.clients {
 		// Notify client they're being removed
-		client.SendJSON(map[string]any{
+		if err := client.SendJSON(map[string]any{
 			"type":   "room:destroyed",
 			"room":   r.name,
 			"reason": "room destroyed",
-		})
+		}); err != nil {
+			r.logger.Error("Failed to notify client about room destruction",
+				"room_id", r.id,
+				"client_id", client.ID(),
+				"error", err)
+		}
 	}
 	r.clients = make(map[string]WSClient)
 	r.clientsMu.Unlock()
@@ -528,7 +527,11 @@ func (r *Room) Destroy() error {
 
 	// Remove from hub if it exists
 	if r.hub != nil {
-		r.hub.removeRoom(r.id)
+		if err := r.hub.removeRoom(r.id); err != nil {
+			r.logger.Error("Failed to remove room from hub",
+				"room_id", r.id,
+				"error", err)
+		}
 	}
 
 	return nil
@@ -630,6 +633,7 @@ func (r *Room) broadcastPresenceUpdate(ctx context.Context, action string, clien
 	}
 }
 
+//nolint:nestif // Empty-room lifecycle needs nested timer state inside the ticker select.
 func (r *Room) watchEmpty() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -649,7 +653,11 @@ func (r *Room) watchEmpty() {
 					emptyStartTime = &now
 				} else if time.Since(*emptyStartTime) > r.config.EmptyDestroyDelay {
 					// Room has been empty for too long, destroy it
-					r.Destroy()
+					if err := r.Destroy(); err != nil {
+						r.logger.Error("Failed to destroy empty room",
+							"room_id", r.id,
+							"error", err)
+					}
 					return
 				}
 			} else {

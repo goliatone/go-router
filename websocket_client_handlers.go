@@ -1,7 +1,7 @@
 package router
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	_ "embed"
 	"fmt"
 	"strings"
@@ -46,7 +46,7 @@ var (
 
 // generateETag creates a simple ETag from content hash and type
 func generateETag(content []byte, fileType string) string {
-	hash := md5.Sum(content)
+	hash := sha256.Sum256(content)
 	return fmt.Sprintf(`"ws-%s-%s-%x"`, WebSocketClientVersion, fileType, hash[:8])
 }
 
@@ -237,7 +237,9 @@ func WSTestHandler() HandlerFunc {
 	return WebSocketTestHandler()
 }
 
-// WebSocketClientInfo returns information about the embedded client
+// WebSocketClientInfo returns information about the embedded client.
+//
+//nolint:dupl // WebSocket and SSE asset info expose parallel but protocol-specific embedded metadata.
 func WebSocketClientInfo() map[string]any {
 	return map[string]any{
 		"version": WebSocketClientVersion,

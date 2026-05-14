@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -339,6 +340,13 @@ func (c *wsClient) GetBool(key string) bool {
 	return false
 }
 
+func websocketCloseCode(code int) (uint16, error) {
+	if code < 0 || code > 65535 {
+		return 0, fmt.Errorf("websocket close code %d is outside uint16 range", code)
+	}
+	return uint16(code), nil
+}
+
 // Close closes the connection with a status code and reason
 func (c *wsClient) Close(code int, reason string) error {
 	return c.CloseWithContext(c.ctx, code, reason)
@@ -348,14 +356,27 @@ func (c *wsClient) Close(code int, reason string) error {
 func (c *wsClient) CloseWithContext(ctx context.Context, code int, reason string) error {
 	var err error
 	c.closeOnce.Do(func() {
+		closeCode, codeErr := websocketCloseCode(code)
+		if codeErr != nil {
+			err = codeErr
+			return
+		}
+
 		// Send close message
 		closeMsg := make([]byte, 2+len(reason))
-		closeMsg[0] = byte(code >> 8)
-		closeMsg[1] = byte(code)
+		binary.BigEndian.PutUint16(closeMsg[:2], closeCode)
 		copy(closeMsg[2:], reason)
 
-		c.conn.WriteMessage(CloseMessage, closeMsg)
-		c.conn.Close()
+		if writeErr := c.conn.WriteMessage(CloseMessage, closeMsg); writeErr != nil {
+			c.logger.Warn("failed to write websocket close frame", "client_id", c.ID(), "error", writeErr)
+			err = writeErr
+		}
+		if closeErr := c.conn.Close(); closeErr != nil {
+			c.logger.Warn("failed to close websocket connection", "client_id", c.ID(), "error", closeErr)
+			if err == nil {
+				err = closeErr
+			}
+		}
 
 		// Clean up resources
 		c.cancel()
@@ -409,10 +430,14 @@ func (c *wsClient) Conn() WebSocketContext {
 	return c.conn
 }
 
-// readPump handles incoming messages automatically
+// readPump handles incoming messages automatically.
+//
+//nolint:gocyclo,nestif // The read loop must branch by WebSocket frame type and dispatch raw plus JSON handlers.
 func (c *wsClient) readPump() {
 	defer func() {
-		c.Close(CloseNormalClosure, "")
+		if err := c.Close(CloseNormalClosure, ""); err != nil {
+			c.logger.Warn("failed to close websocket read pump", "client_id", c.ID(), "error", err)
+		}
 	}()
 
 	for {
@@ -465,7 +490,10 @@ func (c *wsClient) readPump() {
 
 		case PingMessage:
 			// Respond with pong
-			c.conn.WritePong(data)
+			if err := c.conn.WritePong(data); err != nil {
+				c.logger.Warn("failed to write websocket pong", "client_id", c.ID(), "error", err)
+				return
+			}
 
 		case CloseMessage:
 			return
@@ -478,14 +506,18 @@ func (c *wsClient) writePump() {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		if err := c.conn.Close(); err != nil {
+			c.logger.Warn("failed to close websocket writer", "client_id", c.ID(), "error", err)
+		}
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.send:
 			if !ok {
-				c.conn.WriteMessage(CloseMessage, []byte{})
+				if err := c.conn.WriteMessage(CloseMessage, []byte{}); err != nil {
+					c.logger.Warn("failed to write websocket close frame", "client_id", c.ID(), "error", err)
+				}
 				return
 			}
 

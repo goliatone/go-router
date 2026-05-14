@@ -16,9 +16,11 @@ import (
 func NewWSHandler(handler func(context.Context, WSClient) error) func(Context) error {
 	hub := NewWSHub()
 
-	hub.OnConnect(func(ctx context.Context, client WSClient, _ any) error {
+	if err := hub.OnConnect(func(ctx context.Context, client WSClient, _ any) error {
 		return handler(ctx, client)
-	})
+	}); err != nil {
+		panic(err)
+	}
 
 	return hub.Handler()
 }
@@ -169,7 +171,9 @@ func defaultContextEnricher(ctx context.Context, claims WSAuthClaims) context.Co
 // defaultAuthFailureHandler closes the connection with appropriate status
 func defaultAuthFailureHandler(ctx context.Context, client WSClient, err error) error {
 	// Close with 1008 Policy Violation for auth failures
-	client.Close(ClosePolicyViolation, "Authentication failed")
+	if closeErr := client.Close(ClosePolicyViolation, "Authentication failed"); closeErr != nil {
+		return errors.Join(err, closeErr)
+	}
 	return err
 }
 
@@ -453,7 +457,9 @@ func NewWSRecover(config ...WSRecoverConfig) WebSocketMiddleware {
 					}
 
 					// Close the connection with internal server error
-					client.Close(CloseInternalServerErr, "internal error")
+					if err := client.Close(CloseInternalServerErr, "internal error"); err != nil {
+						cfg.Logger.Error("Failed to close websocket client after panic: %v", err)
+					}
 				}
 			}()
 			return next(ctx, client)

@@ -245,7 +245,12 @@ func (rm *RoomManager) LeaveAllRooms(ctx context.Context, client WSClient) {
 
 	for _, room := range rooms {
 		if room.HasClient(client.ID()) {
-			room.RemoveClient(ctx, client)
+			if err := room.RemoveClient(ctx, client); err != nil && rm.hub != nil {
+				rm.hub.logger.Error("Failed to remove client from room",
+					"room_id", room.ID(),
+					"client_id", client.ID(),
+					"error", err)
+			}
 		}
 	}
 }
@@ -352,7 +357,9 @@ type RoomFilter struct {
 	CustomFilter func(*Room) bool
 }
 
-// Matches checks if a room matches the filter criteria
+// Matches checks if a room matches the filter criteria.
+//
+//nolint:gocyclo // Room filters intentionally compose all optional criteria in one predicate.
 func (f RoomFilter) Matches(room *Room) bool {
 	// Check type
 	if f.Type != "" && room.Type() != f.Type {

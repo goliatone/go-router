@@ -3,6 +3,7 @@ package router
 import (
 	"compress/flate"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -147,7 +148,9 @@ func NewDeadlineManager(ctx WebSocketContext, config WebSocketConfig) *DeadlineM
 // Start starts the deadline management
 func (d *DeadlineManager) Start() {
 	// Set initial read deadline
-	d.ctx.SetReadDeadline(time.Now().Add(d.pongWait))
+	if err := d.ctx.SetReadDeadline(time.Now().Add(d.pongWait)); err != nil {
+		fmt.Printf("Failed to set initial websocket read deadline: %v\n", err)
+	}
 
 	// Set pong handler to reset read deadline
 	d.ctx.SetPongHandler(func(data []byte) error {
@@ -178,7 +181,9 @@ func (d *DeadlineManager) pingLoop() {
 			d.mu.Lock()
 			if d.pingErrors >= d.maxPingErrors {
 				d.mu.Unlock()
-				d.ctx.CloseWithStatus(CloseGoingAway, "ping timeout")
+				if err := d.ctx.CloseWithStatus(CloseGoingAway, "ping timeout"); err != nil {
+					fmt.Printf("Failed to close websocket after ping timeout: %v\n", err)
+				}
 				return
 			}
 			d.mu.Unlock()
@@ -197,7 +202,9 @@ func (d *DeadlineManager) pingLoop() {
 
 // sendPing sends a ping message
 func (d *DeadlineManager) sendPing() error {
-	d.ctx.SetWriteDeadline(time.Now().Add(d.writeWait))
+	if err := d.ctx.SetWriteDeadline(time.Now().Add(d.writeWait)); err != nil {
+		return err
+	}
 	return d.ctx.WritePing(fmt.Appendf(nil, "%d", time.Now().Unix()))
 }
 
@@ -446,7 +453,9 @@ func NewCustomUpgrader(config CustomUpgraderConfig) *CustomUpgrader {
 	}
 }
 
-// Upgrade performs a custom WebSocket upgrade
+// Upgrade performs a custom WebSocket upgrade.
+//
+//nolint:gocyclo,nestif // Upgrade coordinates validation, protocol negotiation, hooks, and adapter upgrade behavior.
 func (u *CustomUpgrader) Upgrade(ctx Context) (WebSocketContext, error) {
 	// Run before upgrade hook
 	if u.config.BeforeUpgrade != nil {
@@ -520,7 +529,9 @@ func (u *CustomUpgrader) Upgrade(ctx Context) (WebSocketContext, error) {
 	// Run after upgrade hook
 	if u.config.AfterUpgrade != nil {
 		if err := u.config.AfterUpgrade(wsCtx); err != nil {
-			wsCtx.Close()
+			if closeErr := wsCtx.Close(); closeErr != nil {
+				err = errors.Join(err, closeErr)
+			}
 			if u.config.ErrorHandler != nil {
 				return nil, u.config.ErrorHandler(ctx, err)
 			}
@@ -624,7 +635,11 @@ func AdvancedWebSocketMiddleware(config WebSocketConfig) MiddlewareFunc {
 
 			// Handle subprotocol if negotiated
 			if wsCtx.Subprotocol() != "" {
-				go negotiator.HandleConnection(wsCtx)
+				go func() {
+					if err := negotiator.HandleConnection(wsCtx); err != nil {
+						fmt.Printf("WebSocket subprotocol handler failed: %v\n", err)
+					}
+				}()
 			}
 
 			// Continue with WebSocket context
@@ -726,7 +741,9 @@ func (p *ConnectionPool) Broadcast(messageType int, data []byte) {
 
 	for _, ctx := range p.connections {
 		if ctx.IsConnected() {
-			ctx.WriteMessage(messageType, data)
+			if err := ctx.WriteMessage(messageType, data); err != nil {
+				fmt.Printf("Failed to broadcast websocket pool message to %s: %v\n", ctx.ConnectionID(), err)
+			}
 		}
 	}
 }
@@ -737,7 +754,9 @@ func (p *ConnectionPool) CloseAll() {
 	defer p.mu.Unlock()
 
 	for _, ctx := range p.connections {
-		ctx.Close()
+		if err := ctx.Close(); err != nil {
+			fmt.Printf("Failed to close websocket pool connection %s: %v\n", ctx.ConnectionID(), err)
+		}
 	}
 	p.connections = make(map[string]WebSocketContext)
 }

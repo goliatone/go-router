@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+const maxBinaryFrameLength = uint64(^uint32(0))
+
+func uint32PayloadLength(n int, label string) (uint32, error) {
+	if n < 0 || uint64(n) > maxBinaryFrameLength {
+		return 0, fmt.Errorf("%s length %d exceeds uint32 maximum", label, n)
+	}
+	return uint32(n), nil
+}
+
 // BinaryPayload represents a binary WebSocket message with metadata
 type BinaryPayload struct {
 	Type      string         `json:"type"`
@@ -98,9 +107,18 @@ func NewFileTransferManager(storage FileStorage, maxFileSize int64) *FileTransfe
 // StartUpload initiates a file upload
 func (m *FileTransferManager) StartUpload(ctx context.Context, client WSClient, metadata map[string]any) (*FileTransfer, error) {
 	// Extract file info from metadata
-	name, _ := metadata["name"].(string)
-	size, _ := metadata["size"].(float64)
-	mimeType, _ := metadata["mime_type"].(string)
+	name, ok := metadata["name"].(string)
+	if !ok || name == "" {
+		return nil, errors.New("upload metadata requires a non-empty name")
+	}
+	size, ok := metadata["size"].(float64)
+	if !ok {
+		return nil, errors.New("upload metadata requires numeric size")
+	}
+	mimeType, ok := metadata["mime_type"].(string)
+	if !ok {
+		mimeType = "application/octet-stream"
+	}
 
 	if size > float64(m.maxFileSize) {
 		return nil, fmt.Errorf("file size %.2fMB exceeds maximum %.2fMB",
@@ -143,12 +161,14 @@ func (m *FileTransferManager) StartUpload(ctx context.Context, client WSClient, 
 	go m.monitorTransfer(transfer)
 
 	// Notify client
-	client.SendJSON(map[string]any{
+	if err := client.SendJSON(map[string]any{
 		"type":         "upload_ready",
 		"transfer_id":  transfer.ID,
 		"chunk_size":   transfer.ChunkSize,
 		"total_chunks": transfer.TotalChunks,
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("send upload ready: %w", err)
+	}
 
 	return transfer, nil
 }
@@ -243,13 +263,21 @@ func (m *FileTransferManager) StartDownload(ctx context.Context, client WSClient
 	if err != nil {
 		return fmt.Errorf("failed to retrieve file: %w", err)
 	}
+	name, ok := metadata["name"].(string)
+	if !ok || name == "" {
+		return errors.New("download metadata requires a non-empty name")
+	}
+	mimeType, ok := metadata["mime_type"].(string)
+	if !ok {
+		mimeType = "application/octet-stream"
+	}
 
 	// Create transfer
 	transfer := &FileTransfer{
 		ID:          generateID(),
-		Name:        metadata["name"].(string),
+		Name:        name,
 		Size:        int64(len(data)),
-		MimeType:    metadata["mime_type"].(string),
+		MimeType:    mimeType,
 		State:       "active",
 		StartTime:   time.Now(),
 		ChunkSize:   m.chunkSize,
@@ -262,7 +290,7 @@ func (m *FileTransferManager) StartDownload(ctx context.Context, client WSClient
 	m.transfersMu.Unlock()
 
 	// Send file info
-	client.SendJSON(map[string]any{
+	if err := client.SendJSON(map[string]any{
 		"type":         "download_ready",
 		"transfer_id":  transfer.ID,
 		"name":         transfer.Name,
@@ -270,7 +298,9 @@ func (m *FileTransferManager) StartDownload(ctx context.Context, client WSClient
 		"mime_type":    transfer.MimeType,
 		"chunk_size":   transfer.ChunkSize,
 		"total_chunks": transfer.TotalChunks,
-	})
+	}); err != nil {
+		return fmt.Errorf("send download ready: %w", err)
+	}
 
 	// Send chunks
 	go m.sendChunks(ctx, client, transfer, data)
@@ -320,17 +350,27 @@ func (m *FileTransferManager) sendChunks(ctx context.Context, client WSClient, t
 	transfer.EndTime = time.Now()
 
 	// Send completion message
-	client.SendJSON(map[string]any{
+	if err := client.SendJSON(map[string]any{
 		"type":        "download_complete",
 		"transfer_id": transfer.ID,
-	})
+	}); err != nil {
+		transfer.State = "failed"
+		transfer.Error = err.Error()
+		if transfer.onError != nil {
+			transfer.onError(transfer, err)
+		}
+	}
 }
 
 // sendBinaryMessage sends a binary message with header
 func (m *FileTransferManager) sendBinaryMessage(client WSClient, msg *BinaryPayload) error {
 	// Create header with metadata
 	header := make([]byte, 4)
-	binary.BigEndian.PutUint32(header, uint32(len(msg.Data)))
+	dataLen, err := uint32PayloadLength(len(msg.Data), "binary payload")
+	if err != nil {
+		return err
+	}
+	binary.BigEndian.PutUint32(header, dataLen)
 
 	// Combine header and data
 	payload := append(header, msg.Data...)
@@ -467,16 +507,28 @@ func (c *BinaryMessageCodec) Encode(msg *BinaryPayload) ([]byte, error) {
 
 	// Write type length and type
 	typeBytes := []byte(msg.Type)
-	if err := binary.Write(&buf, binary.BigEndian, uint32(len(typeBytes))); err != nil {
+	typeLen, err := uint32PayloadLength(len(typeBytes), "binary message type")
+	if err != nil {
 		return nil, err
 	}
-	buf.Write(typeBytes)
+	if writeErr := binary.Write(&buf, binary.BigEndian, typeLen); writeErr != nil {
+		return nil, writeErr
+	}
+	if _, writeErr := buf.Write(typeBytes); writeErr != nil {
+		return nil, writeErr
+	}
 
 	// Write data length and data
-	if err := binary.Write(&buf, binary.BigEndian, uint32(len(msg.Data))); err != nil {
+	dataLen, err := uint32PayloadLength(len(msg.Data), "binary message data")
+	if err != nil {
 		return nil, err
 	}
-	buf.Write(msg.Data)
+	if writeErr := binary.Write(&buf, binary.BigEndian, dataLen); writeErr != nil {
+		return nil, writeErr
+	}
+	if _, writeErr := buf.Write(msg.Data); writeErr != nil {
+		return nil, writeErr
+	}
 
 	return buf.Bytes(), nil
 }

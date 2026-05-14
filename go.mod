@@ -10,10 +10,10 @@ require (
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/gobwas/glob v0.2.3
 	github.com/gofiber/contrib/websocket v1.3.4
-	github.com/gofiber/fiber/v2 v2.52.6
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/gofiber/template v1.8.3
 	github.com/gofiber/template/django/v3 v3.1.13
-	github.com/gofiber/utils v1.1.0
+	github.com/gofiber/utils v1.2.0
 	github.com/goliatone/go-command v0.18.0
 	github.com/goliatone/go-composite-fs v0.3.0
 	github.com/goliatone/go-errors v0.10.0
@@ -56,8 +56,8 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

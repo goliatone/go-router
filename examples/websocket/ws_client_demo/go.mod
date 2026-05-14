@@ -1,6 +1,6 @@
 module ws-client
 
-go 1.23.4
+go 1.26.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
@@ -20,12 +20,12 @@ require (
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofiber/contrib/websocket v1.3.4 // indirect
-	github.com/gofiber/fiber/v2 v2.52.6 // indirect
+	github.com/gofiber/fiber/v2 v2.52.12 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/template/django/v3 v3.1.13 // indirect
-	github.com/gofiber/utils v1.1.0 // indirect
-	github.com/goliatone/go-composite-fs v0.0.1 // indirect
-	github.com/goliatone/go-errors v0.9.0 // indirect
+	github.com/gofiber/utils v1.2.0 // indirect
+	github.com/goliatone/go-composite-fs v0.3.0 // indirect
+	github.com/goliatone/go-errors v0.10.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
@@ -38,12 +38,12 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.52.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

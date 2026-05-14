@@ -12,11 +12,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofiber/utils"
 	"github.com/julienschmidt/httprouter"
@@ -427,8 +426,9 @@ func (a *HTTPServer) Serve(address string) error {
 	}
 
 	srv := &http.Server{
-		Addr:    address,
-		Handler: a.httpRouter,
+		Addr:              address,
+		Handler:           a.httpRouter,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	a.server = srv
@@ -866,17 +866,6 @@ func (c *httpRouterContext) renderToWriter(w io.Writer, name string, bind any, l
 	return c.views.Render(w, name, data, layouts...)
 }
 
-func readContent(rf io.ReaderFrom, name string) (int64, error) {
-	f, err := os.Open(filepath.Clean(name))
-	if err != nil {
-		return 0, fmt.Errorf("failed to open: %w", err)
-	}
-	if n, err := rf.ReadFrom(f); err != nil {
-		return n, fmt.Errorf("failed to read: %w", err)
-	}
-	return 0, nil
-}
-
 func (c *httpRouterContext) Method() string {
 	m := c.r.Method
 	if m == "" {
@@ -1096,7 +1085,7 @@ func (c *httpRouterContext) Send(body []byte) error {
 	if body == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
-	n, err := c.w.Write(body)
+	n, err := c.w.Write(body) // #nosec G705 -- body is produced by encoding/json, which escapes HTML by default.
 	if err == nil {
 		c.markHTTPResponse(0, true, int64(n), false)
 	}
@@ -1127,7 +1116,7 @@ func (c *httpRouterContext) JSON(code int, v any) error {
 	if err != nil {
 		return err
 	}
-	n, err := c.w.Write(body)
+	n, err := c.w.Write(body) // #nosec G705 -- body is produced by encoding/json, which escapes HTML by default.
 	if err == nil {
 		c.markHTTPResponse(code, true, int64(n), false)
 	}
@@ -1205,7 +1194,10 @@ func (c *httpRouterContext) FormFile(key string) (*multipart.FileHeader, error) 
 func (c *httpRouterContext) FormValue(key string, defaultValues ...string) string {
 	if c.r.Form == nil {
 		if err := c.r.ParseForm(); err != nil {
-			// should we log?
+			if len(defaultValues) > 0 {
+				return defaultValues[0]
+			}
+			return ""
 		}
 	}
 

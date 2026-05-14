@@ -126,7 +126,9 @@ func NewWSHub(opts ...func(*WSHubConfig)) *WSHub {
 	return hub
 }
 
-// run processes hub events
+// run processes hub events.
+//
+//nolint:gocyclo,nestif // The hub loop coordinates register, unregister, broadcast, room, and shutdown events.
 func (h *WSHub) run() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -198,9 +200,17 @@ func (h *WSHub) run() {
 						}
 						// Use broadcast methods from Room
 						if except != nil {
-							room.BroadcastExcept(msg.ctx, msg.data, except)
+							if err := room.BroadcastExcept(msg.ctx, msg.data, except); err != nil {
+								h.logger.Error("Failed to broadcast to room",
+									"room", msg.room,
+									"error", err)
+							}
 						} else {
-							room.Broadcast(msg.ctx, msg.data)
+							if err := room.Broadcast(msg.ctx, msg.data); err != nil {
+								h.logger.Error("Failed to broadcast to room",
+									"room", msg.room,
+									"error", err)
+							}
 						}
 					}
 				}
@@ -364,12 +374,16 @@ func (h *WSHub) Handler() func(Context) error {
 
 		// Create a new client
 		client := NewWSClient(wsCtx, h)
+		managedClient, ok := client.(*wsClient)
+		if !ok {
+			return errors.New("websocket client implementation does not expose lifecycle state")
+		}
 
 		// Register the client
 		h.register <- client
 
 		// Wait for client to disconnect
-		<-client.(*wsClient).done
+		<-managedClient.done
 
 		return nil
 	}
@@ -401,7 +415,11 @@ func (h *WSHub) Close() error {
 	// Close all client connections
 	h.clientsMu.Lock()
 	for _, client := range h.clients {
-		client.Close(CloseGoingAway, "server shutdown")
+		if err := client.Close(CloseGoingAway, "server shutdown"); err != nil {
+			h.logger.Error("Failed to close websocket client during hub shutdown",
+				"client_id", client.ID(),
+				"error", err)
+		}
 	}
 	h.clientsMu.Unlock()
 

@@ -341,7 +341,9 @@ This endpoint will create a new User, just for you
 			Handler(deleteUser(store)).
 			Name("user.delete")
 
-		users.BuildAll()
+		if err := users.BuildAll(); err != nil {
+			log.Fatalf("build user routes: %v", err)
+		}
 	}
 
 	companies := builder.Group("/companies")
@@ -355,7 +357,9 @@ This endpoint will create a new User, just for you
 			Handler(listCompanies(store)).
 			Name("company.list")
 
-		companies.BuildAll()
+		if err := companies.BuildAll(); err != nil {
+			log.Fatalf("build company routes: %v", err)
+		}
 	}
 
 	profiles := builder.Group("/profiles")
@@ -369,7 +373,9 @@ This endpoint will create a new User, just for you
 			Handler(listProfiles(store)).
 			Name("profile.list")
 
-		profiles.BuildAll()
+		if err := profiles.BuildAll(); err != nil {
+			log.Fatalf("build profile routes: %v", err)
+		}
 	}
 
 	private := api.Group("/secret")
@@ -394,7 +400,9 @@ This endpoint will create a new User, just for you
 		Handler(errorRouteHandler).
 		Name("errors")
 
-	builder.BuildAll()
+	if err := builder.BuildAll(); err != nil {
+		log.Fatalf("build demo routes: %v", err)
+	}
 }
 
 func getSecret() func(c router.Context) error {

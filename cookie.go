@@ -82,7 +82,7 @@ func routerCookieToHTTP(cookie *Cookie) *http.Cookie {
 		return nil
 	}
 
-	stdCookie := &http.Cookie{
+	stdCookie := &http.Cookie{ // #nosec G124 -- security attributes are mapped from explicit Cookie fields; helper constructors provide secure defaults.
 		Name:     cookie.Name,
 		Value:    cookie.Value,
 		Path:     cookie.Path,

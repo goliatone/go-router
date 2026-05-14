@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -211,8 +212,8 @@ func (c *httpRouterWebSocketContext) ReadMessage() (messageType int, p []byte, e
 	// Set read deadline for next message
 	if pongWait > 0 {
 		deadline := time.Now().Add(pongWait)
-		if err := conn.SetReadDeadline(deadline); err != nil {
-			return 0, nil, err
+		if deadlineErr := conn.SetReadDeadline(deadline); deadlineErr != nil {
+			return 0, nil, deadlineErr
 		}
 	}
 
@@ -325,13 +326,17 @@ func (c *httpRouterWebSocketContext) CloseWithStatus(code int, reason string) er
 
 	if err := conn.SetWriteDeadline(deadline); err != nil {
 		// Still try to close the connection
-		_ = conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
 		return err
 	}
 
 	if err := conn.WriteMessage(websocket.CloseMessage, message); err != nil {
 		// Still close the connection
-		_ = conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
 		return err
 	}
 
@@ -653,7 +658,9 @@ func HTTPRouterWebSocketHandler(config WebSocketConfig, handler func(WebSocketCo
 			if err := config.OnConnect(wsCtx); err != nil {
 				// Log error (connection already upgraded, can't send HTTP error)
 				fmt.Printf("OnConnect handler error: %v\n", err)
-				wsCtx.Close()
+				if closeErr := wsCtx.Close(); closeErr != nil {
+					fmt.Printf("WebSocket close error after OnConnect failure: %v\n", closeErr)
+				}
 				return
 			}
 		}

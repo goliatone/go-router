@@ -451,6 +451,8 @@ func (br *BaseRouter) joinPath(prefix, path string) string {
 }
 
 // Static file handler implementation
+//
+//nolint:gocyclo,nestif,funlen // Static serving supports filesystem selection, browsing, indexes, headers, and response hooks in one handler.
 func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (string, HandlerFunc) {
 	baseCfg := Static{
 		Root:  root,
@@ -510,7 +512,14 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 			r.logger.Error("public failed to open filepath: %s", err)
 			return c.Status(500).SendString(err.Error())
 		}
-		defer f.Close()
+		defer func() {
+			if f == nil {
+				return
+			}
+			if closeErr := f.Close(); closeErr != nil {
+				r.logger.Error("public failed to close file: %s", closeErr)
+			}
+		}()
 
 		stat, err := f.Stat()
 		if err != nil {
@@ -525,10 +534,17 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 			if !cfg.Browse {
 				// Try to serve index file
 				indexPath := path.Join(filePath, cfg.Index)
-				if f, err := fileSystem.Open(indexPath); err == nil {
-					stat, _ = f.Stat()
+				indexFile, openErr := fileSystem.Open(indexPath)
+				if openErr == nil {
+					if closeErr := f.Close(); closeErr != nil {
+						if indexCloseErr := indexFile.Close(); indexCloseErr != nil {
+							r.logger.Error("public failed to close index file: %s", indexCloseErr)
+						}
+						f = nil
+						return closeErr
+					}
+					f = indexFile
 					filePath = indexPath
-					f.Close()
 				} else {
 					r.logger.Info("[WARN] public did not find dir in fs")
 					return c.Status(404).SendString("Not Found")
@@ -572,6 +588,7 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 	return prefix, handler
 }
 
+//nolint:nestif // Filesystem preparation preserves legacy behavior across direct, rooted, and composite filesystems.
 func (r *BaseRouter) prepareStaticFilesystem(prefix string, cfg Static) (fs.FS, error) {
 	if cfg.FS != nil {
 		root := normalizeFSRoot(cfg.Root)

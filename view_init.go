@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	stdhtml "html"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -44,6 +45,7 @@ type ViewConfigProvider interface {
 	GetTemplatesFS() []fs.FS
 }
 
+//nolint:nestif // Default view setup preserves existing embedded and filesystem source selection behavior.
 func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("view engine config validation failed: %w", err)
@@ -128,6 +130,7 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 	return engine, nil
 }
 
+//nolint:gocyclo,nestif,dupl,funlen // View initialization keeps legacy embed, filesystem, and asset-helper setup in one public entry point.
 func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
 	lgr := getLogger(lgrs...)
 
@@ -187,22 +190,27 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 				var res template.HTML
 				g := glob.MustCompile(name)
 
-				fs.WalkDir(finalAssetFS, cssPath, func(path string, info fs.DirEntry, err error) error {
-					if err != nil || info.IsDir() {
+				if err := fs.WalkDir(finalAssetFS, cssPath, func(path string, info fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if info.IsDir() {
 						return nil
 					}
 					if g.Match(info.Name()) {
 						urlPath := assetURLPrefix + "/" + path
 						urlPath = ppath.Clean(urlPath)
-						res = template.HTML(`<link rel="stylesheet" href="` + urlPath + `">`)
+						res = template.HTML(`<link rel="stylesheet" href="` + stdhtml.EscapeString(urlPath) + `">`) // #nosec G203 -- asset helper intentionally returns escaped trusted markup for templates.
 						lgr.Debug("Resolved CSS asset", "name", name, "path", urlPath)
 						return filepath.SkipDir
 					}
 					return nil
-				})
+				}); err != nil {
+					lgr.Warn("Could not walk CSS assets", "path", cssPath, "error", err)
+				}
 
 				if res == "" && opts.GetDebug() {
-					res = template.HTML("<!-- CSS NOT FOUND: " + name + " (looked in " + cssPath + ") -->")
+					res = template.HTML("<!-- CSS NOT FOUND: " + stdhtml.EscapeString(name) + " (looked in " + stdhtml.EscapeString(cssPath) + ") -->") // #nosec G203 -- debug-only comment is escaped before being marked as template HTML.
 					lgr.Warn("Could not resolve CSS", "name", name)
 				}
 				return res
@@ -216,22 +224,27 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 				var res template.HTML
 				g := glob.MustCompile(name)
 
-				fs.WalkDir(finalAssetFS, jsPath, func(path string, info fs.DirEntry, err error) error {
-					if err != nil || info.IsDir() {
+				if err := fs.WalkDir(finalAssetFS, jsPath, func(path string, info fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if info.IsDir() {
 						return nil
 					}
 					if g.Match(info.Name()) {
 						urlPath := assetURLPrefix + "/" + path
 						urlPath = ppath.Clean(urlPath)
-						res = template.HTML(`<script async src="` + urlPath + `"></script>`)
+						res = template.HTML(`<script async src="` + stdhtml.EscapeString(urlPath) + `"></script>`) // #nosec G203 -- asset helper intentionally returns escaped trusted markup for templates.
 						lgr.Debug("Resolved JS asset", "name", name, "path", urlPath)
 						return filepath.SkipDir
 					}
 					return nil
-				})
+				}); err != nil {
+					lgr.Warn("Could not walk JS assets", "path", jsPath, "error", err)
+				}
 
 				if res == "" && opts.GetDebug() {
-					res = template.HTML("<!-- JS NOT FOUND: " + name + " (looked in " + jsPath + ") -->")
+					res = template.HTML("<!-- JS NOT FOUND: " + stdhtml.EscapeString(name) + " (looked in " + stdhtml.EscapeString(jsPath) + ") -->") // #nosec G203 -- debug-only comment is escaped before being marked as template HTML.
 					lgr.Warn("Could not resolve JS", "name", name)
 				}
 				return res
@@ -335,10 +348,10 @@ func makeTimeParser() func(val any, format string, lang string) string {
 		for _, format := range TimeFormats {
 			t, err = time.ParseInLocation(format, str, time.Local)
 			if err == nil {
-				return t, err
+				return t, nil
 			}
 		}
-		return t, errors.New("Can't parse string as time: " + str)
+		return t, errors.New("can't parse string as time: " + str)
 	}
 
 	return func(val any, format string, lang string) string {
@@ -450,6 +463,7 @@ func conditionalStr(arg any, ok, ko string) string {
 	return ok
 }
 
+//nolint:nestif // Validation mirrors the public embedded vs filesystem configuration branches.
 func ValidateConfig(cfg ViewConfigProvider) error {
 	var errors []string
 
@@ -477,7 +491,7 @@ func ValidateConfig(cfg ViewConfigProvider) error {
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf("Configuration errors:\n- %s", strings.Join(errors, "\n- "))
+		return fmt.Errorf("configuration errors:\n- %s", strings.Join(errors, "\n- "))
 	}
 
 	return nil
@@ -490,15 +504,17 @@ func DebugAssetPaths(lgr Logger, dir fs.FS, labels ...string) {
 	}
 	lgr.Debug(fmt.Sprintf("=== Available Paths in %s ===", label))
 
-	fs.WalkDir(dir, ".", func(path string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(dir, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if !d.IsDir() {
 			lgr.Debug("  - " + path)
 		}
 		return nil
-	})
+	}); err != nil {
+		lgr.Warn("Could not walk asset paths", "label", label, "error", err)
+	}
 
 	lgr.Debug("============================")
 }

@@ -1,7 +1,7 @@
 package router
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- RFC 6455 requires SHA-1 for Sec-WebSocket-Accept; this is not used for security-sensitive hashing.
 	"encoding/base64"
 	"net"
 	"net/url"
@@ -34,11 +34,7 @@ func isWebSocketRequest(c Context) bool {
 
 	// Check Sec-WebSocket-Version is supported (typically 13)
 	wsVersion := c.Header(WebSocketVersion)
-	if wsVersion != "13" {
-		return false
-	}
-
-	return true
+	return wsVersion == "13"
 }
 
 // validateOrigin checks if the request origin is allowed based on configuration
@@ -88,9 +84,13 @@ func validateSubprotocols(c Context, config WebSocketConfig) (string, bool) {
 // generateWebSocketAccept generates the Sec-WebSocket-Accept header value
 // as per RFC 6455 Section 1.3
 func generateWebSocketAccept(key string) string {
-	h := sha1.New()
-	h.Write([]byte(key))
-	h.Write([]byte(websocketGUID))
+	h := sha1.New() // #nosec G401 -- RFC 6455 requires SHA-1 for Sec-WebSocket-Accept; this is not used for security-sensitive hashing.
+	if _, err := h.Write([]byte(key)); err != nil {
+		return ""
+	}
+	if _, err := h.Write([]byte(websocketGUID)); err != nil {
+		return ""
+	}
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
@@ -134,6 +134,7 @@ func requestHost(c Context) string {
 	return strings.TrimSpace(c.Header("Host"))
 }
 
+//nolint:nestif // Scheme detection intentionally checks forwarded headers before adapter-specific request state.
 func requestScheme(c Context) string {
 	for _, header := range []string{"X-Forwarded-Proto", "X-Scheme"} {
 		if value := strings.TrimSpace(c.Header(header)); value != "" {

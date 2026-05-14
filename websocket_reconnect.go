@@ -84,9 +84,6 @@ type MessageQueueManager struct {
 	queues   map[string]*MessageQueue
 	queuesMu sync.RWMutex
 	config   MessageQueueConfig
-
-	// Persistence backend (optional)
-	storage MessageQueueStorage
 }
 
 // MessageQueueConfig contains message queue configuration
@@ -166,12 +163,14 @@ func (m *ReconnectManager) CreateSession(client WSClient) (*ClientSession, error
 	m.sessionsMu.Unlock()
 
 	// Send session info to client
-	client.SendJSON(map[string]any{
+	if err := client.SendJSON(map[string]any{
 		"type":               "session_created",
 		"session_id":         session.ID,
 		"reconnect_token":    session.ReconnectToken,
 		"heartbeat_interval": m.config.HeartbeatInterval.Seconds(),
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("send session info: %w", err)
+	}
 
 	return session, nil
 }
@@ -217,19 +216,27 @@ func (m *ReconnectManager) HandleReconnect(ctx context.Context, client WSClient,
 		for _, msg := range messages {
 			if err := client.SendJSON(msg); err != nil {
 				// Re-queue if delivery fails
-				session.MessageQueue.Add(msg)
+				if addErr := session.MessageQueue.Add(msg); addErr != nil {
+					return nil, fmt.Errorf("re-queue message after delivery failure: %w", addErr)
+				}
 				break
 			}
 		}
 	}
+	queuedMessages := 0
+	if session.MessageQueue != nil {
+		queuedMessages = session.MessageQueue.Size()
+	}
 
 	// Send reconnect success
-	client.SendJSON(map[string]any{
+	if err := client.SendJSON(map[string]any{
 		"type":            "reconnect_success",
 		"session_id":      session.ID,
-		"queued_messages": session.MessageQueue.Size(),
+		"queued_messages": queuedMessages,
 		"subscriptions":   session.Subscriptions,
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("send reconnect success: %w", err)
+	}
 
 	return session, nil
 }
@@ -420,7 +427,9 @@ func (h *HeartbeatManager) StartHeartbeat(client WSClient) {
 	}
 
 	// Send initial ping
-	client.Send([]byte{PingMessage})
+	if err := client.Send([]byte{PingMessage}); err != nil {
+		fmt.Printf("Failed to send initial heartbeat ping to client %s: %v\n", client.ID(), err)
+	}
 
 	// Start timeout timer
 	hb.timer = time.AfterFunc(h.timeout, func() {

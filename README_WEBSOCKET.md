@@ -618,12 +618,14 @@ config := router.WebSocketConfig{
 
     // Timeouts
     HandshakeTimeout: 10 * time.Second,
-    ReadTimeout:      60 * time.Second,
+    ReadTimeout:      60 * time.Second, // Compatibility field for higher-level helpers
     WriteTimeout:     10 * time.Second,
 
     // Keep-alive
-    PingPeriod: 54 * time.Second,
-    PongWait:   60 * time.Second,
+    PingPeriod:          54 * time.Second,
+    PongWait:            60 * time.Second,
+    DisableKeepAlive:    false,
+    DisableReadDeadline: false,
 
     // Message limits
     MaxMessageSize: 1024 * 1024, // 1MB
@@ -644,6 +646,8 @@ config := router.WebSocketConfig{
 // Apply configuration
 app.Router().Get("/ws", handler, router.WebSocketUpgrade(config))
 ```
+
+Zero duration fields use the default values. To opt out of automatic ping/pong health checks, set `DisableKeepAlive: true`. To keep server pings but manage stale connection cleanup elsewhere, set `DisableReadDeadline: true`.
 
 ### Hub Configuration
 

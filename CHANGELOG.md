@@ -1,5 +1,33 @@
 # Changelog
 
+# [0.59.0](https://github.com/goliatone/go-router/compare/v0.58.0...v0.59.0) - (2026-05-29)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Ping delay setup ([6349534](https://github.com/goliatone/go-router/commit/63495344858ea7fc0c738a80b610c7d350720f60))  - (goliatone)
+- Code quality ([c0a8bb8](https://github.com/goliatone/go-router/commit/c0a8bb842ed12545353a3bc2038a7fbd74a132c1))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.59.0 ([1a710a1](https://github.com/goliatone/go-router/commit/1a710a128cd26ee8476de75e94ce007d893f016c))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Ping and keep alive options ([78f4488](https://github.com/goliatone/go-router/commit/78f4488363a364fdb1fb9da25bf152d4d8d349ed))  - (goliatone)
+- Fiber keepalive implementation ([599354f](https://github.com/goliatone/go-router/commit/599354f48de15aa80555ac840e16f4a736b333b3))  - (goliatone)
+- Linter setup ([5a92bfa](https://github.com/goliatone/go-router/commit/5a92bfa3a6626cda1e07659d99262a1b51124a36))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.58.0 ([97034a3](https://github.com/goliatone/go-router/commit/97034a31a511e64582cc2c7d89fe984ee6c388e2))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([a4cd5ee](https://github.com/goliatone/go-router/commit/a4cd5ee0d323d027162d09c5d003aa4f6b4a654f))  - (goliatone)
+- Update docs ([41271a6](https://github.com/goliatone/go-router/commit/41271a688ab9a1afe080d8ac4c4d6be461639fae))  - (goliatone)
+- Update deps ([f449773](https://github.com/goliatone/go-router/commit/f44977337b545f9f8df2a47e998e7ec70feaf53a))  - (goliatone)
+- Update tasks ([1b5890e](https://github.com/goliatone/go-router/commit/1b5890e47a6a7de95e851f9e21d821f125872a6a))  - (goliatone)
+
 # [0.58.0](https://github.com/goliatone/go-router/compare/v0.57.0...v0.58.0) - (2026-05-13)
 
 ## <!-- 1 -->🐛 Bug Fixes

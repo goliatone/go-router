@@ -141,7 +141,7 @@ func TestWebSocketConfigValidation(t *testing.T) {
 
 			err := config.Validate()
 			if tt.shouldError {
-				assert.Error(t, err, "Configuration should be invalid")
+				require.Error(t, err, "Configuration should be invalid")
 				if tt.errorMsg != "" {
 					assert.Contains(t, err.Error(), tt.errorMsg)
 				}
@@ -162,13 +162,12 @@ func TestWebSocketHandlerTypes(t *testing.T) {
 		for {
 			messageType, data, err := ws.ReadMessage()
 			if err != nil {
-				break
+				return err
 			}
 			if err := ws.WriteMessage(messageType, data); err != nil {
-				break
+				return err
 			}
 		}
-		return nil
 	}
 
 	// JSON handler
@@ -240,13 +239,12 @@ func TestHTTPRouterWebSocketCommunication(t *testing.T) {
 		for {
 			messageType, data, err := ws.ReadMessage()
 			if err != nil {
-				break
+				return err
 			}
 			if err := ws.WriteMessage(messageType, data); err != nil {
-				break
+				return err
 			}
 		}
-		return nil
 	}
 
 	// Use unified interface to register WebSocket route
@@ -261,9 +259,10 @@ func TestHTTPRouterWebSocketCommunication(t *testing.T) {
 
 	// Connect to WebSocket
 	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(wsURL, nil)
+	conn, resp, err := dialer.Dial(wsURL, nil)
+	defer closeWebSocketResponse(t, resp)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer closeWebSocketConn(t, conn)
 
 	// Test echo functionality
 	testMessage := "Hello WebSocket!"
@@ -287,16 +286,18 @@ func TestUnifiedInterfaceCompatibility(t *testing.T) {
 		// Chat handler
 		chatHandler := func(ws router.WebSocketContext) error {
 			// Send welcome message
-			ws.WriteJSON(map[string]string{
+			if err := ws.WriteJSON(map[string]string{
 				"type":    "welcome",
 				"message": "Connected to chat!",
-			})
+			}); err != nil {
+				return err
+			}
 
 			// Handle messages
 			for {
 				var msg map[string]any
 				if err := ws.ReadJSON(&msg); err != nil {
-					break
+					return err
 				}
 
 				// Echo back
@@ -307,10 +308,9 @@ func TestUnifiedInterfaceCompatibility(t *testing.T) {
 				}
 
 				if err := ws.WriteJSON(response); err != nil {
-					break
+					return err
 				}
 			}
-			return nil
 		}
 
 		// This same code works with any adapter that implements the unified interface
@@ -323,8 +323,9 @@ func TestUnifiedInterfaceCompatibility(t *testing.T) {
 
 	// Test with HTTPRouter
 	appInterface := router.NewHTTPServer()
-	app := appInterface.(*router.HTTPServer) // Type assertion needed
-	setupWebSocketRoutes(app)                // Same function works!
+	app, ok := appInterface.(*router.HTTPServer) // Type assertion needed
+	require.True(t, ok, "expected HTTPServer")
+	setupWebSocketRoutes(app) // Same function works!
 
 	// Verify routes were created (we can't test the actual functionality without integration)
 	assert.NotNil(t, app, "App should be created successfully")
@@ -392,7 +393,11 @@ func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
 
 		// Verify UpgradeData is accessible
 		if val, ok := ws.UpgradeData("token"); ok {
-			tokenSeen = val.(string)
+			tokenValue, ok := val.(string)
+			if !ok {
+				return fmt.Errorf("wrong token type: %T", val)
+			}
+			tokenSeen = tokenValue
 			select {
 			case tokenCh <- tokenSeen:
 			default:
@@ -400,7 +405,11 @@ func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
 		}
 
 		// Also check helper
-		user := router.GetUpgradeDataWithDefault(ws, "user", "unknown").(string)
+		userValue := router.GetUpgradeDataWithDefault(ws, "user", "unknown")
+		user, ok := userValue.(string)
+		if !ok {
+			return fmt.Errorf("wrong user type: %T", userValue)
+		}
 		if user != "testuser" {
 			return fmt.Errorf("wrong user: %s", user)
 		}
@@ -414,13 +423,12 @@ func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
 		for {
 			mt, msg, err := ws.ReadMessage()
 			if err != nil {
-				break
+				return err
 			}
 			if err := ws.WriteMessage(mt, msg); err != nil {
-				break
+				return err
 			}
 		}
-		return nil
 	}
 
 	// 4. Register route
@@ -432,9 +440,10 @@ func TestOnPreUpgradeAndConnectFlow(t *testing.T) {
 
 	// 6. Connect with valid token
 	wsURL := strings.Replace(server.URL, "http://", "ws://", 1) + "/ws-auth?token=secret123"
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	ws, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	defer closeWebSocketResponse(t, resp)
 	require.NoError(t, err)
-	defer ws.Close()
+	defer closeWebSocketConn(t, ws)
 
 	// 7. Verify hooks were called
 	select {

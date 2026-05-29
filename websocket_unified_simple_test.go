@@ -68,6 +68,8 @@ func TestWebSocketConfigDefaults(t *testing.T) {
 	assert.Equal(t, 10*time.Second, config.WriteTimeout)
 	assert.Equal(t, 54*time.Second, config.PingPeriod)
 	assert.Equal(t, 60*time.Second, config.PongWait)
+	assert.False(t, config.DisableKeepAlive)
+	assert.False(t, config.DisableReadDeadline)
 	assert.Equal(t, int64(1024*1024), config.MaxMessageSize) // 1MB
 	assert.False(t, config.EnableCompression)
 	assert.True(t, config.AllowMultipleConnections)
@@ -109,6 +111,24 @@ func TestWebSocketConfigValidation(t *testing.T) {
 				c.Origins = []string{"https://example.com"}
 				c.ReadBufferSize = 8192
 				c.WriteBufferSize = 8192
+			},
+			shouldError: false,
+		},
+		{
+			name: "Disable_Read_Deadline_Allows_Long_Ping_Period",
+			configMod: func(c *router.WebSocketConfig) {
+				c.PingPeriod = 65 * time.Second
+				c.PongWait = 60 * time.Second
+				c.DisableReadDeadline = true
+			},
+			shouldError: false,
+		},
+		{
+			name: "Disable_KeepAlive_Allows_Long_Ping_Period",
+			configMod: func(c *router.WebSocketConfig) {
+				c.PingPeriod = 65 * time.Second
+				c.PongWait = 60 * time.Second
+				c.DisableKeepAlive = true
 			},
 			shouldError: false,
 		},

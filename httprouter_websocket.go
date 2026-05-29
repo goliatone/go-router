@@ -97,49 +97,8 @@ func (c *httpRouterWebSocketContext) WebSocketUpgrade() error {
 		conn.SetReadLimit(c.config.MaxMessageSize)
 	}
 
-	// Set ping handler
-	conn.SetPingHandler(func(appData string) error {
-		// Send pong response
-		writeTimeout := c.getWriteTimeout()
-		deadline := time.Now().Add(writeTimeout)
-		c.writeMu.Lock()
-		if err := conn.SetWriteDeadline(deadline); err != nil {
-			c.writeMu.Unlock()
-			return err
-		}
-		if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
-			c.writeMu.Unlock()
-			return err
-		}
-		c.writeMu.Unlock()
-		// Call custom handler if set
-		c.mu.RLock()
-		pingHandler := c.pingHandler
-		c.mu.RUnlock()
-		if pingHandler != nil {
-			return pingHandler(appData)
-		}
-		return nil
-	})
-
-	// Set pong handler
-	conn.SetPongHandler(func(appData string) error {
-		// Update read deadline on pong receipt
-		if c.config.readDeadlineEnabled() {
-			deadline := time.Now().Add(c.config.PongWait)
-			if err := conn.SetReadDeadline(deadline); err != nil {
-				return err
-			}
-		}
-		// Call custom handler if set
-		c.mu.RLock()
-		pongHandler := c.pongHandler
-		c.mu.RUnlock()
-		if pongHandler != nil {
-			return pongHandler(appData)
-		}
-		return nil
-	})
+	c.installPingHandler(conn)
+	c.installPongHandler(conn)
 
 	// Set close handler
 	conn.SetCloseHandler(func(code int, text string) error {
@@ -448,12 +407,11 @@ func (c *httpRouterWebSocketContext) SetPingHandler(handler func(data []byte) er
 		}
 	}
 	conn := c.conn
-	pingHandler := c.pingHandler
 	c.mu.Unlock()
 
 	// Update the handler on the connection if already upgraded
 	if conn != nil {
-		conn.SetPingHandler(pingHandler)
+		c.installPingHandler(conn)
 	}
 }
 
@@ -468,13 +426,64 @@ func (c *httpRouterWebSocketContext) SetPongHandler(handler func(data []byte) er
 		}
 	}
 	conn := c.conn
-	pongHandler := c.pongHandler
 	c.mu.Unlock()
 
 	// Update the handler on the connection if already upgraded
 	if conn != nil {
-		conn.SetPongHandler(pongHandler)
+		c.installPongHandler(conn)
 	}
+}
+
+func (c *httpRouterWebSocketContext) installPingHandler(conn *websocket.Conn) {
+	if conn == nil {
+		return
+	}
+
+	conn.SetPingHandler(func(appData string) error {
+		writeTimeout := c.getWriteTimeout()
+		deadline := time.Now().Add(writeTimeout)
+		c.writeMu.Lock()
+		if err := conn.SetWriteDeadline(deadline); err != nil {
+			c.writeMu.Unlock()
+			return err
+		}
+		if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
+			c.writeMu.Unlock()
+			return err
+		}
+		c.writeMu.Unlock()
+
+		c.mu.RLock()
+		pingHandler := c.pingHandler
+		c.mu.RUnlock()
+		if pingHandler != nil {
+			return pingHandler(appData)
+		}
+		return nil
+	})
+}
+
+func (c *httpRouterWebSocketContext) installPongHandler(conn *websocket.Conn) {
+	if conn == nil {
+		return
+	}
+
+	conn.SetPongHandler(func(appData string) error {
+		if c.config.readDeadlineEnabled() {
+			deadline := time.Now().Add(c.config.PongWait)
+			if err := conn.SetReadDeadline(deadline); err != nil {
+				return err
+			}
+		}
+
+		c.mu.RLock()
+		pongHandler := c.pongHandler
+		c.mu.RUnlock()
+		if pongHandler != nil {
+			return pongHandler(appData)
+		}
+		return nil
+	})
 }
 
 // SetCloseHandler sets the close handler
@@ -631,8 +640,13 @@ func init() {
 func HTTPRouterWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext) error, views Views) httprouter.Handle {
 	// Apply defaults to config
 	config.ApplyDefaults()
+	configErr := config.Validate()
 
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		if configErr != nil {
+			http.Error(w, fmt.Sprintf("websocket configuration error: %v", configErr), http.StatusInternalServerError)
+			return
+		}
 		// Check if it's a WebSocket request
 		if r.Header.Get("Upgrade") != "websocket" {
 			http.Error(w, "WebSocket upgrade required", http.StatusBadRequest)

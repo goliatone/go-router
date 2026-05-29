@@ -122,6 +122,8 @@ type DeadlineManager struct {
 
 // NewDeadlineManager creates a new deadline manager
 func NewDeadlineManager(ctx WebSocketContext, config WebSocketConfig) *DeadlineManager {
+	explicitPingPeriod := config.PingPeriod
+	explicitPongWait := config.PongWait
 	config.ApplyDefaults()
 
 	pongWait := config.PongWait
@@ -130,7 +132,7 @@ func NewDeadlineManager(ctx WebSocketContext, config WebSocketConfig) *DeadlineM
 	}
 
 	pingPeriod := config.PingPeriod
-	if pingPeriod == 0 {
+	if explicitPingPeriod == 0 && explicitPongWait != 0 {
 		pingPeriod = (pongWait * 9) / 10
 	}
 
@@ -164,9 +166,7 @@ func (d *DeadlineManager) Start() {
 		return
 	}
 
-	if !d.readDeadline {
-		d.ctx.SetPongHandler(nil)
-	} else {
+	if d.readDeadline {
 		// Set pong handler to reset read deadline
 		d.ctx.SetPongHandler(func(data []byte) error {
 			return d.setReadDeadlineFromPong()

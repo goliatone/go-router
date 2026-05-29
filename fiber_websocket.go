@@ -35,7 +35,10 @@ var _ WebSocketContext = (*fiberWebSocketContext)(nil)
 // NewFiberWebSocketContext creates a new Fiber WebSocket context
 func NewFiberWebSocketContext(c *fiber.Ctx, config WebSocketConfig, logger Logger) (*fiberWebSocketContext, error) {
 	// Create base fiber context
-	baseCtx := NewFiberContext(c, logger).(*fiberContext)
+	baseCtx, ok := NewFiberContext(c, logger).(*fiberContext)
+	if !ok {
+		return nil, fmt.Errorf("expected fiberContext from NewFiberContext")
+	}
 
 	// Generate connection ID
 	connID := fmt.Sprintf("fiber-ws-%s-%d", c.IP(), time.Now().UnixNano())
@@ -164,8 +167,8 @@ func (c *fiberWebSocketContext) ReadMessage() (messageType int, p []byte, err er
 	// Set read deadline for next message
 	if readDeadlineEnabled {
 		deadline := time.Now().Add(pongWait)
-		if err := conn.SetReadDeadline(deadline); err != nil {
-			return 0, nil, err
+		if deadlineErr := conn.SetReadDeadline(deadline); deadlineErr != nil {
+			return 0, nil, deadlineErr
 		}
 	}
 
@@ -280,13 +283,17 @@ func (c *fiberWebSocketContext) CloseWithStatus(code int, reason string) error {
 
 	if err := conn.SetWriteDeadline(deadline); err != nil {
 		// Still try to close the connection
-		_ = conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			c.logger.Info("WebSocket close after deadline error failed", "error", closeErr)
+		}
 		return err
 	}
 
 	if err := conn.WriteMessage(websocket.CloseMessage, message); err != nil {
 		// Still close the connection
-		_ = conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			c.logger.Info("WebSocket close after close-message error failed", "error", closeErr)
+		}
 		return err
 	}
 
@@ -385,15 +392,8 @@ func (c *fiberWebSocketContext) SetPingHandler(handler func(data []byte) error) 
 	conn := c.conn
 	c.mu.Unlock()
 
-	// Update the handler on the connection if already upgraded
 	if conn != nil {
-		if handler == nil {
-			conn.SetPingHandler(nil)
-			return
-		}
-		conn.SetPingHandler(func(appData string) error {
-			return handler([]byte(appData))
-		})
+		c.installPingHandler(conn)
 	}
 }
 
@@ -404,16 +404,61 @@ func (c *fiberWebSocketContext) SetPongHandler(handler func(data []byte) error) 
 	conn := c.conn
 	c.mu.Unlock()
 
-	// Update the handler on the connection if already upgraded
 	if conn != nil {
-		if handler == nil {
-			conn.SetPongHandler(nil)
-			return
-		}
-		conn.SetPongHandler(func(appData string) error {
-			return handler([]byte(appData))
-		})
+		c.installPongHandler(conn)
 	}
+}
+
+func (c *fiberWebSocketContext) installPingHandler(conn *websocket.Conn) {
+	if conn == nil {
+		return
+	}
+
+	conn.SetPingHandler(func(appData string) error {
+		writeTimeout := c.getWriteTimeout()
+		deadline := time.Now().Add(writeTimeout)
+		c.writeMu.Lock()
+		if err := conn.SetWriteDeadline(deadline); err != nil {
+			c.writeMu.Unlock()
+			return err
+		}
+		if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
+			c.writeMu.Unlock()
+			return err
+		}
+		c.writeMu.Unlock()
+
+		c.mu.RLock()
+		pingHandler := c.pingHandler
+		c.mu.RUnlock()
+		if pingHandler != nil {
+			return pingHandler([]byte(appData))
+		}
+		return nil
+	})
+}
+
+func (c *fiberWebSocketContext) installPongHandler(conn *websocket.Conn) {
+	if conn == nil {
+		return
+	}
+
+	conn.SetPongHandler(func(appData string) error {
+		if c.config.readDeadlineEnabled() {
+			deadline := time.Now().Add(c.config.PongWait)
+			if err := conn.SetReadDeadline(deadline); err != nil {
+				return err
+			}
+		}
+
+		c.mu.RLock()
+		pongHandler := c.pongHandler
+		c.mu.RUnlock()
+		if pongHandler != nil {
+			return pongHandler([]byte(appData))
+		}
+		return nil
+	})
 }
 
 // SetCloseHandler sets the close handler
@@ -440,7 +485,7 @@ func (c *fiberWebSocketContext) RemoteAddr() string {
 	if c.fiberContext == nil {
 		return ""
 	}
-	return c.fiberContext.IP()
+	return c.IP()
 }
 
 // LocalAddr returns the local address of the connection
@@ -448,10 +493,10 @@ func (c *fiberWebSocketContext) LocalAddr() string {
 	if c.fiberContext == nil {
 		return ""
 	}
-	if meta := c.fiberContext.getMeta(); meta != nil {
+	if meta := c.getMeta(); meta != nil {
 		return fmt.Sprintf("%s:%s", meta.host, meta.port)
 	}
-	if ctx := c.fiberContext.liveCtx(); ctx != nil {
+	if ctx := c.liveCtx(); ctx != nil {
 		return fmt.Sprintf("%s:%s", ctx.Hostname(), ctx.Port())
 	}
 	return ""
@@ -550,9 +595,13 @@ func init() {
 func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext) error) fiber.Handler {
 	// Apply defaults to config
 	config.ApplyDefaults()
+	configErr := config.Validate()
 
 	// Return a wrapper function that delegates to WebSocket
 	return func(c *fiber.Ctx) error {
+		if configErr != nil {
+			return fmt.Errorf("websocket configuration error: %w", configErr)
+		}
 		if !validateFiberWebSocketOrigin(c, config) {
 			return c.SendStatus(fiber.StatusForbidden)
 		}
@@ -610,7 +659,7 @@ func buildFiberWebSocketConfig(config WebSocketConfig) websocket.Config {
 	return wsConfig
 }
 
-func captureFiberContextForWebSocket(c *fiber.Ctx, logger Logger, prototype *fiberContext) (*fiberContext, context.Context) {
+func captureFiberContextForWebSocket(c *fiber.Ctx, logger Logger, prototype *fiberContext) (*fiberContext, context.Context, error) {
 	if logger == nil {
 		logger = &defaultLogger{}
 	}
@@ -623,7 +672,10 @@ func captureFiberContextForWebSocket(c *fiber.Ctx, logger Logger, prototype *fib
 		safeCtx = context.Background()
 	}
 
-	captured := NewFiberContext(c, logger).(*fiberContext)
+	captured, ok := NewFiberContext(c, logger).(*fiberContext)
+	if !ok {
+		return nil, safeCtx, fmt.Errorf("expected fiberContext from NewFiberContext")
+	}
 	if prototype != nil {
 		captured.mergeStrategy = prototype.mergeStrategy
 		captured.handlers = prototype.handlers
@@ -638,7 +690,7 @@ func captureFiberContextForWebSocket(c *fiber.Ctx, logger Logger, prototype *fib
 	}
 	captured.SetContext(safeCtx)
 	captured.captureRequestMeta()
-	return captured, safeCtx
+	return captured, safeCtx, nil
 }
 
 func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberContext, config WebSocketConfig, upgradeData UpgradeData, invoke func(WebSocketContext) error) error {
@@ -647,7 +699,10 @@ func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberConte
 	}
 
 	wsConfig := buildFiberWebSocketConfig(config)
-	capturedFiberCtx, safeCtx := captureFiberContextForWebSocket(c, logger, prototype)
+	capturedFiberCtx, safeCtx, err := captureFiberContextForWebSocket(c, logger, prototype)
+	if err != nil {
+		return err
+	}
 
 	wsHandler := websocket.New(func(conn *websocket.Conn) {
 		baseWsCtx := &fiberWebSocketContext{
@@ -665,43 +720,8 @@ func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberConte
 			conn.SetReadLimit(config.MaxMessageSize)
 		}
 
-		conn.SetPingHandler(func(appData string) error {
-			writeTimeout := baseWsCtx.getWriteTimeout()
-			deadline := time.Now().Add(writeTimeout)
-			baseWsCtx.writeMu.Lock()
-			if err := conn.SetWriteDeadline(deadline); err != nil {
-				baseWsCtx.writeMu.Unlock()
-				return err
-			}
-			if err := conn.WriteMessage(websocket.PongMessage, []byte(appData)); err != nil {
-				baseWsCtx.writeMu.Unlock()
-				return err
-			}
-			baseWsCtx.writeMu.Unlock()
-			baseWsCtx.mu.RLock()
-			pingHandler := baseWsCtx.pingHandler
-			baseWsCtx.mu.RUnlock()
-			if pingHandler != nil {
-				return pingHandler([]byte(appData))
-			}
-			return nil
-		})
-
-		conn.SetPongHandler(func(appData string) error {
-			if config.readDeadlineEnabled() {
-				deadline := time.Now().Add(config.PongWait)
-				if err := conn.SetReadDeadline(deadline); err != nil {
-					return err
-				}
-			}
-			baseWsCtx.mu.RLock()
-			pongHandler := baseWsCtx.pongHandler
-			baseWsCtx.mu.RUnlock()
-			if pongHandler != nil {
-				return pongHandler([]byte(appData))
-			}
-			return nil
-		})
+		baseWsCtx.installPingHandler(conn)
+		baseWsCtx.installPongHandler(conn)
 
 		conn.SetCloseHandler(func(code int, text string) error {
 			baseWsCtx.mu.RLock()
@@ -721,7 +741,9 @@ func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberConte
 			deadline := time.Now().Add(config.PongWait)
 			if err := conn.SetReadDeadline(deadline); err != nil {
 				logger.Info("WebSocket read deadline error", "error", err)
-				_ = conn.Close()
+				if closeErr := conn.Close(); closeErr != nil {
+					logger.Info("WebSocket close after read deadline error failed", "error", closeErr)
+				}
 				return
 			}
 		}
@@ -732,7 +754,9 @@ func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberConte
 		if config.OnConnect != nil {
 			if err := config.OnConnect(baseWsCtx); err != nil {
 				logger.Info("OnConnect handler error", "error", err)
-				_ = conn.Close()
+				if closeErr := conn.Close(); closeErr != nil {
+					logger.Info("WebSocket close after OnConnect error failed", "error", closeErr)
+				}
 				return
 			}
 		}

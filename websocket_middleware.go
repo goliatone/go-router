@@ -83,6 +83,9 @@ func WebSocketUpgrade(config WebSocketConfig) MiddlewareFunc {
 				}
 			}
 
+			stopPingLoop := startWebSocketPingLoop(wsCtx, config, &defaultLogger{})
+			defer stopPingLoop()
+
 			// 9. Continue with WebSocket context
 			return wsCtx.Next()
 		}
@@ -163,27 +166,27 @@ func inheritWebSocketRouteState(src Context, dst WebSocketContext) {
 		if !ok || target == nil || target.fiberContext == nil {
 			return
 		}
-		target.fiberContext.mergeStrategy = source.mergeStrategy
-		target.fiberContext.handlers = source.handlers
-		target.fiberContext.index = source.index
-		target.fiberContext.store = source.store
-		target.fiberContext.logger = source.logger
-		target.fiberContext.meta = source.meta
+		target.mergeStrategy = source.mergeStrategy
+		target.handlers = source.handlers
+		target.index = source.index
+		target.store = source.store
+		target.logger = source.logger
+		target.meta = source.meta
 		target.SetContext(source.Context())
 	case *httpRouterContext:
 		target, ok := dst.(*httpRouterWebSocketContext)
 		if !ok || target == nil || target.httpRouterContext == nil {
 			return
 		}
-		target.httpRouterContext.handlers = source.handlers
-		target.httpRouterContext.index = source.index
-		target.httpRouterContext.store = source.store
-		target.httpRouterContext.passLocalsToViews = source.passLocalsToViews
-		target.httpRouterContext.router = source.router
+		target.handlers = source.handlers
+		target.index = source.index
+		target.store = source.store
+		target.passLocalsToViews = source.passLocalsToViews
+		target.router = source.router
 		if source.locals != nil {
 			locals := make(ViewContext, len(source.locals))
 			maps.Copy(locals, source.locals)
-			target.httpRouterContext.locals = locals
+			target.locals = locals
 		}
 		target.SetContext(source.Context())
 	}

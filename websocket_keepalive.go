@@ -12,10 +12,12 @@ func startWebSocketPingLoop(wsCtx WebSocketContext, config WebSocketConfig, logg
 
 	ticker := time.NewTicker(config.PingPeriod)
 	done := make(chan struct{})
+	stopped := make(chan struct{})
 	var stopOnce sync.Once
 
 	go func() {
 		defer ticker.Stop()
+		defer close(stopped)
 		for {
 			select {
 			case <-ticker.C:
@@ -34,6 +36,7 @@ func startWebSocketPingLoop(wsCtx WebSocketContext, config WebSocketConfig, logg
 	return func() {
 		stopOnce.Do(func() {
 			close(done)
+			<-stopped
 		})
 	}
 }

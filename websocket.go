@@ -63,10 +63,10 @@ type WebSocketConfig struct {
 	// is rejected. Default: 10 seconds.
 	HandshakeTimeout time.Duration
 
-	// ReadTimeout: Maximum time to wait when reading from the WebSocket connection.
-	// If no data is received within this time, the connection is considered dead
-	// and will be closed. This prevents hanging connections that never send data.
-	// Set to 0 to disable read timeout. Default: 60 seconds.
+	// ReadTimeout: Retained for compatibility with higher-level WebSocket helpers.
+	// Adapter read deadlines use PongWait so idle but healthy connections can stay
+	// open when automatic ping/pong keepalive is enabled. Set DisableReadDeadline
+	// to true to disable adapter-managed read deadlines. Default: 60 seconds.
 	ReadTimeout time.Duration
 
 	// WriteTimeout: Maximum time allowed for write operations to the WebSocket.
@@ -77,15 +77,25 @@ type WebSocketConfig struct {
 	// PingPeriod: How often to send ping frames to the client to check if the
 	// connection is still alive. Must be less than PongWait. The server sends
 	// ping frames at this interval to detect broken connections. Default: 54 seconds.
-	// Set to 0 to disable automatic pings.
+	// Set DisableKeepAlive to true to disable automatic pings; zero uses defaults.
 	PingPeriod time.Duration
 
 	// PongWait: Maximum time to wait for a pong response after sending a ping.
 	// If the client doesn't respond with a pong within this time after receiving
 	// a ping, the connection is considered dead and will be closed. This is the
 	// primary mechanism for detecting broken connections. Default: 60 seconds.
-	// Must be greater than PingPeriod.
+	// Must be greater than PingPeriod when keepalive and read deadlines are enabled.
 	PongWait time.Duration
+
+	// DisableKeepAlive disables go-router's automatic server-side ping loop and
+	// pong-based read deadline management. Zero duration fields still mean
+	// "apply defaults"; use this flag when an endpoint must opt out.
+	DisableKeepAlive bool
+
+	// DisableReadDeadline disables adapter-managed WebSocket read deadlines while
+	// allowing automatic server pings to continue. This is useful for endpoints
+	// that want keepalive traffic but manage stale connection cleanup elsewhere.
+	DisableReadDeadline bool
 
 	// Message limits
 	MaxMessageSize int64
@@ -117,9 +127,8 @@ type WebSocketConfig struct {
 // prevent common WebSocket issues like hanging connections and resource leaks.
 //
 // Key timeout defaults prevent connection issues:
-//   - ReadTimeout (60s): Prevents handlers from blocking indefinitely on dead connections
 //   - WriteTimeout (10s): Ensures write operations don't hang the server
-//   - PingPeriod (54s) + PongWait (60s): Automatic connection health checking
+//   - PingPeriod (54s) + PongWait (60s): Automatic ping/pong health checking
 //   - HandshakeTimeout (10s): Prevents slow handshake attacks
 //
 // These defaults ensure that:
@@ -156,8 +165,8 @@ func DefaultWebSocketConfig() WebSocketConfig {
 
 // Validate checks the WebSocketConfig for common configuration errors
 func (c *WebSocketConfig) Validate() error {
-	// Ensure PingPeriod is less than PongWait
-	if c.PingPeriod >= c.PongWait {
+	// Ensure PingPeriod is less than PongWait when pong deadlines are active.
+	if c.readDeadlineEnabled() && c.PingPeriod >= c.PongWait {
 		return NewValidationError("PingPeriod must be less than PongWait", nil)
 	}
 
@@ -185,6 +194,14 @@ func (c *WebSocketConfig) Validate() error {
 	}
 
 	return nil
+}
+
+func (c WebSocketConfig) keepAliveEnabled() bool {
+	return !c.DisableKeepAlive && c.PingPeriod > 0
+}
+
+func (c WebSocketConfig) readDeadlineEnabled() bool {
+	return !c.DisableKeepAlive && !c.DisableReadDeadline && c.PongWait > 0
 }
 
 // GetUpgradeDataWithDefault is a convenience function for WebSocket contexts

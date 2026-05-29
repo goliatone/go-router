@@ -151,6 +151,7 @@ func (c *fiberWebSocketContext) ReadMessage() (messageType int, p []byte, err er
 	c.mu.RLock()
 	conn := c.conn
 	upgraded := c.isUpgraded
+	readDeadlineEnabled := c.config.readDeadlineEnabled()
 	pongWait := c.config.PongWait
 	messageHandler := c.messageHandler
 	onMessage := c.config.OnMessage
@@ -161,7 +162,7 @@ func (c *fiberWebSocketContext) ReadMessage() (messageType int, p []byte, err er
 	}
 
 	// Set read deadline for next message
-	if pongWait > 0 {
+	if readDeadlineEnabled {
 		deadline := time.Now().Add(pongWait)
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			return 0, nil, err
@@ -219,6 +220,7 @@ func (c *fiberWebSocketContext) ReadJSON(v any) error {
 	c.mu.RLock()
 	conn := c.conn
 	upgraded := c.isUpgraded
+	readDeadlineEnabled := c.config.readDeadlineEnabled()
 	pongWait := c.config.PongWait
 	c.mu.RUnlock()
 
@@ -227,7 +229,7 @@ func (c *fiberWebSocketContext) ReadJSON(v any) error {
 	}
 
 	// Set read deadline
-	if pongWait > 0 {
+	if readDeadlineEnabled {
 		deadline := time.Now().Add(pongWait)
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			return err
@@ -686,7 +688,7 @@ func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberConte
 		})
 
 		conn.SetPongHandler(func(appData string) error {
-			if config.PongWait > 0 {
+			if config.readDeadlineEnabled() {
 				deadline := time.Now().Add(config.PongWait)
 				if err := conn.SetReadDeadline(deadline); err != nil {
 					return err
@@ -715,7 +717,16 @@ func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberConte
 
 		baseWsCtx.subprotocol = conn.Subprotocol()
 
-		stopPingLoop := startFiberWebSocketPingLoop(baseWsCtx, config, logger)
+		if config.readDeadlineEnabled() {
+			deadline := time.Now().Add(config.PongWait)
+			if err := conn.SetReadDeadline(deadline); err != nil {
+				logger.Info("WebSocket read deadline error", "error", err)
+				_ = conn.Close()
+				return
+			}
+		}
+
+		stopPingLoop := startWebSocketPingLoop(baseWsCtx, config, logger)
 		defer stopPingLoop()
 
 		if config.OnConnect != nil {
@@ -732,39 +743,6 @@ func runFiberWebSocketUpgrade(c *fiber.Ctx, logger Logger, prototype *fiberConte
 	}, wsConfig)
 
 	return wsHandler(c)
-}
-
-func startFiberWebSocketPingLoop(wsCtx *fiberWebSocketContext, config WebSocketConfig, logger Logger) func() {
-	if wsCtx == nil || config.PingPeriod <= 0 {
-		return func() {}
-	}
-
-	ticker := time.NewTicker(config.PingPeriod)
-	done := make(chan struct{})
-	var stopOnce sync.Once
-
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if err := wsCtx.WritePing(nil); err != nil {
-					if logger != nil {
-						logger.Info("WebSocket ping error", "error", err)
-					}
-					return
-				}
-			case <-done:
-				return
-			}
-		}
-	}()
-
-	return func() {
-		stopOnce.Do(func() {
-			close(done)
-		})
-	}
 }
 
 // getWriteTimeout returns the write timeout to use

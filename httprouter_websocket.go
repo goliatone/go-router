@@ -125,7 +125,7 @@ func (c *httpRouterWebSocketContext) WebSocketUpgrade() error {
 	// Set pong handler
 	conn.SetPongHandler(func(appData string) error {
 		// Update read deadline on pong receipt
-		if c.config.PongWait > 0 {
+		if c.config.readDeadlineEnabled() {
 			deadline := time.Now().Add(c.config.PongWait)
 			if err := conn.SetReadDeadline(deadline); err != nil {
 				return err
@@ -158,6 +158,13 @@ func (c *httpRouterWebSocketContext) WebSocketUpgrade() error {
 
 	// Store negotiated subprotocol
 	c.subprotocol = conn.Subprotocol()
+
+	if c.config.readDeadlineEnabled() {
+		deadline := time.Now().Add(c.config.PongWait)
+		if err := conn.SetReadDeadline(deadline); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -200,6 +207,7 @@ func (c *httpRouterWebSocketContext) ReadMessage() (messageType int, p []byte, e
 	c.mu.RLock()
 	conn := c.conn
 	upgraded := c.isUpgraded
+	readDeadlineEnabled := c.config.readDeadlineEnabled()
 	pongWait := c.config.PongWait
 	messageHandler := c.messageHandler
 	onMessage := c.config.OnMessage
@@ -210,7 +218,7 @@ func (c *httpRouterWebSocketContext) ReadMessage() (messageType int, p []byte, e
 	}
 
 	// Set read deadline for next message
-	if pongWait > 0 {
+	if readDeadlineEnabled {
 		deadline := time.Now().Add(pongWait)
 		if deadlineErr := conn.SetReadDeadline(deadline); deadlineErr != nil {
 			return 0, nil, deadlineErr
@@ -268,6 +276,7 @@ func (c *httpRouterWebSocketContext) ReadJSON(v any) error {
 	c.mu.RLock()
 	conn := c.conn
 	upgraded := c.isUpgraded
+	readDeadlineEnabled := c.config.readDeadlineEnabled()
 	pongWait := c.config.PongWait
 	c.mu.RUnlock()
 
@@ -276,7 +285,7 @@ func (c *httpRouterWebSocketContext) ReadJSON(v any) error {
 	}
 
 	// Set read deadline
-	if pongWait > 0 {
+	if readDeadlineEnabled {
 		deadline := time.Now().Add(pongWait)
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			return err
@@ -652,6 +661,9 @@ func HTTPRouterWebSocketHandler(config WebSocketConfig, handler func(WebSocketCo
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		stopPingLoop := startWebSocketPingLoop(wsCtx, config, &defaultLogger{})
+		defer stopPingLoop()
 
 		// Call OnConnect if configured
 		if config.OnConnect != nil {

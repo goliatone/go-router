@@ -111,6 +111,8 @@ type DeadlineManager struct {
 	pingPeriod    time.Duration
 	pongWait      time.Duration
 	writeWait     time.Duration
+	keepAlive     bool
+	readDeadline  bool
 	maxPingErrors int
 	pingErrors    int
 	ticker        *time.Ticker
@@ -120,6 +122,8 @@ type DeadlineManager struct {
 
 // NewDeadlineManager creates a new deadline manager
 func NewDeadlineManager(ctx WebSocketContext, config WebSocketConfig) *DeadlineManager {
+	config.ApplyDefaults()
+
 	pongWait := config.PongWait
 	if pongWait == 0 {
 		pongWait = 60 * time.Second
@@ -140,6 +144,8 @@ func NewDeadlineManager(ctx WebSocketContext, config WebSocketConfig) *DeadlineM
 		pingPeriod:    pingPeriod,
 		pongWait:      pongWait,
 		writeWait:     writeWait,
+		keepAlive:     config.keepAliveEnabled(),
+		readDeadline:  config.readDeadlineEnabled(),
 		maxPingErrors: 3,
 		done:          make(chan bool),
 	}
@@ -148,21 +154,47 @@ func NewDeadlineManager(ctx WebSocketContext, config WebSocketConfig) *DeadlineM
 // Start starts the deadline management
 func (d *DeadlineManager) Start() {
 	// Set initial read deadline
-	if err := d.ctx.SetReadDeadline(time.Now().Add(d.pongWait)); err != nil {
-		fmt.Printf("Failed to set initial websocket read deadline: %v\n", err)
+	if d.readDeadline {
+		if err := d.ctx.SetReadDeadline(time.Now().Add(d.pongWait)); err != nil {
+			fmt.Printf("Failed to set initial websocket read deadline: %v\n", err)
+		}
 	}
 
-	// Set pong handler to reset read deadline
-	d.ctx.SetPongHandler(func(data []byte) error {
-		d.mu.Lock()
-		d.pingErrors = 0 // Reset error count on successful pong
-		d.mu.Unlock()
-		return d.ctx.SetReadDeadline(time.Now().Add(d.pongWait))
-	})
+	if !d.keepAlive {
+		return
+	}
+
+	if !d.readDeadline {
+		d.ctx.SetPongHandler(nil)
+	} else {
+		// Set pong handler to reset read deadline
+		d.ctx.SetPongHandler(func(data []byte) error {
+			return d.setReadDeadlineFromPong()
+		})
+	}
 
 	// Start ping ticker
 	d.ticker = time.NewTicker(d.pingPeriod)
 	go d.pingLoop()
+}
+
+func (d *DeadlineManager) resetPingErrors() {
+	d.mu.Lock()
+	d.pingErrors = 0
+	d.mu.Unlock()
+}
+
+func (d *DeadlineManager) setReadDeadlineFromPong() error {
+	if !d.readDeadline {
+		d.resetPingErrors()
+		return nil
+	}
+	if err := d.ctx.SetReadDeadline(time.Now().Add(d.pongWait)); err != nil {
+		fmt.Printf("Failed to refresh websocket read deadline: %v\n", err)
+		return err
+	}
+	d.resetPingErrors()
+	return nil
 }
 
 // Stop stops the deadline management

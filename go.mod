@@ -14,10 +14,10 @@ require (
 	github.com/gofiber/template v1.8.3
 	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/gofiber/utils v1.2.0
-	github.com/goliatone/go-command v0.18.0
+	github.com/goliatone/go-command v0.19.0
 	github.com/goliatone/go-composite-fs v0.3.0
 	github.com/goliatone/go-errors v0.10.0
-	github.com/goliatone/go-featuregate v0.6.0
+	github.com/goliatone/go-featuregate v0.6.1
 	github.com/goliatone/hashid v0.2.0
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0

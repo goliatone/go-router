@@ -134,6 +134,7 @@ func popHTTPRouterNamedRoutePolicy(router *httprouter.Router) (NamedRouteCollisi
 }
 
 type HTTPServer struct {
+	mu                sync.Mutex
 	httpRouter        *httprouter.Router
 	server            *http.Server
 	router            *HTTPRouter
@@ -377,10 +378,18 @@ func (a *HTTPServer) Init() {
 	if a.initialized {
 		return
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.initialized {
+		return
+	}
 
 	if a.router == nil {
 		a.Router()
 	}
+
+	a.router.registerLateRoutes(a.router)
+	a.router.root.seal()
 
 	if a.strictRoutes {
 		if errs := a.router.ValidateRoutes(); len(errs) > 0 {
@@ -388,7 +397,6 @@ func (a *HTTPServer) Init() {
 		}
 	}
 
-	a.router.registerLateRoutes(a.router)
 	if len(a.router.root.missHandlers) > 0 {
 		a.httpRouter.NotFound = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if a.serveMissHandler(w, r) {
@@ -537,12 +545,16 @@ func (r *HTTPRouter) WithLogger(logger Logger) Router[*httprouter.Router] {
 }
 
 func (r *HTTPRouter) Use(m ...MiddlewareFunc) Router[*httprouter.Router] {
+	r.root.beginMutation("register middleware", "", r.prefix)
+	changed := false
+	defer func() { r.root.endMutation(changed) }()
 	for _, mw := range m {
 		r.middlewares = append(r.middlewares, namedMiddleware{
 			Name: funcName(mw),
 			Mw:   mw,
 		})
 	}
+	changed = len(m) > 0
 	return r
 }
 
@@ -550,11 +562,16 @@ func (r *HTTPRouter) HandleMiss(method HTTPMethod, handler HandlerFunc, m ...Mid
 	if handler == nil {
 		return
 	}
+	r.root.beginMutation("register miss handler", method, r.prefix)
+	defer r.root.endMutation(true)
 	r.setMissHandler(method, handler, r.buildNamedMiddlewares(m))
 }
 
 func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
 	fullPath := r.joinPath(r.prefix, pathStr)
+	r.root.beginMutation("register route", method, fullPath)
+	changed := false
+	defer func() { r.root.endMutation(changed) }()
 	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
 		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
 		switch r.conflictPolicy {
@@ -581,8 +598,16 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 		return r.applyPublicRouteName(route, name)
 	}
 
-	// Register final handler with httprouter
-	r.router.Handle(string(method), fullPath, func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
+	// Register final handler with httprouter.
+	r.router.Handle(string(method), fullPath, r.httpRouteHandler(route))
+	r.root.recordMounted(route)
+	changed = true
+
+	return route
+}
+
+func (r *HTTPRouter) httpRouteHandler(route *RouteDefinition) httprouter.Handle {
+	return func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		ctx := newHTTPRouterContext(w, req, params, r.views)
 		ctx.router = r
 		ctx.passLocalsToViews = r.passLocalsToViews
@@ -612,9 +637,58 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 				r.logger.Error("error handler failed: %v", handleErr)
 			}
 		}
-	})
+	}
+}
 
-	return route
+func (r *HTTPRouter) TryReplace(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, error) {
+	fullPath := r.joinPath(r.prefix, pathStr)
+	r.root.registrationMu.Lock()
+	defer r.root.registrationMu.Unlock()
+	if r.root.registrationState() == RegistrationSealed {
+		return nil, newRegistrationError("replace route", method, fullPath, RegistrationSealed, ErrRouterSealed)
+	}
+
+	for _, route := range r.root.routes {
+		if route.Method != method || route.Path != fullPath {
+			continue
+		}
+		allMw := append([]namedMiddleware{}, r.middlewares...)
+		for _, mw := range m {
+			allMw = append(allMw, namedMiddleware{Name: funcName(mw), Mw: mw})
+		}
+		route.Handlers = chainHandlers(handler, route.Name, allMw)
+		r.root.revision++
+		return route, nil
+	}
+	return nil, newRouteNotFoundError(method, fullPath)
+}
+
+func (r *HTTPRouter) TryUpsert(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, bool, error) {
+	fullPath := r.joinPath(r.prefix, pathStr)
+	r.root.registrationMu.Lock()
+	defer r.root.registrationMu.Unlock()
+	if r.root.registrationState() == RegistrationSealed {
+		return nil, false, newRegistrationError("upsert route", method, fullPath, RegistrationSealed, ErrRouterSealed)
+	}
+	allMw := append([]namedMiddleware{}, r.middlewares...)
+	for _, mw := range m {
+		allMw = append(allMw, namedMiddleware{Name: funcName(mw), Mw: mw})
+	}
+	for _, route := range r.root.routes {
+		if route.Method == method && route.Path == fullPath {
+			route.Handlers = chainHandlers(handler, route.Name, allMw)
+			r.root.revision++
+			return route, true, nil
+		}
+	}
+	route := r.addRoute(method, fullPath, handler, "", allMw)
+	route.onSetName = func(route *RouteDefinition, name string) error {
+		return r.applyPublicRouteName(route, name)
+	}
+	r.router.Handle(string(method), fullPath, r.httpRouteHandler(route))
+	r.root.recordMounted(route)
+	r.root.revision++
+	return route, false, nil
 }
 
 func (r *HTTPRouter) detectRouteConflict(method HTTPMethod, fullPath string) *routeConflict {
@@ -677,6 +751,9 @@ func (r *HTTPRouter) Head(path string, handler HandlerFunc, mw ...MiddlewareFunc
 
 func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func(WebSocketContext) error) RouteInfo {
 	fullPath := r.joinPath(r.prefix, path)
+	r.root.beginMutation("register websocket route", GET, fullPath)
+	changed := false
+	defer func() { r.root.endMutation(changed) }()
 	if conflict := r.detectRouteConflict(GET, fullPath); conflict != nil {
 		err := newRouteConflictError(GET, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
 		switch r.conflictPolicy {
@@ -703,6 +780,8 @@ func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func
 	route.onSetName = func(route *RouteDefinition, name string) error {
 		return r.applyPublicRouteName(route, name)
 	}
+	r.root.recordMounted(route)
+	changed = true
 
 	return route
 }

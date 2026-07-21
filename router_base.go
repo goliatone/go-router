@@ -16,13 +16,53 @@ import (
 )
 
 type routerRoot struct {
+	registrationMu      sync.Mutex
+	state               RegistrationState
+	revision            uint64
 	routes              []*RouteDefinition
+	mountedRoutes       []*RouteDefinition
 	namedRoutes         map[string]*namedRouteBinding
 	namedRouteConflicts map[*RouteDefinition]error
 	lateRoutes          []*lateRoute
 	missHandlers        map[HTTPMethod]*missHandler
 	deferredRoutes      []*RouteDefinition
 	deferredRegistered  bool
+}
+
+func (root *routerRoot) registrationState() RegistrationState {
+	if root.state == "" {
+		return RegistrationCollecting
+	}
+	return root.state
+}
+
+func (root *routerRoot) beginMutation(operation string, method HTTPMethod, path string) {
+	root.registrationMu.Lock()
+	if root.registrationState() == RegistrationSealed {
+		root.registrationMu.Unlock()
+		panic(newRegistrationError(operation, method, path, RegistrationSealed, ErrRouterSealed))
+	}
+}
+
+func (root *routerRoot) endMutation(changed bool) {
+	if changed {
+		root.revision++
+	}
+	root.registrationMu.Unlock()
+}
+
+func (root *routerRoot) seal() {
+	root.registrationMu.Lock()
+	defer root.registrationMu.Unlock()
+	if root.registrationState() == RegistrationSealed {
+		return
+	}
+	root.state = RegistrationSealed
+	root.revision++
+}
+
+func (root *routerRoot) recordMounted(route *RouteDefinition) {
+	root.mountedRoutes = append(root.mountedRoutes, route)
 }
 
 type routeNameMode int
@@ -198,6 +238,27 @@ func (br *BaseRouter) applyPublicRouteName(route *RouteDefinition, routeName str
 	return nil
 }
 
+func (br *BaseRouter) setPublicRouteName(route *RouteDefinition, routeName string, after func()) error {
+	path := ""
+	method := HTTPMethod("")
+	if route != nil {
+		path = route.Path
+		method = route.Method
+	}
+	br.root.beginMutation("name route", method, path)
+	changed := false
+	defer func() { br.root.endMutation(changed) }()
+
+	if err := br.applyPublicRouteName(route, routeName); err != nil {
+		return err
+	}
+	if after != nil {
+		after()
+	}
+	changed = true
+	return nil
+}
+
 func (br *BaseRouter) applyInternalRouteName(route *RouteDefinition, routeName string) {
 	if route == nil {
 		return
@@ -358,7 +419,8 @@ func (br *BaseRouter) addInternalLateRoute(method HTTPMethod, pathStr string, ha
 }
 
 func (br *BaseRouter) addLateRouteWithMode(method HTTPMethod, pathStr string, handler HandlerFunc, routeName string, mode routeNameMode, m ...MiddlewareFunc) {
-	// method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc
+	br.root.beginMutation("register late route", method, pathStr)
+	defer br.root.endMutation(true)
 
 	d := &lateRoute{
 		method:  method,
@@ -400,9 +462,27 @@ func (br *BaseRouter) WithLogger(logger Logger) *BaseRouter {
 }
 
 func (br *BaseRouter) Routes() []RouteDefinition {
-	defs := make([]RouteDefinition, len(br.root.routes))
-	for i, rt := range br.root.routes {
+	br.root.registrationMu.Lock()
+	defer br.root.registrationMu.Unlock()
+	return cloneRouteDefinitions(br.root.routes)
+}
+
+func (br *BaseRouter) RegistrationSnapshot() RegistrationSnapshot {
+	br.root.registrationMu.Lock()
+	defer br.root.registrationMu.Unlock()
+	return RegistrationSnapshot{
+		State:          br.root.registrationState(),
+		Revision:       br.root.revision,
+		DeclaredRoutes: cloneRouteDefinitions(br.root.routes),
+		MountedRoutes:  cloneRouteDefinitions(br.root.mountedRoutes),
+	}
+}
+
+func cloneRouteDefinitions(routes []*RouteDefinition) []RouteDefinition {
+	defs := make([]RouteDefinition, len(routes))
+	for i, rt := range routes {
 		defs[i] = *rt
+		defs[i].Handlers = append([]NamedHandler(nil), rt.Handlers...)
 	}
 	return defs
 }

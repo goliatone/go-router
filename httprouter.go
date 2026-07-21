@@ -595,7 +595,7 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 	route.onSetName = func(route *RouteDefinition, name string) error {
-		return r.applyPublicRouteName(route, name)
+		return r.setPublicRouteName(route, name, nil)
 	}
 
 	// Register final handler with httprouter.
@@ -683,7 +683,7 @@ func (r *HTTPRouter) TryUpsert(method HTTPMethod, pathStr string, handler Handle
 	}
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 	route.onSetName = func(route *RouteDefinition, name string) error {
-		return r.applyPublicRouteName(route, name)
+		return r.setPublicRouteName(route, name, nil)
 	}
 	r.router.Handle(string(method), fullPath, r.httpRouteHandler(route))
 	r.root.recordMounted(route)
@@ -769,17 +769,22 @@ func (r *HTTPRouter) WebSocket(path string, config WebSocketConfig, handler func
 
 	r.logger.Info("registering websocket route", "path", path, "fullPath", fullPath)
 
-	// Use HTTPRouterWebSocketHandler internally
+	// Route WebSockets through the same route definition and middleware chain
+	// used by ordinary handlers so replacement and diagnostics see one plan.
 	httpHandler := HTTPRouterWebSocketHandler(config, handler, r.views)
-
-	// Add to HTTPRouter
-	r.router.Handle("GET", fullPath, httpHandler)
-
-	// Create route info for consistency
-	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
-	route.onSetName = func(route *RouteDefinition, name string) error {
-		return r.applyPublicRouteName(route, name)
+	routeHandler := func(ctx Context) error {
+		hc, ok := ctx.(*httpRouterContext)
+		if !ok || hc == nil {
+			return fmt.Errorf("expected httpRouterContext, got %T", ctx)
+		}
+		httpHandler(hc.w, hc.r, hc.params)
+		return nil
 	}
+	route := r.addRoute(GET, fullPath, routeHandler, "websocket", append([]namedMiddleware{}, r.middlewares...))
+	route.onSetName = func(route *RouteDefinition, name string) error {
+		return r.setPublicRouteName(route, name, nil)
+	}
+	r.router.Handle("GET", fullPath, r.httpRouteHandler(route))
 	r.root.recordMounted(route)
 	changed = true
 

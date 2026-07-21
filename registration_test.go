@@ -49,10 +49,25 @@ func TestFiberRegistrationPlanDispatchesSpecificRouteBeforeCatchAll(t *testing.T
 	}
 }
 
+func TestFiberRegistrationPlanOrdersWebSocketWildcardWithOrdinaryGETRoutes(t *testing.T) {
+	server := NewFiberAdapter()
+	r := server.Router()
+	r.WebSocket("/admin/*", WebSocketConfig{}, func(WebSocketContext) error { return nil })
+	r.Get("/admin/search/relevance", func(c Context) error { return c.SendString("relevance") })
+
+	response, err := server.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/admin/search/relevance", nil))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+}
+
 func TestFiberRegistrationRejectsMutationAfterSeal(t *testing.T) {
 	server := NewFiberAdapter()
 	r := server.Router()
-	r.Get("/ready", func(c Context) error { return c.SendStatus(204) })
+	readyRoute := r.Get("/ready", func(c Context) error { return c.SendStatus(204) })
 	server.Init()
 
 	deferred := func() (recovered any) {
@@ -63,6 +78,15 @@ func TestFiberRegistrationRejectsMutationAfterSeal(t *testing.T) {
 	err, ok := deferred.(error)
 	if !ok || !errors.Is(err, ErrRouterSealed) {
 		t.Fatalf("panic = %#v, want typed ErrRouterSealed", deferred)
+	}
+	nameMutation := func() (recovered any) {
+		defer func() { recovered = recover() }()
+		readyRoute.SetName("ready")
+		return nil
+	}()
+	nameErr, ok := nameMutation.(error)
+	if !ok || !errors.Is(nameErr, ErrRouterSealed) {
+		t.Fatalf("route name panic = %#v, want typed ErrRouterSealed", nameMutation)
 	}
 
 	snapshot := r.(RegistrationInspector).RegistrationSnapshot()

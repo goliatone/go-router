@@ -237,7 +237,14 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 
 func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
 	route.onSetName = func(route *RouteDefinition, name string) error {
-		return r.applyPublicRouteName(route, name)
+		return r.setPublicRouteName(route, name, func() {
+			// In the explicit registration-order compatibility mode the route is
+			// already Fiber's most recently mounted route when callers chain
+			// Get(...).SetName(...). Deferred mode applies the name at mount time.
+			if !r.orderRoutesBySpecificity && name != "" {
+				r.app.Name(name)
+			}
+		})
 	}
 
 	if r.orderRoutesBySpecificity && !r.root.deferredRegistered {
@@ -264,7 +271,7 @@ func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
 		}
 		return fmt.Errorf("context cast failed")
 	})
-	if route.Name != "" {
+	if route.Name != "" && route.nameMode == routeNameModePublic {
 		r.app.Name(route.Name)
 	}
 	r.root.recordMounted(route)
@@ -616,18 +623,19 @@ func (r *FiberRouter) WebSocket(path string, config WebSocketConfig, handler fun
 
 	r.logger.Info("registering websocket route", "path", path, "fullPath", fullPath)
 
-	// Use FiberWebSocketHandler internally
+	// Keep WebSockets in the same deferred physical plan as ordinary GET
+	// routes. Registering directly on Fiber here would let an early wildcard
+	// bypass specificity ordering and shadow later HTTP handlers.
 	fiberHandler := FiberWebSocketHandler(config, handler)
-
-	// Add to Fiber's routing
-	r.app.Get(fullPath, fiberHandler)
-
-	// Create route info for consistency
-	route := r.addRoute(GET, fullPath, nil, "websocket", nil)
-	route.onSetName = func(route *RouteDefinition, name string) error {
-		return r.applyPublicRouteName(route, name)
+	routeHandler := func(ctx Context) error {
+		fc, ok := ctx.(*fiberContext)
+		if !ok || fc == nil || fc.ctx == nil {
+			return fmt.Errorf("expected fiberContext, got %T", ctx)
+		}
+		return fiberHandler(fc.ctx)
 	}
-	r.root.recordMounted(route)
+	route := r.addRoute(GET, fullPath, routeHandler, "websocket", slices.Clone(r.middlewares))
+	r.routeRegistration(route)
 	changed = true
 
 	return route

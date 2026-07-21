@@ -1,5 +1,30 @@
 # Changelog
 
+# [0.60.1](https://github.com/goliatone/go-router/compare/v0.60.0...v0.60.1) - (2026-07-21)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Try route finalization handler ([a63d1c4](https://github.com/goliatone/go-router/commit/a63d1c458330eaf761a10628166a90632e0a3ae5))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.60.1 ([9dab5d3](https://github.com/goliatone/go-router/commit/9dab5d30f225003d65e4a0bd388b9159c739da94))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Route mutation options ([29e2e28](https://github.com/goliatone/go-router/commit/29e2e2845edcd00aa31c12a3e3774eb29353a8ef))  - (goliatone)
+- Stable containment route ([26ceb3b](https://github.com/goliatone/go-router/commit/26ceb3b714bc54d848fd150c8d042abc9d4ae224))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.60.0 ([a26dff4](https://github.com/goliatone/go-router/commit/a26dff4f0895dc71848689543bdc9347d49cce7d))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([1589047](https://github.com/goliatone/go-router/commit/1589047c5dc705709b182b7e1006d711d625caa7))  - (goliatone)
+- Update tests ([492495f](https://github.com/goliatone/go-router/commit/492495f7a1643f1f846273560fcca9451ea0b06c))  - (goliatone)
+- Code quality ([fc04ab5](https://github.com/goliatone/go-router/commit/fc04ab52836238e4e117a7a7b4e98d46947f2363))  - (goliatone)
+
 # [0.60.0](https://github.com/goliatone/go-router/compare/v0.59.0...v0.60.0) - (2026-07-21)
 
 ## <!-- 1 -->🐛 Bug Fixes

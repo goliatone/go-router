@@ -660,12 +660,13 @@ func TestFiberContext_QueryMethods(t *testing.T) {
 			expectedCode: 200,
 		},
 	}
+	for _, tt := range tests {
+		r.Get(tt.path, tt.handler)
+	}
+	app := adapter.WrappedRouter()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r.Get(tt.path, tt.handler)
-
-			app := adapter.WrappedRouter()
 			url := tt.path
 			if tt.queryString != "" {
 				url += "?" + tt.queryString
@@ -709,9 +710,6 @@ func TestFiberContext_QueryStressCases(t *testing.T) {
 	})
 
 	r := adapter.Router()
-
-	// Configure Fiber for larger requests
-	app := adapter.WrappedRouter()
 
 	tests := []struct {
 		name        string
@@ -768,11 +766,15 @@ func TestFiberContext_QueryStressCases(t *testing.T) {
 			},
 		},
 	}
+	for _, tt := range tests {
+		r.Get(tt.path, tt.handler)
+	}
+
+	// Configure Fiber for larger requests after the complete plan is declared.
+	app := adapter.WrappedRouter()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r.Get(tt.path, tt.handler)
-
 			url := tt.path
 			if tt.queryString != "" {
 				url += "?" + tt.queryString
@@ -833,12 +835,13 @@ func TestFiberContext_QueryErrorCases(t *testing.T) {
 			},
 		},
 	}
+	for _, tt := range tests {
+		r.Get(tt.path, tt.handler)
+	}
+	app := adapter.WrappedRouter()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r.Get(tt.path, tt.handler)
-
-			app := adapter.WrappedRouter()
 			url := tt.path
 			if tt.queryString != "" {
 				url += "?" + tt.queryString

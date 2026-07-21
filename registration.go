@@ -11,6 +11,7 @@ type RegistrationState string
 
 const (
 	RegistrationCollecting RegistrationState = "collecting"
+	RegistrationFinalizing RegistrationState = "finalizing"
 	RegistrationSealed     RegistrationState = "sealed"
 )
 
@@ -73,6 +74,24 @@ type RouteReplacer interface {
 // true when an existing route was replaced.
 type RouteUpserter interface {
 	TryUpsert(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) (RouteInfo, bool, error)
+}
+
+// RouteMutationOptions controls intentional exact-route mutations. Existing
+// middleware is preserved by default. ReplaceMiddleware opts into rebuilding
+// the complete chain from the mutating router and supplied middleware.
+// MiddlewareOnAddOnly applies supplied middleware only when TryUpsert adds a
+// missing route. This is useful for ensuring a fallback route is protected
+// without duplicating middleware when an existing protected route is replaced.
+type RouteMutationOptions struct {
+	ReplaceMiddleware   bool
+	MiddlewareOnAddOnly bool
+}
+
+// RouteMutator exposes explicit full-chain control for callers that need more
+// than the safe middleware-preserving RouteReplacer and RouteUpserter defaults.
+type RouteMutator interface {
+	TryReplaceWithOptions(method HTTPMethod, path string, handler HandlerFunc, options RouteMutationOptions, middlewares ...MiddlewareFunc) (RouteInfo, error)
+	TryUpsertWithOptions(method HTTPMethod, path string, handler HandlerFunc, options RouteMutationOptions, middlewares ...MiddlewareFunc) (RouteInfo, bool, error)
 }
 
 // RouteShadow describes a later route that cannot be selected because an

@@ -38,9 +38,10 @@ func (root *routerRoot) registrationState() RegistrationState {
 
 func (root *routerRoot) beginMutation(operation string, method HTTPMethod, path string) {
 	root.registrationMu.Lock()
-	if root.registrationState() == RegistrationSealed {
+	state := root.registrationState()
+	if state != RegistrationCollecting {
 		root.registrationMu.Unlock()
-		panic(newRegistrationError(operation, method, path, RegistrationSealed, ErrRouterSealed))
+		panic(newRegistrationError(operation, method, path, state, ErrRouterSealed))
 	}
 }
 
@@ -51,14 +52,24 @@ func (root *routerRoot) endMutation(changed bool) {
 	root.registrationMu.Unlock()
 }
 
-func (root *routerRoot) seal() {
+// beginFinalization transitions the registration plan while retaining the
+// root lock. Callers must pair a successful call with finishFinalization so
+// snapshots cannot observe a sealed but only partially mounted route table.
+func (root *routerRoot) beginFinalization() bool {
 	root.registrationMu.Lock()
-	defer root.registrationMu.Unlock()
 	if root.registrationState() == RegistrationSealed {
-		return
+		root.registrationMu.Unlock()
+		return false
 	}
+	root.state = RegistrationFinalizing
+	root.revision++
+	return true
+}
+
+func (root *routerRoot) finishFinalization() {
 	root.state = RegistrationSealed
 	root.revision++
+	root.registrationMu.Unlock()
 }
 
 func (root *routerRoot) recordMounted(route *RouteDefinition) {
@@ -159,10 +170,11 @@ func (br *BaseRouter) addRoute(method HTTPMethod, fullPath string, finalHandler 
 	chain := chainHandlers(finalHandler, routeName, allMw)
 	r :=
 		&RouteDefinition{
-			Method:   method,
-			Path:     fullPath,
-			Name:     routeName,
-			Handlers: chain,
+			Method:      method,
+			Path:        fullPath,
+			Name:        routeName,
+			Handlers:    chain,
+			middlewares: append([]namedMiddleware(nil), allMw...),
 		}
 
 	if routeName != "" {
@@ -483,6 +495,7 @@ func cloneRouteDefinitions(routes []*RouteDefinition) []RouteDefinition {
 	for i, rt := range routes {
 		defs[i] = *rt
 		defs[i].Handlers = append([]NamedHandler(nil), rt.Handlers...)
+		defs[i].middlewares = append([]namedMiddleware(nil), rt.middlewares...)
 	}
 	return defs
 }

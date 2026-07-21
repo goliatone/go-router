@@ -375,9 +375,6 @@ func pathMatchesPattern(pattern, path string) bool {
 }
 
 func (a *HTTPServer) Init() {
-	if a.initialized {
-		return
-	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.initialized {
@@ -389,7 +386,11 @@ func (a *HTTPServer) Init() {
 	}
 
 	a.router.registerLateRoutes(a.router)
-	a.router.root.seal()
+	if !a.router.root.beginFinalization() {
+		a.initialized = true
+		return
+	}
+	defer a.router.root.finishFinalization()
 
 	if a.strictRoutes {
 		if errs := a.router.ValidateRoutes(); len(errs) > 0 {
@@ -641,21 +642,29 @@ func (r *HTTPRouter) httpRouteHandler(route *RouteDefinition) httprouter.Handle 
 }
 
 func (r *HTTPRouter) TryReplace(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, error) {
+	return r.TryReplaceWithOptions(method, pathStr, handler, RouteMutationOptions{}, m...)
+}
+
+func (r *HTTPRouter) TryReplaceWithOptions(method HTTPMethod, pathStr string, handler HandlerFunc, options RouteMutationOptions, m ...MiddlewareFunc) (RouteInfo, error) {
 	fullPath := r.joinPath(r.prefix, pathStr)
 	r.root.registrationMu.Lock()
 	defer r.root.registrationMu.Unlock()
-	if r.root.registrationState() == RegistrationSealed {
-		return nil, newRegistrationError("replace route", method, fullPath, RegistrationSealed, ErrRouterSealed)
+	if r.root.registrationState() != RegistrationCollecting {
+		return nil, newRegistrationError("replace route", method, fullPath, r.root.registrationState(), ErrRouterSealed)
 	}
 
 	for _, route := range r.root.routes {
 		if route.Method != method || route.Path != fullPath {
 			continue
 		}
-		allMw := append([]namedMiddleware{}, r.middlewares...)
+		allMw := append([]namedMiddleware{}, route.middlewares...)
+		if options.ReplaceMiddleware {
+			allMw = append([]namedMiddleware{}, r.middlewares...)
+		}
 		for _, mw := range m {
 			allMw = append(allMw, namedMiddleware{Name: funcName(mw), Mw: mw})
 		}
+		route.middlewares = append([]namedMiddleware{}, allMw...)
 		route.Handlers = chainHandlers(handler, route.Name, allMw)
 		r.root.revision++
 		return route, nil
@@ -664,22 +673,43 @@ func (r *HTTPRouter) TryReplace(method HTTPMethod, pathStr string, handler Handl
 }
 
 func (r *HTTPRouter) TryUpsert(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, bool, error) {
+	return r.TryUpsertWithOptions(method, pathStr, handler, RouteMutationOptions{}, m...)
+}
+
+func (r *HTTPRouter) TryUpsertWithOptions(method HTTPMethod, pathStr string, handler HandlerFunc, options RouteMutationOptions, m ...MiddlewareFunc) (RouteInfo, bool, error) {
 	fullPath := r.joinPath(r.prefix, pathStr)
 	r.root.registrationMu.Lock()
 	defer r.root.registrationMu.Unlock()
-	if r.root.registrationState() == RegistrationSealed {
-		return nil, false, newRegistrationError("upsert route", method, fullPath, RegistrationSealed, ErrRouterSealed)
-	}
-	allMw := append([]namedMiddleware{}, r.middlewares...)
-	for _, mw := range m {
-		allMw = append(allMw, namedMiddleware{Name: funcName(mw), Mw: mw})
+	if r.root.registrationState() != RegistrationCollecting {
+		return nil, false, newRegistrationError("upsert route", method, fullPath, r.root.registrationState(), ErrRouterSealed)
 	}
 	for _, route := range r.root.routes {
 		if route.Method == method && route.Path == fullPath {
+			allMw := append([]namedMiddleware{}, route.middlewares...)
+			if options.ReplaceMiddleware {
+				allMw = append([]namedMiddleware{}, r.middlewares...)
+			}
+			if !options.MiddlewareOnAddOnly {
+				for _, mw := range m {
+					allMw = append(allMw, namedMiddleware{Name: funcName(mw), Mw: mw})
+				}
+			}
+			route.middlewares = append([]namedMiddleware{}, allMw...)
 			route.Handlers = chainHandlers(handler, route.Name, allMw)
 			r.root.revision++
 			return route, true, nil
 		}
+	}
+	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
+		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
+		if r.logger != nil {
+			r.logger.Warn("route conflict rejected during upsert: %v", err)
+		}
+		return nil, false, err
+	}
+	allMw := append([]namedMiddleware{}, r.middlewares...)
+	for _, mw := range m {
+		allMw = append(allMw, namedMiddleware{Name: funcName(mw), Mw: mw})
 	}
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 	route.onSetName = func(route *RouteDefinition, name string) error {

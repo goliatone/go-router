@@ -3,14 +3,26 @@ package router
 import "sort"
 
 func sortRoutesBySpecificity(routes []*RouteDefinition) {
-	sort.SliceStable(routes, func(i, j int) bool {
-		left := routes[i]
-		right := routes[j]
-		if left.Method != right.Method {
-			return false
-		}
-		return compareRouteSpecificity(left.Path, right.Path) > 0
-	})
+	// A comparator that returns false for routes with different methods is not
+	// transitive when methods are interleaved. Sort each method independently,
+	// then write it back into that method's original slots. This preserves the
+	// cross-method layout while guaranteeing specificity within every method.
+	byMethod := make(map[HTTPMethod][]*RouteDefinition)
+	for _, route := range routes {
+		byMethod[route.Method] = append(byMethod[route.Method], route)
+	}
+	for method := range byMethod {
+		sort.SliceStable(byMethod[method], func(i, j int) bool {
+			return compareRouteSpecificity(byMethod[method][i].Path, byMethod[method][j].Path) > 0
+		})
+	}
+
+	next := make(map[HTTPMethod]int, len(byMethod))
+	for index, route := range routes {
+		method := route.Method
+		routes[index] = byMethod[method][next[method]]
+		next[method]++
+	}
 }
 
 func compareRouteSpecificity(leftPath, rightPath string) int {

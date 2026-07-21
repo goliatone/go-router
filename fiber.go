@@ -349,11 +349,6 @@ func (r *FiberRouter) GetPrefix() string {
 }
 
 func (a *FiberAdapter) Init() {
-
-	if a.initialized {
-		return
-	}
-
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -369,7 +364,11 @@ func (a *FiberAdapter) Init() {
 	// Static and other adapter-owned late declarations must join the same plan
 	// before it is sealed and sorted.
 	a.router.registerLateRoutes(a.router)
-	a.router.root.seal()
+	if !a.router.root.beginFinalization() {
+		a.initialized = true
+		return
+	}
+	defer a.router.root.finishFinalization()
 
 	if a.strictRoutes {
 		if errs := a.router.ValidateRoutes(); len(errs) > 0 {
@@ -523,24 +522,32 @@ func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerF
 }
 
 func (r *FiberRouter) TryReplace(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, error) {
+	return r.TryReplaceWithOptions(method, pathStr, handler, RouteMutationOptions{}, m...)
+}
+
+func (r *FiberRouter) TryReplaceWithOptions(method HTTPMethod, pathStr string, handler HandlerFunc, options RouteMutationOptions, m ...MiddlewareFunc) (RouteInfo, error) {
 	fullPath := r.joinPath(r.prefix, pathStr)
 	r.root.registrationMu.Lock()
 	defer r.root.registrationMu.Unlock()
-	if r.root.registrationState() == RegistrationSealed {
-		return nil, newRegistrationError("replace route", method, fullPath, RegistrationSealed, ErrRouterSealed)
+	if r.root.registrationState() != RegistrationCollecting {
+		return nil, newRegistrationError("replace route", method, fullPath, r.root.registrationState(), ErrRouterSealed)
 	}
 
 	for _, route := range r.root.routes {
 		if route.Method != method || route.Path != fullPath {
 			continue
 		}
-		allMw := slices.Clone(r.middlewares)
+		allMw := slices.Clone(route.middlewares)
+		if options.ReplaceMiddleware {
+			allMw = slices.Clone(r.middlewares)
+		}
 		for _, mw := range m {
 			allMw = append(allMw, namedMiddleware{
 				Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
 				Mw:   mw,
 			})
 		}
+		route.middlewares = slices.Clone(allMw)
 		route.Handlers = chainHandlers(handler, route.Name, allMw)
 		r.root.revision++
 		return route, nil
@@ -549,11 +556,44 @@ func (r *FiberRouter) TryReplace(method HTTPMethod, pathStr string, handler Hand
 }
 
 func (r *FiberRouter) TryUpsert(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, bool, error) {
+	return r.TryUpsertWithOptions(method, pathStr, handler, RouteMutationOptions{}, m...)
+}
+
+func (r *FiberRouter) TryUpsertWithOptions(method HTTPMethod, pathStr string, handler HandlerFunc, options RouteMutationOptions, m ...MiddlewareFunc) (RouteInfo, bool, error) {
 	fullPath := r.joinPath(r.prefix, pathStr)
 	r.root.registrationMu.Lock()
 	defer r.root.registrationMu.Unlock()
-	if r.root.registrationState() == RegistrationSealed {
-		return nil, false, newRegistrationError("upsert route", method, fullPath, RegistrationSealed, ErrRouterSealed)
+	if r.root.registrationState() != RegistrationCollecting {
+		return nil, false, newRegistrationError("upsert route", method, fullPath, r.root.registrationState(), ErrRouterSealed)
+	}
+	for _, route := range r.root.routes {
+		if route.Method == method && route.Path == fullPath {
+			allMw := slices.Clone(route.middlewares)
+			if options.ReplaceMiddleware {
+				allMw = slices.Clone(r.middlewares)
+			}
+			if !options.MiddlewareOnAddOnly {
+				for _, mw := range m {
+					allMw = append(allMw, namedMiddleware{
+						Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
+						Mw:   mw,
+					})
+				}
+			}
+			route.middlewares = slices.Clone(allMw)
+			route.Handlers = chainHandlers(handler, route.Name, allMw)
+			r.root.revision++
+			return route, true, nil
+		}
+	}
+	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
+		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
+		if r.logger != nil {
+			r.logger.Warn("route conflict detected during upsert: %v", err)
+		}
+		if r.conflictPolicy != HTTPRouterConflictLogAndContinue {
+			return nil, false, err
+		}
 	}
 	allMw := slices.Clone(r.middlewares)
 	for _, mw := range m {
@@ -561,13 +601,6 @@ func (r *FiberRouter) TryUpsert(method HTTPMethod, pathStr string, handler Handl
 			Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
 			Mw:   mw,
 		})
-	}
-	for _, route := range r.root.routes {
-		if route.Method == method && route.Path == fullPath {
-			route.Handlers = chainHandlers(handler, route.Name, allMw)
-			r.root.revision++
-			return route, true, nil
-		}
 	}
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 	r.routeRegistration(route)

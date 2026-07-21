@@ -70,8 +70,11 @@ errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidatio
 })
 ```
 
-When allowing catch-all routes, keep deterministic ordering enabled (`OrderRoutesBySpecificity`)
-so specific routes are registered before catch-all routes.
+Fiber orders routes by specificity by default, independently within each HTTP
+method, so interleaved POST/HEAD declarations cannot leave an earlier GET
+catch-all ahead of a later exact GET route. Set `PreserveRegistrationOrder`
+only when intentional shadowing is required; Doctor-style tooling can inspect
+that physical order with `RegistrationInspector` and `AnalyzeRouteShadows`.
 
 HTTPRouter only supports `strict`. Requesting `prefer_static` with:
 
@@ -125,6 +128,38 @@ errs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidatio
 ```
 
 `error` mode emits `ROUTE_NAME_CONFLICT` with route-name metadata and fails strict startup validation during `Init()`.
+
+## Registration lifecycle
+
+Route declarations are collected until the adapter is initialized. `Init()`,
+`Serve(...)`, and `WrappedRouter()` seal the shared root plan. `WrappedRouter()`
+is therefore not a read-only accessor. Registering routes, middleware, or miss
+handlers afterward panics with a typed `RegistrationError` wrapping
+`ErrRouterSealed`.
+
+Modules may prepare concurrently and register concurrently before the seal;
+root mutations are serialized. The host must await all required module work
+before starting the server. Live route-table mutation while serving is not
+supported.
+
+Intentional overrides use the optional `RouteReplacer` capability and must also
+happen before sealing:
+
+```go
+replacer := app.Router().(router.RouteReplacer)
+if _, err := replacer.TryReplace(router.GET, "/admin/preview", previewHandler); err != nil {
+    return err
+}
+```
+
+When an upstream route is feature-gated and may not exist, use the explicit
+`RouteUpserter` capability instead. It reports whether it replaced an existing
+exact route or added a new one; unlike ordinary registration, that conditional
+behavior is visible at the call site.
+
+Ordinary duplicate registration still follows the configured conflict policy.
+After initialization, `RegistrationInspector.RegistrationSnapshot()` exposes
+both declared routes and routes in physical dispatch order for diagnostics.
 
 ## Usage
 

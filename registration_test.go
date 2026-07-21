@@ -191,7 +191,7 @@ func TestFiberRegistrationSerializesConcurrentCollection(t *testing.T) {
 	const count = 32
 
 	var wg sync.WaitGroup
-	for i := 0; i < count; i++ {
+	for i := range count {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()

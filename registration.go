@@ -90,7 +90,7 @@ type RouteShadow struct {
 func AnalyzeRouteShadows(routes []RouteDefinition) []RouteShadow {
 	findings := make([]RouteShadow, 0)
 	for routeIndex, route := range routes {
-		for earlierIndex := 0; earlierIndex < routeIndex; earlierIndex++ {
+		for earlierIndex := range routeIndex {
 			earlier := routes[earlierIndex]
 			if earlier.Method != route.Method || !routePatternContains(earlier.Path, route.Path) {
 				continue
@@ -133,7 +133,7 @@ func routePatternContains(earlierPath, candidatePath string) bool {
 	earlier := splitPathSegments(earlierPath)
 	candidate := splitPathSegments(candidatePath)
 
-	for i := 0; i < len(earlier); i++ {
+	for i := range earlier {
 		if classifySegment(earlier[i]) == segmentCatchAll {
 			return prefixesCompatible(earlier[:i], candidate)
 		}

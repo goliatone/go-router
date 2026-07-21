@@ -138,9 +138,10 @@ handlers afterward panics with a typed `RegistrationError` wrapping
 `ErrRouterSealed`.
 
 Modules may prepare concurrently and register concurrently before the seal;
-root mutations are serialized. The host must await all required module work
-before starting the server. Live route-table mutation while serving is not
-supported.
+root mutations are serialized. Finalization holds the root lifecycle lock while
+the physical route table is ordered and mounted, so diagnostics never observe a
+sealed partial snapshot. The host must await all required module work before
+starting the server. Live route-table mutation while serving is not supported.
 
 Intentional overrides use the optional `RouteReplacer` capability and must also
 happen before sealing:
@@ -155,11 +156,24 @@ if _, err := replacer.TryReplace(router.GET, "/admin/preview", previewHandler); 
 When an upstream route is feature-gated and may not exist, use the explicit
 `RouteUpserter` capability instead. It reports whether it replaced an existing
 exact route or added a new one; unlike ordinary registration, that conditional
-behavior is visible at the call site.
+behavior is visible at the call site. Additions pass through the same route
+conflict validation as ordinary registration.
+
+Replacement preserves the target route's existing middleware and appends any
+middleware supplied to `TryReplace` or `TryUpsert`. Callers that intentionally
+need to rebuild the complete chain can use `RouteMutator` with
+`RouteMutationOptions{ReplaceMiddleware: true}`. For optional protected routes,
+`RouteMutationOptions{MiddlewareOnAddOnly: true}` applies supplied middleware
+when the route is added without duplicating an existing route's middleware when
+it is replaced.
 
 Ordinary duplicate registration still follows the configured conflict policy.
 After initialization, `RegistrationInspector.RegistrationSnapshot()` exposes
 both declared routes and routes in physical dispatch order for diagnostics.
+Fiber orders each method with a stable containment graph: a static or narrower
+parameter route is mounted before any wildcard/parameter route that contains
+it, choosing the earliest eligible declaration at each step to minimize other
+movement.
 
 ## Usage
 

@@ -50,6 +50,7 @@ type RouteDefinition struct {
 	onSetName   func(*RouteDefinition, string) error
 	publicName  string
 	nameMode    routeNameMode
+	middlewares []namedMiddleware
 }
 
 // Parameter unifies the parameter definitions

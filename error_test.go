@@ -77,10 +77,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 		expectedCategory   errors.Category
 		expectedTextCode   string
 		expectedMessage    string
-		checkStack         bool
 		checkValidation    bool
-		checkMetadata      bool
-		expectedMetadata   map[string]any
 	}{
 		{
 			name:               "NoError",
@@ -93,7 +90,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			expectedStatusCode: http.StatusNotFound,
 			expectedCategory:   errors.CategoryNotFound,
 			expectedTextCode:   "NOT_FOUND",
-			expectedMessage:    "User not found",
+			expectedMessage:    "The requested resource was not found.",
 		},
 		{
 			name:               "ValidationError",
@@ -101,7 +98,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedCategory:   errors.CategoryValidation,
 			expectedTextCode:   "VALIDATION_ERROR",
-			expectedMessage:    "Validation failed",
+			expectedMessage:    "The request is invalid.",
 			checkValidation:    true,
 		},
 		{
@@ -110,7 +107,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedCategory:   errors.CategoryValidation,
 			expectedTextCode:   "VALIDATION_ERROR",
-			expectedMessage:    "Custom validation error",
+			expectedMessage:    "The request is invalid.",
 			checkValidation:    true,
 		},
 		{
@@ -120,7 +117,6 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			expectedCategory:   errors.CategoryInternal,
 			expectedTextCode:   "",
 			expectedMessage:    "An unexpected error occurred",
-			checkStack:         true,
 		},
 		{
 			name:               "UnauthorizedError",
@@ -128,7 +124,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			expectedStatusCode: http.StatusUnauthorized,
 			expectedCategory:   errors.CategoryAuth,
 			expectedTextCode:   "UNAUTHORIZED",
-			expectedMessage:    "unauthorized access",
+			expectedMessage:    "Authentication failed.",
 		},
 		{
 			name:               "ErrorWithMetadata",
@@ -136,12 +132,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			expectedStatusCode: http.StatusNotFound,
 			expectedCategory:   errors.CategoryNotFound,
 			expectedTextCode:   "NOT_FOUND",
-			expectedMessage:    "Resource not found",
-			checkMetadata:      true,
-			expectedMetadata: map[string]any{
-				"resource_id":   "123",
-				"resource_type": "user",
-			},
+			expectedMessage:    "The requested resource was not found.",
 		},
 		{
 			name:               "ConflictError",
@@ -149,33 +140,33 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			expectedStatusCode: http.StatusConflict,
 			expectedCategory:   errors.CategoryConflict,
 			expectedTextCode:   "CONFLICT",
-			expectedMessage:    "Resource already exists",
-			checkMetadata:      true,
-			expectedMetadata: map[string]any{
-				"existing_id": "456",
-			},
+			expectedMessage:    "The request conflicts with the current state.",
 		},
 	}
 
 	// Execute tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", tt.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), "GET", tt.path, nil)
 			req.Header.Set("X-Request-ID", "test-request-123")
 
 			resp, err := app.WrappedRouter().Test(req, -1)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			defer resp.Body.Close()
-
 			if resp.StatusCode != tt.expectedStatusCode {
 				t.Fatalf("expected status %d, got %d", tt.expectedStatusCode, resp.StatusCode)
 			}
 
 			// If this route did not produce an error, just check the body
 			if tt.expectedStatusCode == http.StatusOK {
-				body, _ := io.ReadAll(resp.Body)
+				body, readErr := io.ReadAll(resp.Body)
+				if readErr != nil {
+					t.Fatalf("failed to read response body: %v", readErr)
+				}
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					t.Fatalf("failed to close response body: %v", closeErr)
+				}
 				if string(body) != "OK" {
 					t.Errorf("expected body OK, got %s", string(body))
 				}
@@ -183,10 +174,31 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 			}
 
 			// Parse ErrorResponse using our unified error structure
-			body, _ := io.ReadAll(resp.Body)
+			body, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				t.Fatalf("failed to read error response body: %v", readErr)
+			}
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				t.Fatalf("failed to close response body: %v", closeErr)
+			}
 			var er errors.ErrorResponse
 			if err := json.Unmarshal(body, &er); err != nil {
 				t.Fatalf("failed to unmarshal error response: %v, body: %s", err, string(body))
+			}
+			if er.Error == nil {
+				t.Fatalf("expected error response payload, body: %s", string(body))
+			}
+
+			var envelope struct {
+				Error map[string]json.RawMessage `json:"error"`
+			}
+			if err := json.Unmarshal(body, &envelope); err != nil {
+				t.Fatalf("failed to inspect public error response: %v", err)
+			}
+			for _, field := range []string{"source", "metadata", "timestamp", "location", "stack_trace"} {
+				if _, exists := envelope.Error[field]; exists {
+					t.Errorf("public error response unexpectedly exposes %q", field)
+				}
 			}
 
 			// Check error category
@@ -214,16 +226,6 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 				t.Errorf("expected request ID 'test-request-123', got '%s'", er.Error.RequestID)
 			}
 
-			// Check timestamp is present and in RFC3339 format
-			if er.Error.Timestamp.IsZero() {
-				t.Error("expected timestamp to be present")
-			}
-
-			// Check stack if required
-			if tt.checkStack && len(er.Error.StackTrace) == 0 {
-				t.Error("expected stack trace in development mode, got none")
-			}
-
 			// For validation errors, check if we have validation details
 			if tt.checkValidation {
 				if len(er.Error.ValidationErrors) == 0 {
@@ -233,7 +235,7 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 					if tt.path == "/validation-error" {
 						found := false
 						for _, v := range er.Error.ValidationErrors {
-							if v.Field == "name" && v.Message == "Name is required" {
+							if v.Field == "name" && v.Message == "invalid value" {
 								found = true
 								break
 							}
@@ -244,28 +246,13 @@ func TestWithErrorHandlerMiddleware_Fiber(t *testing.T) {
 					} else if tt.path == "/validation-error-custom" {
 						found := false
 						for _, v := range er.Error.ValidationErrors {
-							if v.Field == "id" && v.Message == "must be unique" {
+							if v.Field == "id" && v.Message == "invalid value" {
 								found = true
 								break
 							}
 						}
 						if !found {
 							t.Error("expected validation error for field 'id'")
-						}
-					}
-				}
-			}
-
-			// Check metadata if required
-			if tt.checkMetadata {
-				if er.Error.Metadata == nil {
-					t.Error("expected metadata to be present")
-				} else {
-					for key, expectedValue := range tt.expectedMetadata {
-						if actualValue, exists := er.Error.Metadata[key]; !exists {
-							t.Errorf("expected metadata key '%s' to exist", key)
-						} else if actualValue != expectedValue {
-							t.Errorf("expected metadata[%s] = %v, got %v", key, expectedValue, actualValue)
 						}
 					}
 				}
@@ -304,10 +291,15 @@ func TestErrorResponseJSONFormat(t *testing.T) {
 		t.Fatal("expected 'error' field to be an object")
 	}
 
-	expectedFields := []string{"category", "code", "text_code", "message", "validation_errors", "metadata", "request_id", "timestamp"}
+	expectedFields := []string{"category", "code", "text_code", "message", "validation_errors", "request_id"}
 	for _, field := range expectedFields {
 		if _, exists := errorObj[field]; !exists {
 			t.Errorf("expected field '%s' to exist in error response", field)
+		}
+	}
+	for _, field := range []string{"source", "metadata", "timestamp", "location", "stack_trace"} {
+		if _, exists := errorObj[field]; exists {
+			t.Errorf("public error response unexpectedly exposes field %q", field)
 		}
 	}
 
@@ -327,8 +319,15 @@ func TestErrorResponseJSONFormat(t *testing.T) {
 		t.Fatal("expected validation error to be an object")
 	}
 
-	if firstError["field"].(string) != "email" {
-		t.Errorf("expected first validation error field to be 'email', got '%s'", firstError["field"])
+	field, ok := firstError["field"].(string)
+	if !ok {
+		t.Fatalf("expected validation error field to be a string, got %T", firstError["field"])
+	}
+	if field != "email" {
+		t.Errorf("expected first validation error field to be 'email', got %q", field)
+	}
+	if _, exists := firstError["value"]; exists {
+		t.Error("public validation error unexpectedly exposes rejected value")
 	}
 }
 
@@ -346,11 +345,16 @@ func (l *testLogger) Info(msg string, args ...any)  {}
 func (l *testLogger) Debug(msg string, args ...any) {}
 func (l *testLogger) Warn(msg string, args ...any)  {}
 func (l *testLogger) Error(msg string, fields ...any) {
-
+	logFields := map[string]any{}
+	if len(fields) > 0 {
+		if value, ok := fields[0].(map[string]any); ok {
+			logFields = value
+		}
+	}
 	l.logs = append(l.logs, logEntry{
 		level:   "error",
 		message: msg,
-		fields:  fields[0].(map[string]any),
+		fields:  logFields,
 	})
 }
 

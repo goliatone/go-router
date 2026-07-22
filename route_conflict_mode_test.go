@@ -1,12 +1,14 @@
 package router_test
 
 import (
+	stderrors "errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-router"
 )
 
@@ -43,8 +45,9 @@ func TestValidateRouteDefinitionsWithOptions_SharedParamPrefixStaticSibling(t *t
 	if len(strictErrs) == 0 {
 		t.Fatal("expected strict mode to report conflict for shared param prefix with static sibling")
 	}
-	if !strings.Contains(strictErrs[0].Error(), "static segment conflicts with wildcard segment") {
-		t.Fatalf("expected strict conflict at static-vs-param segment, got %q", strictErrs[0].Error())
+	var conflictErr *goerrors.Error
+	if !stderrors.As(strictErrs[0], &conflictErr) || !strings.Contains(conflictErr.Message, "static segment conflicts with wildcard segment") {
+		t.Fatalf("expected structured strict conflict at static-vs-param segment, got %v", strictErrs[0])
 	}
 
 	preferStaticErrs := router.ValidateRouteDefinitionsWithOptions(routes, router.RouteValidationOptions{
@@ -170,29 +173,35 @@ func TestFiberPreferStaticMode_DeterministicDispatch(t *testing.T) {
 
 			app := adapter.WrappedRouter()
 
-			reqStatic := httptest.NewRequest(http.MethodPost, "/admin/api/v1/users/bulk/assign-role", nil)
+			reqStatic := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/api/v1/users/bulk/assign-role", nil)
 			respStatic, err := app.Test(reqStatic)
 			if err != nil {
 				t.Fatalf("static request failed: %v", err)
 			}
 			staticBody, err := io.ReadAll(respStatic.Body)
-			respStatic.Body.Close()
+			closeErr := respStatic.Body.Close()
 			if err != nil {
 				t.Fatalf("reading static response failed: %v", err)
+			}
+			if closeErr != nil {
+				t.Fatalf("closing static response failed: %v", closeErr)
 			}
 			if got := string(staticBody); got != "static" {
 				t.Fatalf("expected static route to win, got %q", got)
 			}
 
-			reqParam := httptest.NewRequest(http.MethodPost, "/admin/api/v1/users/bulk/suspend", nil)
+			reqParam := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/api/v1/users/bulk/suspend", nil)
 			respParam, err := app.Test(reqParam)
 			if err != nil {
 				t.Fatalf("param request failed: %v", err)
 			}
 			paramBody, err := io.ReadAll(respParam.Body)
-			respParam.Body.Close()
+			closeErr = respParam.Body.Close()
 			if err != nil {
 				t.Fatalf("reading param response failed: %v", err)
+			}
+			if closeErr != nil {
+				t.Fatalf("closing param response failed: %v", closeErr)
 			}
 			if got := string(paramBody); got != "param:suspend" {
 				t.Fatalf("expected param route for non-static value, got %q", got)
@@ -256,40 +265,49 @@ func TestFiberPreferStaticMode_CatchAllDispatchDeterministic(t *testing.T) {
 
 			app := adapter.WrappedRouter()
 
-			indexResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/posts", nil), -1)
+			indexResp, err := app.Test(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/posts", nil), -1)
 			if err != nil {
 				t.Fatalf("posts index request failed: %v", err)
 			}
 			indexBody, err := io.ReadAll(indexResp.Body)
-			indexResp.Body.Close()
+			closeErr := indexResp.Body.Close()
 			if err != nil {
 				t.Fatalf("reading posts index response failed: %v", err)
+			}
+			if closeErr != nil {
+				t.Fatalf("closing posts index response failed: %v", closeErr)
 			}
 			if got := string(indexBody); got != "posts-index" {
 				t.Fatalf("expected /posts to resolve to posts index, got %q", got)
 			}
 
-			detailResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/posts/hello", nil), -1)
+			detailResp, err := app.Test(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/posts/hello", nil), -1)
 			if err != nil {
 				t.Fatalf("post detail request failed: %v", err)
 			}
 			detailBody, err := io.ReadAll(detailResp.Body)
-			detailResp.Body.Close()
+			closeErr = detailResp.Body.Close()
 			if err != nil {
 				t.Fatalf("reading post detail response failed: %v", err)
+			}
+			if closeErr != nil {
+				t.Fatalf("closing post detail response failed: %v", closeErr)
 			}
 			if got := string(detailBody); got != "post-detail:hello" {
 				t.Fatalf("expected /posts/:slug to resolve to post detail, got %q", got)
 			}
 
-			fallbackResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/admin/logout", nil), -1)
+			fallbackResp, err := app.Test(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/logout", nil), -1)
 			if err != nil {
 				t.Fatalf("fallback request failed: %v", err)
 			}
 			fallbackBody, err := io.ReadAll(fallbackResp.Body)
-			fallbackResp.Body.Close()
+			closeErr = fallbackResp.Body.Close()
 			if err != nil {
 				t.Fatalf("reading fallback response failed: %v", err)
+			}
+			if closeErr != nil {
+				t.Fatalf("closing fallback response failed: %v", closeErr)
 			}
 			if got := string(fallbackBody); got != "catch-all" {
 				t.Fatalf("expected fallback path to resolve to catch-all, got %q", got)
@@ -304,9 +322,13 @@ func TestHTTPRouterPreferStaticModeUnsupported(t *testing.T) {
 		if rec == nil {
 			t.Fatal("expected panic for unsupported prefer_static mode on HTTPRouter")
 		}
-		msg := rec.(error).Error()
-		if !strings.Contains(msg, "not supported") {
-			t.Fatalf("expected unsupported-mode error message, got: %s", msg)
+		err, ok := rec.(error)
+		if !ok {
+			t.Fatalf("expected error panic, got %T", rec)
+		}
+		var conflictErr *goerrors.Error
+		if !stderrors.As(err, &conflictErr) || !strings.Contains(conflictErr.Message, "not supported") {
+			t.Fatalf("expected structured unsupported-mode error, got: %v", err)
 		}
 	}()
 

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-router"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,7 +70,9 @@ func TestRouteBuilder_ValidationErrors(t *testing.T) {
 	err := builder.BuildAll()
 	require.Error(t, err, "expected error due to missing method/path")
 
-	assert.Contains(t, err.Error(), "method is required")
+	var validationErr *goerrors.Error
+	require.ErrorAs(t, err, &validationErr)
+	assert.Equal(t, "method is required", validationErr.Message)
 }
 
 func TestRouteBuilder_MiddlewareChain(t *testing.T) {
@@ -121,7 +124,8 @@ func TestRouteBuilder_MiddlewareChain(t *testing.T) {
 }
 
 func TestRouteBuilder_ToMiddlewareWithHTTPRouter(t *testing.T) {
-	server := router.NewHTTPServer().(*router.HTTPServer)
+	server, ok := router.NewHTTPServer().(*router.HTTPServer)
+	require.True(t, ok)
 	builder := router.NewRouteBuilder(server.Router())
 
 	var order []string
@@ -142,7 +146,7 @@ func TestRouteBuilder_ToMiddlewareWithHTTPRouter(t *testing.T) {
 	err := builder.BuildAll()
 	require.NoError(t, err)
 
-	req := httptest.NewRequest("GET", "/mw", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/mw", nil)
 	rr := httptest.NewRecorder()
 
 	server.WrappedRouter().ServeHTTP(rr, req)

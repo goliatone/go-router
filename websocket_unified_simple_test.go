@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-router"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -143,7 +144,9 @@ func TestWebSocketConfigValidation(t *testing.T) {
 			if tt.shouldError {
 				require.Error(t, err, "Configuration should be invalid")
 				if tt.errorMsg != "" {
-					assert.Contains(t, err.Error(), tt.errorMsg)
+					var validationErr *goerrors.Error
+					require.ErrorAs(t, err, &validationErr)
+					assert.Contains(t, validationErr.Message, tt.errorMsg)
 				}
 			} else {
 				assert.NoError(t, err, "Configuration should be valid")

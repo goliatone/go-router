@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.61.0](https://github.com/goliatone/go-router/compare/v0.60.2...v0.61.0) - (2026-07-22)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.61.0 ([d123ba5](https://github.com/goliatone/go-router/commit/d123ba5ab0a68f7a45c1c3db0afe8b13b07fb169))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Err websocket interrupt ([ee8337d](https://github.com/goliatone/go-router/commit/ee8337de76f236c97065054fec7276e13d380384))  - (goliatone)
+- Websocket interrupt ([9b19db3](https://github.com/goliatone/go-router/commit/9b19db37849c9293f920df41ee9cecbb4840a1b5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.60.2 ([b24293b](https://github.com/goliatone/go-router/commit/b24293b30c4e0e5ae7fe55f7e7fb180fc7112efc))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([ca05ea5](https://github.com/goliatone/go-router/commit/ca05ea5151b498d191213da1550d84899d54ea84))  - (goliatone)
+
 # [0.60.2](https://github.com/goliatone/go-router/compare/v0.60.1...v0.60.2) - (2026-07-22)
 
 ## <!-- 1 -->🐛 Bug Fixes

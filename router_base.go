@@ -27,6 +27,7 @@ type routerRoot struct {
 	missHandlers        map[HTTPMethod]*missHandler
 	deferredRoutes      []*RouteDefinition
 	deferredRegistered  bool
+	matchingSemantics   RouteMatchingSemantics
 }
 
 func (root *routerRoot) registrationState() RegistrationState {
@@ -483,10 +484,32 @@ func (br *BaseRouter) RegistrationSnapshot() RegistrationSnapshot {
 	br.root.registrationMu.Lock()
 	defer br.root.registrationMu.Unlock()
 	return RegistrationSnapshot{
-		State:          br.root.registrationState(),
-		Revision:       br.root.revision,
-		DeclaredRoutes: cloneRouteDefinitions(br.root.routes),
-		MountedRoutes:  cloneRouteDefinitions(br.root.mountedRoutes),
+		State:             br.root.registrationState(),
+		Revision:          br.root.revision,
+		MatchingSemantics: br.root.matchingSemantics,
+		DeclaredRoutes:    cloneRouteDefinitions(br.root.routes),
+		MountedRoutes:     cloneRouteDefinitions(br.root.mountedRoutes),
+	}
+}
+
+func (br *BaseRouter) RouteMatchingSemantics() RouteMatchingSemantics {
+	if br == nil || br.root == nil {
+		return RouteMatchingSemantics{}
+	}
+	br.root.registrationMu.Lock()
+	defer br.root.registrationMu.Unlock()
+	return br.root.matchingSemantics
+}
+
+func (br *BaseRouter) TrailingSlashDistinct() bool {
+	return br.RouteMatchingSemantics().TrailingSlashDistinct
+}
+
+func (br *BaseRouter) RoutingCapabilities() RoutingCapabilities {
+	return RoutingCapabilities{
+		RouteNamePolicy: true,
+		OwnershipChecks: true,
+		Manifest:        true,
 	}
 }
 

@@ -10,6 +10,9 @@ var (
 	// Connection errors
 	ErrConnectionClosed = errors.New("websocket: connection closed")
 	ErrConnectionLost   = errors.New("websocket: connection lost")
+	// ErrWebSocketReadInterrupted reports an intentional, terminal interruption
+	// of the connection's read side through WebSocketReadInterrupter.
+	ErrWebSocketReadInterrupted = errors.New("websocket: read interrupted")
 
 	// Message errors
 	ErrMessageTooLarge = errors.New("websocket: message too large")

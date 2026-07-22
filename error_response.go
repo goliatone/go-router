@@ -94,11 +94,9 @@ func LogError(logger Logger, err *errors.Error, c Context) {
 	logger.Error(err.Message, fields)
 }
 
-func PrepareErrorResponse(err *errors.Error, config ErrorHandlerConfig) errors.ErrorResponse {
-	var stackTrace errors.StackTrace
-	if config.IncludeStack && config.Environment != "production" {
-		stackTrace = errors.CaptureStackTrace(1)
-	}
-
-	return err.ToErrorResponse(config.IncludeStack, stackTrace)
+func PrepareErrorResponse(err *errors.Error, _ ErrorHandlerConfig) errors.ErrorResponse {
+	response, renderErr := err.ToPublicErrorResponse()
+	// Public rendering remains safe and usable when sanitization reports an issue.
+	_ = renderErr
+	return response
 }

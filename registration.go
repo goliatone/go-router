@@ -3,6 +3,7 @@ package router
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // RegistrationState describes whether a router still accepts declarations.
@@ -51,16 +52,48 @@ func (e *RegistrationError) Unwrap() error { return e.Err }
 // RegistrationSnapshot is safe to expose to diagnostics. DeclaredRoutes are
 // the logical plan; MountedRoutes are in physical dispatch order.
 type RegistrationSnapshot struct {
-	State          RegistrationState `json:"state"`
-	Revision       uint64            `json:"revision"`
-	DeclaredRoutes []RouteDefinition `json:"declared_routes,omitempty"`
-	MountedRoutes  []RouteDefinition `json:"mounted_routes,omitempty"`
+	State             RegistrationState      `json:"state"`
+	Revision          uint64                 `json:"revision"`
+	MatchingSemantics RouteMatchingSemantics `json:"matching_semantics"`
+	DeclaredRoutes    []RouteDefinition      `json:"declared_routes,omitempty"`
+	MountedRoutes     []RouteDefinition      `json:"mounted_routes,omitempty"`
 }
 
 // RegistrationInspector is implemented by routers that expose lifecycle and
 // physical route-table state.
 type RegistrationInspector interface {
 	RegistrationSnapshot() RegistrationSnapshot
+}
+
+// RouteMatchingSemantics describes path behavior that affects whether two
+// physical registrations can be selected independently.
+type RouteMatchingSemantics struct {
+	TrailingSlashDistinct bool `json:"trailing_slash_distinct"`
+}
+
+// RouteMatchingSemanticsProvider is implemented by routers that expose their
+// path matching behavior to route producers and diagnostics.
+type RouteMatchingSemanticsProvider interface {
+	RouteMatchingSemantics() RouteMatchingSemantics
+}
+
+// TrailingSlashDistinctProvider is a narrow compatibility capability for
+// route producers that only need to decide whether explicit slash aliases are
+// independently selectable.
+type TrailingSlashDistinctProvider interface {
+	TrailingSlashDistinct() bool
+}
+
+// RoutingCapabilities advertises package-native routing facilities without
+// coupling integrations to another package's capability types.
+type RoutingCapabilities struct {
+	RouteNamePolicy bool `json:"route_name_policy"`
+	OwnershipChecks bool `json:"ownership_checks"`
+	Manifest        bool `json:"manifest"`
+}
+
+type RoutingCapabilityProvider interface {
+	RoutingCapabilities() RoutingCapabilities
 }
 
 // RouteReplacer supports an intentional exact-route override while the plan is
@@ -94,32 +127,56 @@ type RouteMutator interface {
 	TryUpsertWithOptions(method HTTPMethod, path string, handler HandlerFunc, options RouteMutationOptions, middlewares ...MiddlewareFunc) (RouteInfo, bool, error)
 }
 
+type RouteShadowKind string
+
+const (
+	RouteShadowExactDuplicate          RouteShadowKind = "exact_duplicate"
+	RouteShadowTrailingSlashEquivalent RouteShadowKind = "trailing_slash_equivalent"
+	RouteShadowCatchAll                RouteShadowKind = "catch_all"
+	RouteShadowParameter               RouteShadowKind = "parameter"
+	RouteShadowSameRequestSet          RouteShadowKind = "same_request_set"
+)
+
 // RouteShadow describes a later route that cannot be selected because an
 // earlier, broader route accepts every request represented by it.
 type RouteShadow struct {
-	Method          HTTPMethod `json:"method"`
-	Path            string     `json:"path"`
-	RouteIndex      int        `json:"route_index"`
-	ShadowedByPath  string     `json:"shadowed_by_path"`
-	ShadowedByIndex int        `json:"shadowed_by_index"`
-	Reason          string     `json:"reason"`
+	Method          HTTPMethod      `json:"method"`
+	Path            string          `json:"path"`
+	RouteIndex      int             `json:"route_index"`
+	ShadowedByPath  string          `json:"shadowed_by_path"`
+	ShadowedByIndex int             `json:"shadowed_by_index"`
+	Kind            RouteShadowKind `json:"kind"`
+	Reason          string          `json:"reason"`
 }
 
 // AnalyzeRouteShadows evaluates routes in physical dispatch order.
 func AnalyzeRouteShadows(routes []RouteDefinition) []RouteShadow {
+	return AnalyzeRouteShadowsWithSemantics(routes, RouteMatchingSemantics{})
+}
+
+// AnalyzeRouteShadowsWithSemantics evaluates routes using the selected
+// adapter's path matching behavior.
+func AnalyzeRouteShadowsWithSemantics(routes []RouteDefinition, semantics RouteMatchingSemantics) []RouteShadow {
 	findings := make([]RouteShadow, 0)
 	for routeIndex, route := range routes {
 		for earlierIndex := range routeIndex {
 			earlier := routes[earlierIndex]
-			if earlier.Method != route.Method || !routePatternContains(earlier.Path, route.Path) {
+			if earlier.Method != route.Method || !routePatternContainsWithSemantics(earlier.Path, route.Path, semantics) {
 				continue
 			}
+			kind := RouteShadowSameRequestSet
 			reason := "earlier route matches the same request set"
 			if earlier.Path == route.Path {
+				kind = RouteShadowExactDuplicate
 				reason = "earlier duplicate route"
+			} else if trailingSlashEquivalent(earlier.Path, route.Path) {
+				kind = RouteShadowTrailingSlashEquivalent
+				reason = "earlier route is equivalent when trailing slashes are ignored"
 			} else if containsCatchAll(earlier.Path) {
+				kind = RouteShadowCatchAll
 				reason = "earlier catch-all route"
-			} else {
+			} else if containsParameter(earlier.Path) {
+				kind = RouteShadowParameter
 				reason = "earlier parameter route"
 			}
 			findings = append(findings, RouteShadow{
@@ -128,12 +185,29 @@ func AnalyzeRouteShadows(routes []RouteDefinition) []RouteShadow {
 				RouteIndex:      routeIndex,
 				ShadowedByPath:  earlier.Path,
 				ShadowedByIndex: earlierIndex,
+				Kind:            kind,
 				Reason:          reason,
 			})
 			break
 		}
 	}
 	return findings
+}
+
+func containsParameter(path string) bool {
+	for _, segment := range splitPathSegments(path) {
+		if classifySegment(segment) == segmentParam {
+			return true
+		}
+	}
+	return false
+}
+
+func trailingSlashEquivalent(left, right string) bool {
+	if left == right {
+		return false
+	}
+	return strings.TrimSuffix(left, "/") == strings.TrimSuffix(right, "/")
 }
 
 func containsCatchAll(path string) bool {
@@ -149,6 +223,13 @@ func containsCatchAll(path string) bool {
 // also accepted by earlier. It models Fiber/httprouter static, :param, and
 // terminal *catch-all segments.
 func routePatternContains(earlierPath, candidatePath string) bool {
+	return routePatternContainsWithSemantics(earlierPath, candidatePath, RouteMatchingSemantics{})
+}
+
+func routePatternContainsWithSemantics(earlierPath, candidatePath string, semantics RouteMatchingSemantics) bool {
+	if semantics.TrailingSlashDistinct && hasTrailingSlash(earlierPath) != hasTrailingSlash(candidatePath) {
+		return false
+	}
 	earlier := splitPathSegments(earlierPath)
 	candidate := splitPathSegments(candidatePath)
 
@@ -175,6 +256,10 @@ func routePatternContains(earlierPath, candidatePath string) bool {
 	}
 
 	return len(earlier) == len(candidate)
+}
+
+func hasTrailingSlash(value string) bool {
+	return len(value) > 1 && strings.HasSuffix(value, "/")
 }
 
 func prefixesCompatible(earlierPrefix, candidate []string) bool {

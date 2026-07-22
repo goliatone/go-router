@@ -116,7 +116,9 @@ func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) 
 			BaseRouter: BaseRouter{
 				logger:           &defaultLogger{},
 				namedRoutePolicy: cfg.NamedRoutePolicy,
-				root:             &routerRoot{},
+				root: &routerRoot{matchingSemantics: RouteMatchingSemantics{
+					TrailingSlashDistinct: app.Config().StrictRouting,
+				}},
 			},
 		},
 	}
@@ -141,7 +143,9 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 			BaseRouter: BaseRouter{
 				logger:           &defaultLogger{},
 				namedRoutePolicy: NamedRouteCollisionPolicyReplace,
-				root:             &routerRoot{},
+				root: &routerRoot{matchingSemantics: RouteMatchingSemantics{
+					TrailingSlashDistinct: a.app.Config().StrictRouting,
+				}},
 			},
 		}
 	}

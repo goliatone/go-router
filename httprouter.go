@@ -216,8 +216,11 @@ func (a *HTTPServer) Router() Router[*httprouter.Router] {
 				namedRoutePolicy: a.namedRoutePolicy,
 				routes:           []*RouteDefinition{},
 				middlewares:      []namedMiddleware{},
-				root:             &routerRoot{routes: []*RouteDefinition{}},
-				views:            a.views,
+				root: &routerRoot{
+					routes:            []*RouteDefinition{},
+					matchingSemantics: RouteMatchingSemantics{TrailingSlashDistinct: true},
+				},
+				views: a.views,
 			},
 		}
 	}

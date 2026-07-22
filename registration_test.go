@@ -471,3 +471,48 @@ func TestAnalyzeRouteShadows(t *testing.T) {
 		}
 	}
 }
+
+func TestAnalyzeRouteShadowsClassifiesTrailingSlashEquivalence(t *testing.T) {
+	routes := []RouteDefinition{
+		{Method: GET, Path: "/admin"},
+		{Method: GET, Path: "/admin/"},
+	}
+
+	shadows := AnalyzeRouteShadowsWithSemantics(routes, RouteMatchingSemantics{TrailingSlashDistinct: false})
+	if len(shadows) != 1 || shadows[0].Kind != RouteShadowTrailingSlashEquivalent {
+		t.Fatalf("shadows = %#v, want one trailing-slash-equivalent finding", shadows)
+	}
+	if got := shadows[0].Reason; got != "earlier route is equivalent when trailing slashes are ignored" {
+		t.Fatalf("reason = %q", got)
+	}
+}
+
+func TestAnalyzeRouteShadowsKeepsStrictTrailingSlashRoutesDistinct(t *testing.T) {
+	routes := []RouteDefinition{
+		{Method: GET, Path: "/admin"},
+		{Method: GET, Path: "/admin/"},
+	}
+
+	if shadows := AnalyzeRouteShadowsWithSemantics(routes, RouteMatchingSemantics{TrailingSlashDistinct: true}); len(shadows) != 0 {
+		t.Fatalf("shadows = %#v, want none for strict trailing-slash matching", shadows)
+	}
+}
+
+func TestRouterCapabilitiesAndMatchingSemantics(t *testing.T) {
+	fiberServer := NewFiberAdapter()
+	fiberRouter := fiberServer.Router()
+	if caps := fiberRouter.(RoutingCapabilityProvider).RoutingCapabilities(); !caps.RouteNamePolicy || !caps.OwnershipChecks || !caps.Manifest {
+		t.Fatalf("fiber capabilities = %+v", caps)
+	}
+	if semantics := fiberRouter.(RouteMatchingSemanticsProvider).RouteMatchingSemantics(); semantics.TrailingSlashDistinct {
+		t.Fatalf("fiber matching semantics = %+v", semantics)
+	}
+	if fiberRouter.(TrailingSlashDistinctProvider).TrailingSlashDistinct() {
+		t.Fatal("non-strict Fiber unexpectedly requires explicit trailing-slash routes")
+	}
+
+	httpServer := NewHTTPServer()
+	if semantics := httpServer.Router().(RouteMatchingSemanticsProvider).RouteMatchingSemantics(); !semantics.TrailingSlashDistinct {
+		t.Fatalf("httprouter matching semantics = %+v", semantics)
+	}
+}

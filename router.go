@@ -228,6 +228,19 @@ type WebSocketContext interface {
 	UpgradeData(key string) (any, bool)
 }
 
+// WebSocketReadInterrupter is an optional capability implemented by WebSocket
+// adapters that can terminate an in-flight read without making a concurrent
+// call through the WebSocket library's reader API.
+//
+// InterruptRead is terminal for the read side of the connection: the active
+// ReadMessage or ReadJSON call is unblocked and subsequent reads return
+// ErrWebSocketReadInterrupted. Implementations must be safe to call from a
+// goroutine other than the one performing the read. Repeated calls are
+// idempotent.
+type WebSocketReadInterrupter interface {
+	InterruptRead() error
+}
+
 // NamedHandler is a handler with a name for debugging/printing
 type NamedHandler struct {
 	Name    string

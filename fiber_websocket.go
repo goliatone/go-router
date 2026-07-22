@@ -14,23 +14,26 @@ import (
 // fiberWebSocketContext implements WebSocketContext for Fiber
 type fiberWebSocketContext struct {
 	*fiberContext
-	config         WebSocketConfig
-	conn           *websocket.Conn
-	isUpgraded     bool
-	mu             sync.RWMutex
-	writeMu        sync.Mutex
-	connectionID   string
-	subprotocol    string
-	closeHandlers  []func(code int, text string) error
-	pingHandler    func(data []byte) error
-	pongHandler    func(data []byte) error
-	messageHandler func(messageType int, data []byte) error
-	upgradeData    UpgradeData
-	userCtx        context.Context
+	config           WebSocketConfig
+	conn             *websocket.Conn
+	isUpgraded       bool
+	mu               sync.RWMutex
+	writeMu          sync.Mutex
+	connectionID     string
+	subprotocol      string
+	closeHandlers    []func(code int, text string) error
+	pingHandler      func(data []byte) error
+	pongHandler      func(data []byte) error
+	messageHandler   func(messageType int, data []byte) error
+	upgradeData      UpgradeData
+	userCtx          context.Context
+	readInterrupted  bool
+	readInterruptErr error
 }
 
 // Ensure fiberWebSocketContext implements WebSocketContext
 var _ WebSocketContext = (*fiberWebSocketContext)(nil)
+var _ WebSocketReadInterrupter = (*fiberWebSocketContext)(nil)
 
 // NewFiberWebSocketContext creates a new Fiber WebSocket context
 func NewFiberWebSocketContext(c *fiber.Ctx, config WebSocketConfig, logger Logger) (*fiberWebSocketContext, error) {
@@ -154,25 +157,34 @@ func (c *fiberWebSocketContext) ReadMessage() (messageType int, p []byte, err er
 	c.mu.RLock()
 	conn := c.conn
 	upgraded := c.isUpgraded
+	interrupted := c.readInterrupted
 	readDeadlineEnabled := c.config.readDeadlineEnabled()
 	pongWait := c.config.PongWait
 	messageHandler := c.messageHandler
 	onMessage := c.config.OnMessage
-	c.mu.RUnlock()
-
 	if !upgraded || conn == nil {
+		c.mu.RUnlock()
 		return 0, nil, ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
+	}
+	if interrupted {
+		c.mu.RUnlock()
+		return 0, nil, ErrWebSocketReadInterrupted
 	}
 
 	// Set read deadline for next message
 	if readDeadlineEnabled {
 		deadline := time.Now().Add(pongWait)
 		if deadlineErr := conn.SetReadDeadline(deadline); deadlineErr != nil {
+			c.mu.RUnlock()
 			return 0, nil, deadlineErr
 		}
 	}
+	c.mu.RUnlock()
 
 	messageType, p, err = conn.ReadMessage()
+	if err != nil && c.isReadInterrupted() {
+		err = ErrWebSocketReadInterrupted
+	}
 
 	// Call message handler if set
 	if err == nil && messageHandler != nil {
@@ -223,23 +235,58 @@ func (c *fiberWebSocketContext) ReadJSON(v any) error {
 	c.mu.RLock()
 	conn := c.conn
 	upgraded := c.isUpgraded
+	interrupted := c.readInterrupted
 	readDeadlineEnabled := c.config.readDeadlineEnabled()
 	pongWait := c.config.PongWait
-	c.mu.RUnlock()
 
 	if !upgraded || conn == nil {
+		c.mu.RUnlock()
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
+	}
+	if interrupted {
+		c.mu.RUnlock()
+		return ErrWebSocketReadInterrupted
 	}
 
 	// Set read deadline
 	if readDeadlineEnabled {
 		deadline := time.Now().Add(pongWait)
 		if err := conn.SetReadDeadline(deadline); err != nil {
+			c.mu.RUnlock()
 			return err
 		}
 	}
+	c.mu.RUnlock()
 
-	return conn.ReadJSON(v)
+	err := conn.ReadJSON(v)
+	if err != nil && c.isReadInterrupted() {
+		return ErrWebSocketReadInterrupted
+	}
+	return err
+}
+
+// InterruptRead terminally interrupts the connection's read side without
+// calling a WebSocket reader method from a second goroutine.
+func (c *fiberWebSocketContext) InterruptRead() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.readInterrupted {
+		return c.readInterruptErr
+	}
+	if !c.isUpgraded || c.conn == nil {
+		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
+	}
+
+	c.readInterrupted = true
+	c.readInterruptErr = interruptWebSocketRead(c.conn.NetConn())
+	return c.readInterruptErr
+}
+
+func (c *fiberWebSocketContext) isReadInterrupted() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.readInterrupted
 }
 
 // Close closes the WebSocket connection
@@ -308,12 +355,15 @@ func (c *fiberWebSocketContext) CloseWithStatus(code int, reason string) error {
 // SetReadDeadline sets the read deadline for the connection
 func (c *fiberWebSocketContext) SetReadDeadline(t time.Time) error {
 	c.mu.RLock()
+	defer c.mu.RUnlock()
 	conn := c.conn
 	upgraded := c.isUpgraded
-	c.mu.RUnlock()
 
 	if !upgraded || conn == nil {
 		return ErrWebSocketUpgradeFailed(fmt.Errorf("connection not upgraded"))
+	}
+	if c.readInterrupted {
+		return ErrWebSocketReadInterrupted
 	}
 
 	return conn.SetReadDeadline(t)
@@ -444,16 +494,21 @@ func (c *fiberWebSocketContext) installPongHandler(conn *websocket.Conn) {
 	}
 
 	conn.SetPongHandler(func(appData string) error {
+		c.mu.Lock()
+		if c.readInterrupted {
+			c.mu.Unlock()
+			return ErrWebSocketReadInterrupted
+		}
 		if c.config.readDeadlineEnabled() {
 			deadline := time.Now().Add(c.config.PongWait)
 			if err := conn.SetReadDeadline(deadline); err != nil {
+				c.mu.Unlock()
 				return err
 			}
 		}
 
-		c.mu.RLock()
 		pongHandler := c.pongHandler
-		c.mu.RUnlock()
+		c.mu.Unlock()
 		if pongHandler != nil {
 			return pongHandler([]byte(appData))
 		}

@@ -8,7 +8,40 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
 )
+
+func requireCapability[T any](t *testing.T, value any) T {
+	t.Helper()
+
+	capability, ok := value.(T)
+	if !ok {
+		t.Fatalf("%T does not implement the required capability", value)
+	}
+	return capability
+}
+
+func performFiberRequest(t *testing.T, app *fiber.App, method, path string) (int, []byte) {
+	t.Helper()
+
+	request := httptest.NewRequestWithContext(t.Context(), method, path, nil)
+	response, err := app.Test(request)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Errorf("close response body: %v", closeErr)
+		}
+	}()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	return response.StatusCode, body
+}
 
 func TestSortRoutesBySpecificityHandlesInterleavedMethods(t *testing.T) {
 	routes := []*RouteDefinition{
@@ -56,13 +89,9 @@ func TestFiberRegistrationPlanDispatchesSpecificRouteAcrossUnrelatedSameMethodRo
 	r.Get("/health", func(c Context) error { return c.SendStatus(204) })
 	r.Get("/admin/search/relevance", func(c Context) error { return c.SendString("relevance") })
 
-	response, err := server.WrappedRouter().Test(httptest.NewRequest("GET", "/admin/search/relevance", nil))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	body, _ := io.ReadAll(response.Body)
-	if response.StatusCode != http.StatusOK || string(body) != "relevance" {
-		t.Fatalf("response = %d %q, want 200 relevance", response.StatusCode, body)
+	status, body := performFiberRequest(t, server.WrappedRouter(), http.MethodGet, "/admin/search/relevance")
+	if status != http.StatusOK || string(body) != "relevance" {
+		t.Fatalf("response = %d %q, want 200 relevance", status, body)
 	}
 }
 
@@ -74,12 +103,9 @@ func TestFiberRegistrationPlanDispatchesSpecificRouteBeforeCatchAll(t *testing.T
 	r.Head("/admin/content/:type", func(c Context) error { return c.SendStatus(204) })
 	r.Get("/admin/search/relevance", func(c Context) error { return c.SendString("relevance") })
 
-	response, err := server.WrappedRouter().Test(httptest.NewRequest("GET", "/admin/search/relevance", nil))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	if response.StatusCode != 200 {
-		t.Fatalf("status = %d, want 200", response.StatusCode)
+	status, _ := performFiberRequest(t, server.WrappedRouter(), http.MethodGet, "/admin/search/relevance")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
 	}
 }
 
@@ -89,12 +115,9 @@ func TestFiberRegistrationPlanOrdersWebSocketWildcardWithOrdinaryGETRoutes(t *te
 	r.WebSocket("/admin/*", WebSocketConfig{}, func(WebSocketContext) error { return nil })
 	r.Get("/admin/search/relevance", func(c Context) error { return c.SendString("relevance") })
 
-	response, err := server.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/admin/search/relevance", nil))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", response.StatusCode)
+	status, _ := performFiberRequest(t, server.WrappedRouter(), http.MethodGet, "/admin/search/relevance")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
 	}
 }
 
@@ -123,7 +146,8 @@ func TestFiberRegistrationRejectsMutationAfterSeal(t *testing.T) {
 		t.Fatalf("route name panic = %#v, want typed ErrRouterSealed", nameMutation)
 	}
 
-	snapshot := r.(RegistrationInspector).RegistrationSnapshot()
+	inspector := requireCapability[RegistrationInspector](t, r)
+	snapshot := inspector.RegistrationSnapshot()
 	if snapshot.State != RegistrationSealed {
 		t.Fatalf("state = %q, want sealed", snapshot.State)
 	}
@@ -137,24 +161,17 @@ func TestFiberTryReplaceIsExplicitAndPreservesRouteIdentity(t *testing.T) {
 	r := server.Router()
 	r.Get("/preview", func(c Context) error { return c.SendString("original") }).SetName("preview")
 
-	replacer := r.(RouteReplacer)
+	replacer := requireCapability[RouteReplacer](t, r)
 	replaced, err := replacer.TryReplace(GET, "/preview", func(c Context) error { return c.SendString("replacement") })
 	if err != nil {
 		t.Fatalf("replace failed: %v", err)
 	}
-	definition := replaced.(*RouteDefinition)
+	definition := requireCapability[*RouteDefinition](t, replaced)
 	if definition.Name != "preview" {
 		t.Fatalf("name = %q, want preview", definition.Name)
 	}
 
-	response, err := server.WrappedRouter().Test(httptest.NewRequest("GET", "/preview", nil))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
+	_, body := performFiberRequest(t, server.WrappedRouter(), http.MethodGet, "/preview")
 	if string(body) != "replacement" {
 		t.Fatalf("body = %q, want replacement", body)
 	}
@@ -176,15 +193,13 @@ func TestFiberTryReplacePreservesExistingMiddlewareByDefault(t *testing.T) {
 	}
 	r.Get("/preview", func(c Context) error { return c.SendString("original") }, middleware)
 
-	if _, err := r.(RouteReplacer).TryReplace(GET, "/preview", func(c Context) error { return c.SendString("replacement") }); err != nil {
+	replacer := requireCapability[RouteReplacer](t, r)
+	if _, err := replacer.TryReplace(GET, "/preview", func(c Context) error { return c.SendString("replacement") }); err != nil {
 		t.Fatalf("replace failed: %v", err)
 	}
-	response, err := server.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/preview", nil))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	if middlewareCalls != 1 || response.StatusCode != http.StatusOK {
-		t.Fatalf("middleware calls=%d status=%d, want 1 and 200", middlewareCalls, response.StatusCode)
+	status, _ := performFiberRequest(t, server.WrappedRouter(), http.MethodGet, "/preview")
+	if middlewareCalls != 1 || status != http.StatusOK {
+		t.Fatalf("middleware calls=%d status=%d, want 1 and 200", middlewareCalls, status)
 	}
 }
 
@@ -201,13 +216,11 @@ func TestFiberTryReplaceCanExplicitlyReplaceMiddlewareChain(t *testing.T) {
 	}
 	r.Get("/preview", func(c Context) error { return c.SendString("original") }, original)
 
-	mutator := r.(RouteMutator)
+	mutator := requireCapability[RouteMutator](t, r)
 	if _, err := mutator.TryReplaceWithOptions(GET, "/preview", func(c Context) error { return c.SendString("replacement") }, RouteMutationOptions{ReplaceMiddleware: true}, replacement); err != nil {
 		t.Fatalf("replace failed: %v", err)
 	}
-	if _, err := server.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/preview", nil)); err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
+	performFiberRequest(t, server.WrappedRouter(), http.MethodGet, "/preview")
 	if originalCalls != 0 || replacementCalls != 1 {
 		t.Fatalf("middleware calls original=%d replacement=%d, want 0 and 1", originalCalls, replacementCalls)
 	}
@@ -216,7 +229,7 @@ func TestFiberTryReplaceCanExplicitlyReplaceMiddlewareChain(t *testing.T) {
 func TestFiberTryUpsertAddsOptionalRouteThenReplacesIt(t *testing.T) {
 	server := NewFiberAdapter()
 	r := server.Router()
-	upserter := r.(RouteUpserter)
+	upserter := requireCapability[RouteUpserter](t, r)
 
 	added, replaced, err := upserter.TryUpsert(GET, "/optional", func(c Context) error { return c.SendString("added") })
 	if err != nil || replaced || added == nil {
@@ -227,11 +240,7 @@ func TestFiberTryUpsertAddsOptionalRouteThenReplacesIt(t *testing.T) {
 		t.Fatalf("second upsert: same=%t replaced=%t err=%v", replacement == added, replaced, err)
 	}
 
-	response, err := server.WrappedRouter().Test(httptest.NewRequest("GET", "/optional", nil))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	body, _ := io.ReadAll(response.Body)
+	_, body := performFiberRequest(t, server.WrappedRouter(), http.MethodGet, "/optional")
 	if string(body) != "replaced" {
 		t.Fatalf("body = %q, want replaced", body)
 	}
@@ -250,7 +259,7 @@ func TestFiberTryUpsertCanApplyMiddlewareOnlyWhenAdding(t *testing.T) {
 	}
 	r.Get("/existing", func(c Context) error { return c.SendString("original") }, existing)
 
-	mutator := r.(RouteMutator)
+	mutator := requireCapability[RouteMutator](t, r)
 	options := RouteMutationOptions{MiddlewareOnAddOnly: true}
 	if _, replaced, err := mutator.TryUpsertWithOptions(GET, "/existing", func(c Context) error { return c.SendString("replacement") }, options, addOnly); err != nil || !replaced {
 		t.Fatalf("replace upsert: replaced=%t err=%v", replaced, err)
@@ -260,9 +269,7 @@ func TestFiberTryUpsertCanApplyMiddlewareOnlyWhenAdding(t *testing.T) {
 	}
 
 	for _, path := range []string{"/existing", "/missing"} {
-		if _, err := server.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, path, nil)); err != nil {
-			t.Fatalf("request %s failed: %v", path, err)
-		}
+		performFiberRequest(t, server.WrappedRouter(), http.MethodGet, path)
 	}
 	if existingCalls != 1 || addOnlyCalls != 1 {
 		t.Fatalf("middleware calls existing=%d add-only=%d, want 1 and 1", existingCalls, addOnlyCalls)
@@ -272,7 +279,7 @@ func TestFiberTryUpsertCanApplyMiddlewareOnlyWhenAdding(t *testing.T) {
 func TestHTTPRouterTryUpsertAddsOptionalRouteThenReplacesIt(t *testing.T) {
 	server := NewHTTPServer()
 	r := server.Router()
-	upserter := r.(RouteUpserter)
+	upserter := requireCapability[RouteUpserter](t, r)
 
 	added, replaced, err := upserter.TryUpsert(GET, "/optional", func(c Context) error {
 		return c.SendString("added")
@@ -287,14 +294,15 @@ func TestHTTPRouterTryUpsertAddsOptionalRouteThenReplacesIt(t *testing.T) {
 		t.Fatalf("second upsert: same=%t replaced=%t err=%v", replacement == added, replaced, err)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/optional", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/optional", nil)
 	response := httptest.NewRecorder()
 	server.WrappedRouter().ServeHTTP(response, request)
 	if body := response.Body.String(); body != "replaced" {
 		t.Fatalf("body = %q, want replaced", body)
 	}
 
-	snapshot := r.(RegistrationInspector).RegistrationSnapshot()
+	inspector := requireCapability[RegistrationInspector](t, r)
+	snapshot := inspector.RegistrationSnapshot()
 	if snapshot.State != RegistrationSealed || len(snapshot.MountedRoutes) != 1 {
 		t.Fatalf("snapshot = %#v, want one sealed route", snapshot)
 	}
@@ -313,7 +321,7 @@ func TestHTTPRouterTryUpsertCanApplyMiddlewareOnlyWhenAdding(t *testing.T) {
 	}
 	r.Get("/existing", func(c Context) error { return c.SendString("original") }, existing)
 
-	mutator := r.(RouteMutator)
+	mutator := requireCapability[RouteMutator](t, r)
 	options := RouteMutationOptions{MiddlewareOnAddOnly: true}
 	if _, replaced, err := mutator.TryUpsertWithOptions(GET, "/existing", func(c Context) error { return c.SendString("replacement") }, options, addOnly); err != nil || !replaced {
 		t.Fatalf("replace upsert: replaced=%t err=%v", replaced, err)
@@ -324,7 +332,8 @@ func TestHTTPRouterTryUpsertCanApplyMiddlewareOnlyWhenAdding(t *testing.T) {
 
 	for _, path := range []string{"/existing", "/missing"} {
 		response := httptest.NewRecorder()
-		server.WrappedRouter().ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		server.WrappedRouter().ServeHTTP(response, request)
 		if response.Code != http.StatusOK {
 			t.Fatalf("request %s status=%d, want 200", path, response.Code)
 		}
@@ -344,7 +353,8 @@ func TestHTTPRouterTryUpsertReturnsConflictInsteadOfPanicking(t *testing.T) {
 			t.Fatalf("TryUpsert panicked: %v", recovered)
 		}
 	}()
-	if _, _, err := r.(RouteUpserter).TryUpsert(GET, "/users/*rest", func(c Context) error { return c.SendStatus(http.StatusNoContent) }); err == nil {
+	upserter := requireCapability[RouteUpserter](t, r)
+	if _, _, err := upserter.TryUpsert(GET, "/users/*rest", func(c Context) error { return c.SendStatus(http.StatusNoContent) }); err == nil {
 		t.Fatal("expected conflicting upsert to return an error")
 	}
 }
@@ -357,12 +367,14 @@ func TestHTTPRouterTryReplacePreservesExistingMiddleware(t *testing.T) {
 		return func(c Context) error { middlewareCalls++; return next(c) }
 	}
 	r.Get("/preview", func(c Context) error { return c.SendString("original") }, middleware)
-	if _, err := r.(RouteReplacer).TryReplace(GET, "/preview", func(c Context) error { return c.SendString("replacement") }); err != nil {
+	replacer := requireCapability[RouteReplacer](t, r)
+	if _, err := replacer.TryReplace(GET, "/preview", func(c Context) error { return c.SendString("replacement") }); err != nil {
 		t.Fatalf("replace failed: %v", err)
 	}
 
 	response := httptest.NewRecorder()
-	server.WrappedRouter().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/preview", nil))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/preview", nil)
+	server.WrappedRouter().ServeHTTP(response, request)
 	if middlewareCalls != 1 || response.Code != http.StatusOK {
 		t.Fatalf("middleware calls=%d status=%d, want 1 and 200", middlewareCalls, response.Code)
 	}
@@ -384,7 +396,8 @@ func TestFiberRegistrationSerializesConcurrentCollection(t *testing.T) {
 	wg.Wait()
 	server.Init()
 
-	snapshot := r.(RegistrationInspector).RegistrationSnapshot()
+	inspector := requireCapability[RegistrationInspector](t, r)
+	snapshot := inspector.RegistrationSnapshot()
 	if len(snapshot.DeclaredRoutes) != count || len(snapshot.MountedRoutes) != count {
 		t.Fatalf("declared=%d mounted=%d, want %d", len(snapshot.DeclaredRoutes), len(snapshot.MountedRoutes), count)
 	}
@@ -397,6 +410,7 @@ func TestFiberFinalizationPublishesCompleteMountedSnapshot(t *testing.T) {
 	for index := range count {
 		r.Get(fmt.Sprintf("/module/%d", index), func(c Context) error { return c.SendStatus(http.StatusNoContent) })
 	}
+	inspector := requireCapability[RegistrationInspector](t, r)
 
 	done := make(chan struct{})
 	go func() {
@@ -404,13 +418,13 @@ func TestFiberFinalizationPublishesCompleteMountedSnapshot(t *testing.T) {
 		close(done)
 	}()
 	for {
-		snapshot := r.(RegistrationInspector).RegistrationSnapshot()
+		snapshot := inspector.RegistrationSnapshot()
 		if snapshot.State == RegistrationSealed && len(snapshot.MountedRoutes) != count {
 			t.Fatalf("sealed snapshot mounted=%d, want %d", len(snapshot.MountedRoutes), count)
 		}
 		select {
 		case <-done:
-			final := r.(RegistrationInspector).RegistrationSnapshot()
+			final := inspector.RegistrationSnapshot()
 			if final.State != RegistrationSealed || len(final.MountedRoutes) != count {
 				t.Fatalf("final snapshot state=%s mounted=%d, want sealed and %d", final.State, len(final.MountedRoutes), count)
 			}
@@ -431,7 +445,8 @@ func TestFiberConcurrentInitIsSerialized(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	snapshot := server.Router().(RegistrationInspector).RegistrationSnapshot()
+	inspector := requireCapability[RegistrationInspector](t, server.Router())
+	snapshot := inspector.RegistrationSnapshot()
 	if snapshot.State != RegistrationSealed || len(snapshot.MountedRoutes) != 1 {
 		t.Fatalf("snapshot = %#v, want one sealed route", snapshot)
 	}

@@ -12,6 +12,7 @@ export interface WebSocketClientOptions {
     reconnectDelay?: number;
     maxReconnectDelay?: number;
     reconnectDecay?: number;
+    reconnectStabilityMs?: number;
     token?: string | null;
     tokenRefreshCallback?: (() => Promise<string>) | null;
     heartbeatInterval?: number;
@@ -124,6 +125,7 @@ export declare class WebSocketClient extends EventEmitter<WebSocketClientEventMa
     userInfo: UserInfo | null;
     reconnectAttempts: number;
     private reconnectTimer;
+    private reconnectStabilityTimer;
     private shouldReconnect;
     private messageQueue;
     private pendingCommands;
@@ -199,6 +201,8 @@ export declare class WebSocketClient extends EventEmitter<WebSocketClientEventMa
     private _processMessageQueue;
     private _scheduleReconnect;
     private _clearReconnectTimer;
+    private _clearReconnectStabilityTimer;
+    private _scheduleReconnectBudgetReset;
     private _cleanup;
     private _generateCommandId;
     private _log;

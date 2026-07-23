@@ -15,6 +15,7 @@ export interface WebSocketClientOptions {
     reconnectDelay?: number;
     maxReconnectDelay?: number;
     reconnectDecay?: number;
+    reconnectStabilityMs?: number;
     
     // Authentication
     token?: string | null;
@@ -123,6 +124,7 @@ const DEFAULT_OPTIONS: Required<WebSocketClientOptions> = {
     reconnectDelay: 1000,
     maxReconnectDelay: 30000,
     reconnectDecay: 1.5,
+    reconnectStabilityMs: 10000,
     
     // Authentication
     token: null,
@@ -237,6 +239,7 @@ export class WebSocketClient extends EventEmitter<WebSocketClientEventMap> {
     // Reconnection state
     public reconnectAttempts: number = 0;
     private reconnectTimer: number | null = null;
+    private reconnectStabilityTimer: number | null = null;
     private shouldReconnect: boolean = false;
     
     // Message handling
@@ -491,7 +494,7 @@ export class WebSocketClient extends EventEmitter<WebSocketClientEventMap> {
         this._setState(CONNECTION_STATES.CONNECTED);
         this.metrics.connectTime = Date.now();
         this.metrics.reconnectCount = this.reconnectAttempts;
-        this.reconnectAttempts = 0;
+        this._scheduleReconnectBudgetReset();
         this.lastError = null;
         
         this._startHeartbeat();
@@ -651,7 +654,14 @@ export class WebSocketClient extends EventEmitter<WebSocketClientEventMap> {
                     this.emit('heartbeatTimeout', []);
                     
                     if (this.options.autoReconnect) {
-                        this.reconnect();
+                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                            // Keep shouldReconnect enabled so the close path consumes
+                            // the existing retry budget instead of treating a health
+                            // failure as an explicit user-requested reset.
+                            this.ws.close(4000, 'Heartbeat timeout');
+                        } else {
+                            this._scheduleReconnect();
+                        }
                     }
                 }, this.options.heartbeatTimeout);
             }
@@ -735,8 +745,27 @@ export class WebSocketClient extends EventEmitter<WebSocketClientEventMap> {
         }
     }
 
+    private _clearReconnectStabilityTimer(): void {
+        if (this.reconnectStabilityTimer !== null) {
+            clearTimeout(this.reconnectStabilityTimer);
+            this.reconnectStabilityTimer = null;
+        }
+    }
+
+    private _scheduleReconnectBudgetReset(): void {
+        this._clearReconnectStabilityTimer();
+        const socket = this.ws;
+        this.reconnectStabilityTimer = setTimeout(() => {
+            this.reconnectStabilityTimer = null;
+            if (this.ws === socket && socket?.readyState === WebSocket.OPEN) {
+                this.reconnectAttempts = 0;
+            }
+        }, Math.max(this.options.reconnectStabilityMs, 0));
+    }
+
     private _cleanup(): void {
         this._stopHeartbeat();
+        this._clearReconnectStabilityTimer();
         
         if (this.ws) {
             this.ws.onopen = null;

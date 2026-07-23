@@ -11,6 +11,7 @@
     "src/"
   ],
   "scripts": {
+    "test": "npm run build && node --test tests/*.test.mjs",
     "build": "npm run build:dev && npm run build:prod && npm run build:types",
     "build:dev": "esbuild src/client.ts --bundle --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=client.js --sourcemap --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",
     "build:prod": "esbuild src/client.ts --bundle --minify --target=es2018 --format=iife --global-name=__WebSocketClientModule --outfile=client.min.js --footer:js=\"var WebSocketClient = __WebSocketClientModule.default || __WebSocketClientModule;\"",

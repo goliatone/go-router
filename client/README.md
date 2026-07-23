@@ -100,6 +100,7 @@ interface WebSocketClientOptions {
     reconnectDelay?: number;        // Default: 1000ms
     maxReconnectDelay?: number;     // Default: 30000ms
     reconnectDecay?: number;        // Default: 1.5
+    reconnectStabilityMs?: number;  // Default: 10000ms
 
     // Authentication
     token?: string | null;          // JWT token

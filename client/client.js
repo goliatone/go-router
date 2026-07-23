@@ -68,6 +68,7 @@ var __WebSocketClientModule = (() => {
     reconnectDelay: 1e3,
     maxReconnectDelay: 3e4,
     reconnectDecay: 1.5,
+    reconnectStabilityMs: 1e4,
     // Authentication
     token: null,
     tokenRefreshCallback: null,
@@ -148,6 +149,7 @@ var __WebSocketClientModule = (() => {
       // Reconnection state
       this.reconnectAttempts = 0;
       this.reconnectTimer = null;
+      this.reconnectStabilityTimer = null;
       this.shouldReconnect = false;
       // Message handling
       this.messageQueue = [];
@@ -353,7 +355,7 @@ var __WebSocketClientModule = (() => {
       this._setState(CONNECTION_STATES.CONNECTED);
       this.metrics.connectTime = Date.now();
       this.metrics.reconnectCount = this.reconnectAttempts;
-      this.reconnectAttempts = 0;
+      this._scheduleReconnectBudgetReset();
       this.lastError = null;
       this._startHeartbeat();
       this._processMessageQueue();
@@ -479,7 +481,11 @@ var __WebSocketClientModule = (() => {
             this._log("warn", "Heartbeat timeout - connection may be dead");
             this.emit("heartbeatTimeout", []);
             if (this.options.autoReconnect) {
-              this.reconnect();
+              if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close(4e3, "Heartbeat timeout");
+              } else {
+                this._scheduleReconnect();
+              }
             }
           }, this.options.heartbeatTimeout);
         }
@@ -550,8 +556,25 @@ var __WebSocketClientModule = (() => {
         this.reconnectTimer = null;
       }
     }
+    _clearReconnectStabilityTimer() {
+      if (this.reconnectStabilityTimer !== null) {
+        clearTimeout(this.reconnectStabilityTimer);
+        this.reconnectStabilityTimer = null;
+      }
+    }
+    _scheduleReconnectBudgetReset() {
+      this._clearReconnectStabilityTimer();
+      const socket = this.ws;
+      this.reconnectStabilityTimer = setTimeout(() => {
+        this.reconnectStabilityTimer = null;
+        if (this.ws === socket && (socket == null ? void 0 : socket.readyState) === WebSocket.OPEN) {
+          this.reconnectAttempts = 0;
+        }
+      }, Math.max(this.options.reconnectStabilityMs, 0));
+    }
     _cleanup() {
       this._stopHeartbeat();
+      this._clearReconnectStabilityTimer();
       if (this.ws) {
         this.ws.onopen = null;
         this.ws.onclose = null;

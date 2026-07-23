@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.61.2](https://github.com/goliatone/go-router/compare/v0.61.1...v0.61.2) - (2026-07-23)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Reconnect handling for ws ([1eea791](https://github.com/goliatone/go-router/commit/1eea791f533139e080d1ae496fa77811b4b62ac2))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.61.2 ([0a18124](https://github.com/goliatone/go-router/commit/0a181249f9836540e2ad1aeae554190e253b67a5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.61.1 ([7775173](https://github.com/goliatone/go-router/commit/7775173bdb82c5e75523a7e77643fba1b2ee0cc3))  - (goliatone)
+
 # [0.61.1](https://github.com/goliatone/go-router/compare/v0.61.0...v0.61.1) - (2026-07-23)
 
 ## <!-- 13 -->📦 Bumps

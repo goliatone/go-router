@@ -44,8 +44,8 @@ github.com/gofiber/template/django/v3 v3.1.13 h1:9b5VOFUoetOV3axFE7BsLmnZ442Q+h7
 github.com/gofiber/template/django/v3 v3.1.13/go.mod h1:orkcSnqCO0HGTczIBj9rz77i+EneUMebCqA7bsIWaVA=
 github.com/gofiber/utils v1.2.0 h1:NCaqd+Efg3khhN++eeUUTyBz+byIxAsmIjpl8kKOMIc=
 github.com/gofiber/utils v1.2.0/go.mod h1:poZpsnhBykfnY1Mc0KeEa6mSHrS3dV0+oBWyeQmb2e0=
-github.com/goliatone/go-command v0.23.3 h1:CTc/0Zd78NSHVLHT6BtKq8B2o2UC56MFjnsQPA75Jzc=
-github.com/goliatone/go-command v0.23.3/go.mod h1:YRT80m8I+JUrwsmok9FRL2Xc2KT5XYXaorzuqWWV3xs=
+github.com/goliatone/go-command v0.24.1 h1:Rg5BhymcevZgNSLaWys8uto8fmBuToeON5xw7jydlaE=
+github.com/goliatone/go-command v0.24.1/go.mod h1:oIfD1b4npSamA9ME2ph5f4IZKI1/S4QvqtjcfwtKqXU=
 github.com/goliatone/go-composite-fs v0.3.0 h1:dM/iD097b7FWyMVduGpS9HK3Swig7FVNUWfIUs/hp7o=
 github.com/goliatone/go-composite-fs v0.3.0/go.mod h1:soZ1AneoCf50zh28NYag/HozxlvqgvmePsZo2tv1TRk=
 github.com/goliatone/go-errors v0.12.0 h1:FI3FHJe+sogfD+MZJqx8OVGDJqav5PNq1xi1UAXjBwk=

@@ -155,8 +155,8 @@ func (a *FiberAdapter) Router() Router[*fiber.App] {
 func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 	// Wrap a HandlerFunc into a fiber handler
 	return func(c *fiber.Ctx) error {
-		router := a.Router()
-		ctx := NewFiberContext(c, router.(*FiberRouter).logger)
+		a.Router()
+		ctx := NewFiberContext(c, a.router.logger)
 		if fc, ok := ctx.(*fiberContext); ok {
 			fc.setMergeStrategy(a.mergeStrategy)
 		}
@@ -182,19 +182,24 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
 	fullPrefix := r.joinPath(r.prefix, prefix)
 	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
+	wildcard := r.joinPath(path, "*")
 	// Register immediately so static routes can take precedence over catch-all
 	// routes (e.g. "/*") that are typically registered later. When
 	// specificity ordering is enabled, registration is deferred to Init.
-	if route, ok := r.handleFull(GET, path, handler).(*RouteDefinition); ok {
+	if path != "/" {
+		if route, ok := r.handleFull(GET, path, handler).(*RouteDefinition); ok {
+			r.applyInternalRouteName(route, "static.get")
+		}
+	}
+	if route, ok := r.handleFull(GET, wildcard, handler).(*RouteDefinition); ok {
 		r.applyInternalRouteName(route, "static.get")
 	}
-	if route, ok := r.handleFull(GET, path+"/*", handler).(*RouteDefinition); ok {
-		r.applyInternalRouteName(route, "static.get")
+	if path != "/" {
+		if route, ok := r.handleFull(HEAD, path, handler).(*RouteDefinition); ok {
+			r.applyInternalRouteName(route, "static.head")
+		}
 	}
-	if route, ok := r.handleFull(HEAD, path, handler).(*RouteDefinition); ok {
-		r.applyInternalRouteName(route, "static.head")
-	}
-	if route, ok := r.handleFull(HEAD, path+"/*", handler).(*RouteDefinition); ok {
+	if route, ok := r.handleFull(HEAD, wildcard, handler).(*RouteDefinition); ok {
 		r.applyInternalRouteName(route, "static.head")
 	}
 	return r

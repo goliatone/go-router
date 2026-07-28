@@ -466,25 +466,29 @@ type HTTPRouter struct {
 func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httprouter.Router] {
 	fullPrefix := r.joinPath(r.prefix, prefix)
 	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
-	wildcard := path + "/*filepath"
-	r.addInternalLateRoute(GET, path, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
-		return func(ctx Context) error {
-			r.logger.Info("static.get Next")
-			return ctx.Next()
-		}
-	})
+	wildcard := r.joinPath(path, "*filepath")
+	if path != "/" {
+		r.addInternalLateRoute(GET, path, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
+			return func(ctx Context) error {
+				r.logger.Info("static.get Next")
+				return ctx.Next()
+			}
+		})
+	}
 	r.addInternalLateRoute(GET, wildcard, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.get Next")
 			return ctx.Next()
 		}
 	})
-	r.addInternalLateRoute(HEAD, path, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
-		return func(ctx Context) error {
-			r.logger.Info("static.head Next")
-			return ctx.Next()
-		}
-	})
+	if path != "/" {
+		r.addInternalLateRoute(HEAD, path, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
+			return func(ctx Context) error {
+				r.logger.Info("static.head Next")
+				return ctx.Next()
+			}
+		})
+	}
 	r.addInternalLateRoute(HEAD, wildcard, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
 		return func(ctx Context) error {
 			r.logger.Info("static.head Next")

@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.61.3](https://github.com/goliatone/go-router/compare/v0.61.2...v0.61.3) - (2026-07-28)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Normalize root static routes ([b17dc8b](https://github.com/goliatone/go-router/commit/b17dc8b05872890d510684941c9f28e4ac2a57c6))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.61.3 ([3b148fa](https://github.com/goliatone/go-router/commit/3b148fa5b4730f6420f3b3881177551cf08fef5e))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.61.2 ([e14ceaf](https://github.com/goliatone/go-router/commit/e14ceafb7876975af48b12a58750937aa0c6ca89))  - (goliatone)
+
 # [0.61.2](https://github.com/goliatone/go-router/compare/v0.61.1...v0.61.2) - (2026-07-23)
 
 ## <!-- 1 -->🐛 Bug Fixes

@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.62.0](https://github.com/goliatone/go-router/compare/v0.61.3...v0.62.0) - (2026-09-30)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Routing and middleware issues ([cec8c6d](https://github.com/goliatone/go-router/commit/cec8c6d321742d4e2ede1dd27651fec1ea83dd80))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.62.0 ([db85ca7](https://github.com/goliatone/go-router/commit/db85ca733a14f995efc120c18c5b90b02c9ad307))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.61.3 ([fae7eef](https://github.com/goliatone/go-router/commit/fae7eeff3b705651b3b3bf0ab43a41cf97bd2f36))  - (goliatone)
+
 # [0.61.3](https://github.com/goliatone/go-router/compare/v0.61.2...v0.61.3) - (2026-07-28)
 
 ## <!-- 1 -->🐛 Bug Fixes

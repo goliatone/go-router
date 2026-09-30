@@ -10,28 +10,35 @@ require (
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/gobwas/glob v0.2.3
 	github.com/gofiber/contrib/websocket v1.3.4
-	github.com/gofiber/fiber/v2 v2.52.12
+	github.com/gofiber/fiber/v2 v2.52.13
 	github.com/gofiber/template v1.8.3
 	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/gofiber/utils v1.2.0
-	github.com/goliatone/go-command v0.24.1
+	github.com/goliatone/go-command v0.24.2
 	github.com/goliatone/go-composite-fs v0.3.0
 	github.com/goliatone/go-errors v0.12.0
 	github.com/goliatone/go-featuregate v0.6.1
-	github.com/goliatone/hashid v0.2.2
+	github.com/goliatone/hashid v0.2.3
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.1
+	// Pinned to untagged commit d67f418 ("Use crypto/rand for mask key") on purpose.
+	// GO-2026-6278 lists v1.5.3 as fixed, but v1.5.3 still generates mask keys with
+	// math/rand; the crypto/rand fix landed on main after v1.5.3 and is not tagged.
+	// Don't `go get github.com/gorilla/websocket@latest`: it resolves to v1.5.3 and
+	// downgrades. Move to the first tagged release that includes d67f418.
+	// Unlike v1.5.3, this picks subprotocols in client order and answers 426 when
+	// the Upgrade header lacks "websocket".
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/stretchr/testify v1.11.1
-	github.com/valyala/fasthttp v1.52.0
+	github.com/valyala/fasthttp v1.70.0
 	golang.org/x/time v0.8.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
 	github.com/alecthomas/kong v1.11.0 // indirect
-	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fasthttp/websocket v1.5.8 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
@@ -40,7 +47,7 @@ require (
 	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goliatone/go-slug v0.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/lithammer/shortuuid v3.0.0+incompatible // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -56,10 +63,9 @@ require (
 	github.com/showa-93/go-mask v0.6.2 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/tcplisten v1.0.0 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
-	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

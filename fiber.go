@@ -212,6 +212,34 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 	changed := false
 	defer func() { r.root.endMutation(changed) }()
 
+	allMw := slices.Clone(r.middlewares)
+	for _, mw := range m {
+		allMw = append(allMw, namedMiddleware{
+			Name: fmt.Sprintf("%s %s %s", method, fullPath, funcName(mw)),
+			Mw:   mw,
+		})
+	}
+
+	route, mounted := r.handleLocked(method, fullPath, handler, allMw)
+	changed = mounted
+	return route
+}
+
+// handleLateRoute registers a late route at its already-prefixed path with the
+// middleware chain captured by the router that declared it.
+func (r *FiberRouter) handleLateRoute(method HTTPMethod, fullPath string, handler HandlerFunc, middlewares []namedMiddleware) RouteInfo {
+	r.root.beginMutation("register route", method, fullPath)
+	changed := false
+	defer func() { r.root.endMutation(changed) }()
+
+	route, mounted := r.handleLocked(method, fullPath, handler, middlewares)
+	changed = mounted
+	return route
+}
+
+// handleLocked registers fullPath with an already resolved middleware chain.
+// Callers must hold the root registration lock.
+func (r *FiberRouter) handleLocked(method HTTPMethod, fullPath string, handler HandlerFunc, allMw []namedMiddleware) (RouteInfo, bool) {
 	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
 		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
 		switch r.conflictPolicy {
@@ -219,7 +247,7 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 			if r.logger != nil {
 				r.logger.Warn("route conflict skipped: %v", err)
 			}
-			return noopRouteInfo
+			return noopRouteInfo, false
 		case HTTPRouterConflictLogAndContinue:
 			if r.logger != nil {
 				r.logger.Warn("route conflict detected: %v", err)
@@ -229,19 +257,10 @@ func (r *FiberRouter) handleFull(method HTTPMethod, fullPath string, handler Han
 		}
 	}
 
-	allMw := slices.Clone(r.middlewares)
-	for _, mw := range m {
-		allMw = append(allMw, namedMiddleware{
-			Name: fmt.Sprintf("%s %s %s", method, fullPath, funcName(mw)),
-			Mw:   mw,
-		})
-	}
-
 	route := r.addRoute(method, fullPath, handler, "", allMw)
 	r.routeRegistration(route)
-	changed = true
 
-	return route
+	return route, true
 }
 
 func (r *FiberRouter) routeRegistration(route *RouteDefinition) {

@@ -467,34 +467,15 @@ func (r *HTTPRouter) Static(prefix, root string, config ...Static) Router[*httpr
 	fullPrefix := r.joinPath(r.prefix, prefix)
 	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
 	wildcard := r.joinPath(path, "*filepath")
+	// Late routes keep this router's middleware chain, matching Fiber's Static.
 	if path != "/" {
-		r.addInternalLateRoute(GET, path, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
-			return func(ctx Context) error {
-				r.logger.Info("static.get Next")
-				return ctx.Next()
-			}
-		})
+		r.addInternalLateRoute(GET, path, handler, "static.get")
 	}
-	r.addInternalLateRoute(GET, wildcard, handler, "static.get", func(hf HandlerFunc) HandlerFunc {
-		return func(ctx Context) error {
-			r.logger.Info("static.get Next")
-			return ctx.Next()
-		}
-	})
+	r.addInternalLateRoute(GET, wildcard, handler, "static.get")
 	if path != "/" {
-		r.addInternalLateRoute(HEAD, path, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
-			return func(ctx Context) error {
-				r.logger.Info("static.head Next")
-				return ctx.Next()
-			}
-		})
+		r.addInternalLateRoute(HEAD, path, handler, "static.head")
 	}
-	r.addInternalLateRoute(HEAD, wildcard, handler, "static.head", func(hf HandlerFunc) HandlerFunc {
-		return func(ctx Context) error {
-			r.logger.Info("static.head Next")
-			return ctx.Next()
-		}
-	})
+	r.addInternalLateRoute(HEAD, wildcard, handler, "static.head")
 	return r
 }
 
@@ -580,6 +561,28 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	r.root.beginMutation("register route", method, fullPath)
 	changed := false
 	defer func() { r.root.endMutation(changed) }()
+
+	route, mounted := r.handleLocked(method, fullPath, handler, r.buildNamedMiddlewares(m))
+	changed = mounted
+	return route
+}
+
+// handleLateRoute registers a late route, such as a Static mount, at its
+// already-prefixed path with the middleware chain captured by the router that
+// declared it.
+func (r *HTTPRouter) handleLateRoute(method HTTPMethod, fullPath string, handler HandlerFunc, middlewares []namedMiddleware) RouteInfo {
+	r.root.beginMutation("register route", method, fullPath)
+	changed := false
+	defer func() { r.root.endMutation(changed) }()
+
+	route, mounted := r.handleLocked(method, fullPath, handler, middlewares)
+	changed = mounted
+	return route
+}
+
+// handleLocked registers fullPath with an already resolved middleware chain.
+// Callers must hold the root registration lock.
+func (r *HTTPRouter) handleLocked(method HTTPMethod, fullPath string, handler HandlerFunc, allMw []namedMiddleware) (RouteInfo, bool) {
 	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
 		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
 		switch r.conflictPolicy {
@@ -587,18 +590,10 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 			if r.logger != nil {
 				r.logger.Warn("route conflict skipped: %v", err)
 			}
-			return noopRouteInfo
+			return noopRouteInfo, false
 		case HTTPRouterConflictPanic:
 			panic(err)
 		}
-	}
-
-	allMw := append([]namedMiddleware{}, r.middlewares...)
-	for _, mw := range m {
-		allMw = append(allMw, namedMiddleware{
-			Name: funcName(mw),
-			Mw:   mw,
-		})
 	}
 
 	route := r.addRoute(method, fullPath, handler, "", allMw)
@@ -609,9 +604,8 @@ func (r *HTTPRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFu
 	// Register final handler with httprouter.
 	r.router.Handle(string(method), fullPath, r.httpRouteHandler(route))
 	r.root.recordMounted(route)
-	changed = true
 
-	return route
+	return route, true
 }
 
 func (r *HTTPRouter) httpRouteHandler(route *RouteDefinition) httprouter.Handle {

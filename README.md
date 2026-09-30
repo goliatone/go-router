@@ -423,6 +423,22 @@ api := app.Router().Group("/api")
 }
 ```
 
+### Static Files
+
+`Static(prefix, root, ...Static)` serves a directory, or an `fs.FS` via `router.Static{FS: ...}`, under a URL prefix on both adapters:
+
+```go
+app.Router().Static("/static", "./public")
+```
+
+The static handler only serves request paths that are already canonical. If the path below the prefix contains `.` or `..` segments (percent-encoded ones such as `%2e%2e` included) or empty segments (`//`), the handler responds `404 Not Found` and does not touch the filesystem. It does not clean the path or redirect to the cleaned form. A single trailing slash is allowed, so `/static/docs/` still serves `docs/index.html`.
+
+Middleware and guards see the request path as it was received. If the handler served a cleaned variant, `/static/./admin/export.csv` would reach a file that a guard on `/static/admin` is meant to block. Browsers remove dot segments before sending a request, so those only come from hand-built URLs. Browsers send doubled slashes as written, so fix any links that produce them, such as `/static/css//app.css`.
+
+Spelling must match as well. Case-insensitive filesystems (the macOS and Windows defaults, or a case-insensitive mount on Linux) open `admin/export.csv` for `/static/ADMIN/export.csv`, which a guard comparing exact names would miss. When a segment also resolves under a different case, the handler checks it against the directory listing and answers `404` unless the request uses the stored spelling, or `500` if the listing cannot be read. That costs a directory read per segment on those filesystems and at most one extra `Stat` per segment elsewhere. Links that only worked because the filesystem ignored case now fail locally too, as they would on a case-sensitive server. The prefix must match exactly: Fiber routes case-insensitively, so `/STATIC/app.css` reaches a `/static` mount and gets a `404`.
+
+Missing files, and names the filesystem cannot open (for example a path that continues past a regular file), also return `404`. Other filesystem errors return a generic `500`. The details are logged and never sent to the client.
+
 ### Builder
 
 ```go

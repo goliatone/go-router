@@ -79,3 +79,31 @@ func TestDetectConsecutiveDuplicateSegment(t *testing.T) {
 		t.Fatalf("expected no duplicate, got %q", seg)
 	}
 }
+
+func TestIsCanonicalStaticPath(t *testing.T) {
+	cases := map[string]bool{
+		"":                true,
+		"file.txt":        true,
+		"dir/":            true,
+		"dir/file.txt":    true,
+		".well-known/x":   true,
+		"...":             true,
+		".":               false,
+		"./":              false,
+		"..":              false,
+		"./file.txt":      false,
+		"dir/.":           false,
+		"dir/../file.txt": false,
+		"/":               false,
+		"/file.txt":       false,
+		"dir//file.txt":   false,
+		"dir//":           false,
+		"\xff":            false,
+	}
+
+	for rel, want := range cases {
+		if got := isCanonicalStaticPath(rel); got != want {
+			t.Errorf("isCanonicalStaticPath(%q) = %v, want %v", rel, got, want)
+		}
+	}
+}

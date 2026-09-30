@@ -206,22 +206,22 @@ func (c *fiberContext) captureRequestMeta() {
 	meta.host = ctx.Hostname()
 	meta.port = ctx.Port()
 
-	ctx.Request().Header.VisitAll(func(key, value []byte) {
+	for key, value := range ctx.Request().Header.All() {
 		meta.headers[string(key)] = string(value)
-	})
+	}
 
 	args := ctx.Request().URI().QueryArgs()
-	args.VisitAll(func(key, value []byte) {
+	for key, value := range args.All() {
 		keyStr := string(key)
 		meta.queriesMulti[keyStr] = append(meta.queriesMulti[keyStr], string(value))
 		meta.queries[keyStr] = string(value)
-	})
+	}
 
 	maps.Copy(meta.params, ctx.AllParams())
 
-	ctx.Request().Header.VisitAllCookie(func(key, value []byte) {
+	for key, value := range ctx.Request().Header.Cookies() {
 		meta.cookies[string(key)] = string(value)
-	})
+	}
 }
 
 func (c *fiberContext) getMeta() *fiberRequestMeta {
@@ -513,11 +513,11 @@ func (c *fiberContext) QueryValues(name string) []string {
 	if ctx := c.liveCtx(); ctx != nil {
 		args := ctx.Request().URI().QueryArgs()
 		values := []string{}
-		args.VisitAll(func(key, value []byte) {
+		for key, value := range args.All() {
 			if string(key) == name {
 				values = append(values, string(value))
 			}
-		})
+		}
 		if len(values) > 0 {
 			return values
 		}
@@ -553,9 +553,9 @@ func (c *fiberContext) Queries() map[string]string {
 	if ctx := c.liveCtx(); ctx != nil {
 		queries := make(map[string]string)
 		args := ctx.Request().URI().QueryArgs()
-		args.VisitAll(func(key, value []byte) {
+		for key, value := range args.All() {
 			queries[string(key)] = string(value)
-		})
+		}
 		return queries
 	}
 	if meta := c.getMeta(); meta != nil && meta.queries != nil {
@@ -761,9 +761,9 @@ func (c *fiberContext) ResponseHeaders() http.Header {
 		return headers
 	}
 	if ctx := c.liveCtx(); ctx != nil {
-		ctx.Response().Header.VisitAll(func(key, value []byte) {
+		for key, value := range ctx.Response().Header.All() {
 			headers.Add(string(key), string(value))
-		})
+		}
 	}
 	return headers
 }

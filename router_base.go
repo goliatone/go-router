@@ -10,9 +10,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 type routerRoot struct {
@@ -415,12 +417,12 @@ func (br *BaseRouter) namedRouteConflicts() []error {
 }
 
 type lateRoute struct {
-	method  HTTPMethod
-	path    string
-	handler HandlerFunc
-	name    string
-	mode    routeNameMode
-	mw      []MiddlewareFunc
+	method      HTTPMethod
+	path        string
+	handler     HandlerFunc
+	name        string
+	mode        routeNameMode
+	middlewares []namedMiddleware
 }
 
 func (br *BaseRouter) addLateRoute(method HTTPMethod, pathStr string, handler HandlerFunc, routeName string, m ...MiddlewareFunc) {
@@ -441,19 +443,24 @@ func (br *BaseRouter) addLateRouteWithMode(method HTTPMethod, pathStr string, ha
 		handler: handler,
 		name:    routeName,
 		mode:    mode,
-		mw:      m,
+		// Late routes are mounted by the root router, so capture the declaring
+		// router's chain now, as immediate registration does. Otherwise group
+		// middleware such as auth guards would be skipped.
+		middlewares: br.buildNamedMiddlewares(m),
 	}
 
 	br.root.lateRoutes = append(br.root.lateRoutes, d)
 }
 
+// lateRouteRegistrar mounts a late route at its full path using exactly the
+// middleware chain captured when the route was declared.
 type lateRouteRegistrar interface {
-	Handle(method HTTPMethod, path string, handler HandlerFunc, middlewares ...MiddlewareFunc) RouteInfo
+	handleLateRoute(method HTTPMethod, fullPath string, handler HandlerFunc, middlewares []namedMiddleware) RouteInfo
 }
 
 func (br *BaseRouter) registerLateRoutes(reg lateRouteRegistrar) {
 	for _, route := range br.root.lateRoutes {
-		ri := reg.Handle(route.method, route.path, route.handler, route.mw...)
+		ri := reg.handleLateRoute(route.method, route.path, route.handler, route.middlewares)
 		if route.name != "" {
 			if route.mode == routeNameModeInternal {
 				if def, ok := ri.(*RouteDefinition); ok {
@@ -594,25 +601,46 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 
 	handler := func(c Context) error {
 		r.logger.Info("Public static handler")
-		// Get path relative to prefix
+		// Get path relative to prefix. Fiber matches routes case-insensitively,
+		// so "/STATIC/x" can reach a "/static" mount; serving it would slip past
+		// guards that compare the prefix exactly. Answer 404 rather than calling
+		// c.Next(), which would end the chain with an empty 200.
 		reqPath := c.Path()
 		if prefix != "/" {
 			if reqPath != prefix && !strings.HasPrefix(reqPath, prefix+"/") {
-				return c.Next()
+				return c.Status(404).SendString("Not Found")
 			}
 		} else if !strings.HasPrefix(reqPath, "/") {
-			return c.Next()
+			return c.Status(404).SendString("Not Found")
 		}
 
-		// Strip prefix and clean path
+		// Strip the prefix and the one separator after it. Only a single slash is
+		// removed so the empty segment in "/static//x" (or "//x" on a root mount)
+		// reaches the canonical check below.
 		filePath := strings.TrimPrefix(reqPath, prefix)
-		filePath = strings.TrimPrefix(filePath, "/") // Remove leading slash for fs.FS
+		if prefix != "/" {
+			filePath = strings.TrimPrefix(filePath, "/")
+		}
 
+		// Guards and route matching saw reqPath as received, so serving a cleaned
+		// variant would resolve a different file than the one they inspected
+		// (e.g. "/static/./admin/x" slipping past a guard on "/static/admin").
+		// Non-canonical paths get a 404 rather than a redirect to the cleaned path.
+		if !isCanonicalStaticPath(filePath) {
+			r.logger.Info("[WARN] public rejected non-canonical path %q", reqPath)
+			return c.Status(404).SendString("Not Found")
+		}
+
+		// Only a name taken from the request needs its spelling verified below;
+		// the configured index name is trusted.
+		fromRequest := filePath != ""
 		if filePath == "" && cfg.Browse {
 			filePath = "."
 		} else if filePath == "" {
 			filePath = cfg.Index
 		}
+		// The request path is already canonical; Clean only drops a trailing
+		// slash and normalizes the configured index name.
 		filePath = path.Clean(filePath)
 		if filePath == "/" {
 			filePath = "."
@@ -621,12 +649,12 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 		// Check if file exists and get info
 		f, err := fileSystem.Open(filePath)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if isStaticNotFound(err) {
 				r.logger.Info("[WARN] public did not find path")
 				return c.Status(404).SendString("Not Found")
 			}
 			r.logger.Error("public failed to open filepath: %s", err)
-			return c.Status(500).SendString(err.Error())
+			return c.Status(500).SendString("Internal Server Error")
 		}
 		defer func() {
 			if f == nil {
@@ -637,9 +665,25 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 			}
 		}()
 
+		// Same reasoning as the canonical check: a case-insensitive filesystem
+		// also opens "ADMIN/x" for an "admin/x" entry, a spelling that a guard
+		// comparing exact names never matched. Serve stored spellings only.
+		if fromRequest {
+			exact, verifyErr := hasExactStaticName(fileSystem, filePath)
+			if verifyErr != nil && !isStaticNotFound(verifyErr) {
+				r.logger.Error("public failed to verify file name: %s", verifyErr)
+				return c.Status(500).SendString("Internal Server Error")
+			}
+			if !exact {
+				r.logger.Info("[WARN] public rejected path %q that differs from the stored name", reqPath)
+				return c.Status(404).SendString("Not Found")
+			}
+		}
+
 		stat, err := f.Stat()
 		if err != nil {
-			return c.Status(500).SendString(err.Error())
+			r.logger.Error("public failed to stat file: %s", err)
+			return c.Status(500).SendString("Internal Server Error")
 		}
 
 		// Handle directory
@@ -688,7 +732,7 @@ func (r *BaseRouter) makeStaticHandler(prefix, root string, config ...Static) (s
 		content, err := io.ReadAll(f)
 		if err != nil {
 			r.logger.Error("public failed to read file: %s", err)
-			return c.Status(500).SendString(err.Error())
+			return c.Status(500).SendString("Internal Server Error")
 		}
 
 		// TODO: We might want to modify ModifyResponse to also take in the content
@@ -800,6 +844,64 @@ func normalizeFSRoot(root string) string {
 		return "."
 	}
 	return root
+}
+
+// isCanonicalStaticPath reports whether rel, a request path with the static
+// prefix and its separator removed, is already canonical: no ".", ".." or
+// empty segments, ignoring a single trailing slash. fs.ValidPath also rejects
+// invalid UTF-8.
+func isCanonicalStaticPath(rel string) bool {
+	if rel == "" {
+		return true
+	}
+	rel = strings.TrimSuffix(rel, "/")
+	return rel != "." && fs.ValidPath(rel)
+}
+
+// isStaticNotFound reports whether an Open error means the request does not
+// name a servable file. os.DirFS returns fs.ErrInvalid for names it cannot
+// represent (such as NUL bytes) and ENOTDIR when a path continues past a
+// regular file; embedded filesystems report both as fs.ErrNotExist.
+func isStaticNotFound(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrInvalid) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// hasExactStaticName reports whether every segment of name, a canonical path
+// that fsys opened, is spelled exactly like the directory entry it resolved
+// to. A segment is compared against its directory listing only when a
+// different-case spelling of it resolves too, so case-sensitive filesystems
+// pay at most one failed Stat per segment instead of a directory read.
+// Segments without letters are not probed, so aliases that do not involve
+// case (a Windows 8.3 short name of an all-digit directory, say) still pass.
+func hasExactStaticName(fsys fs.FS, name string) (bool, error) {
+	dir := "."
+	for seg := range strings.SplitSeq(name, "/") {
+		if resolvesOtherCase(fsys, dir, seg) {
+			entries, err := fs.ReadDir(fsys, dir)
+			if err != nil {
+				return false, err
+			}
+			if !slices.ContainsFunc(entries, func(e fs.DirEntry) bool { return e.Name() == seg }) {
+				return false, nil
+			}
+		}
+		dir = path.Join(dir, seg)
+	}
+	return true, nil
+}
+
+// resolvesOtherCase reports whether fsys also resolves seg in dir when it is
+// spelled in upper case, or in lower case if it already is all upper case.
+func resolvesOtherCase(fsys fs.FS, dir, seg string) bool {
+	other := strings.ToUpper(seg)
+	if other == seg {
+		other = strings.ToLower(seg)
+	}
+	if other == seg {
+		return false
+	}
+	_, err := fs.Stat(fsys, path.Join(dir, other))
+	return err == nil
 }
 
 func detectConsecutiveDuplicateSegment(p string) string {

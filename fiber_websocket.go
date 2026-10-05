@@ -672,7 +672,7 @@ func FiberWebSocketHandler(config WebSocketConfig, handler func(WebSocketContext
 			var err error
 			upgradeData, err = config.OnPreUpgrade(ctx)
 			if err != nil {
-				return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+				return writeWebSocketPreUpgradeError(ctx, err)
 			}
 		}
 

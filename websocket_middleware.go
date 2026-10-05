@@ -45,7 +45,7 @@ func WebSocketUpgrade(config WebSocketConfig) MiddlewareFunc {
 			if config.OnPreUpgrade != nil {
 				data, err := config.OnPreUpgrade(c)
 				if err != nil {
-					return c.Status(400).SendString("upgrade validation failed")
+					return writeWebSocketPreUpgradeError(c, err)
 				}
 				upgradeData = data
 			}

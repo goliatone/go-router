@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+// ErrWebSocketUpgradeHandled aborts the upgrade after OnPreUpgrade has written
+// an HTTP response. Adapters must preserve that response and skip the handler.
+var ErrWebSocketUpgradeHandled = errors.New("websocket: upgrade response handled")
+
 // WebSocket error definitions
 var (
 	// Connection errors

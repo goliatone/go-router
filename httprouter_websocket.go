@@ -718,7 +718,7 @@ func HTTPRouterWebSocketHandler(config WebSocketConfig, handler func(WebSocketCo
 		if config.OnPreUpgrade != nil {
 			data, err := config.OnPreUpgrade(wsCtx)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				_ = writeWebSocketPreUpgradeError(wsCtx, err)
 				return
 			}
 			wsCtx.upgradeData = data

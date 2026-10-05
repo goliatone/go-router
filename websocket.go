@@ -113,6 +113,8 @@ type WebSocketConfig struct {
 	OnDisconnect func(WebSocketContext, error)
 	OnMessage    func(WebSocketContext, int, []byte) error
 	OnError      func(WebSocketContext, error)
+	// Return ErrWebSocketUpgradeHandled after rendering a rejection response.
+	// Other errors retain their HTTP status; unclassified errors use HTTP 400.
 	OnPreUpgrade func(Context) (UpgradeData, error)
 
 	// Custom upgrader (adapter-specific)

@@ -615,6 +615,8 @@ func (c *httpRouterWebSocketContext) RouteParams() map[string]string {
 	return make(map[string]string)
 }
 
+func (c *httpRouterWebSocketContext) setHandlerIndex(index int) { c.index = index }
+
 func (c *httpRouterWebSocketContext) Next() error {
 	c.index++
 	if c.index >= len(c.handlers) {

@@ -24,12 +24,24 @@ const (
 	segmentCatchAll
 )
 
-func splitPathSegments(path string) []string {
-	trimmed := strings.Trim(path, "/")
-	if trimmed == "" {
-		return nil
+type pathSegments struct {
+	rest      string
+	remaining int
+}
+
+func splitPathSegments(path string) pathSegments {
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return pathSegments{}
 	}
-	return strings.Split(trimmed, "/")
+	return pathSegments{rest: path, remaining: strings.Count(path, "/") + 1}
+}
+
+func (p *pathSegments) next() string {
+	segment, rest, _ := strings.Cut(p.rest, "/")
+	p.rest = rest
+	p.remaining--
+	return segment
 }
 
 func classifySegment(segment string) segmentKind {
@@ -51,7 +63,8 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode, enf
 	existingParts := splitPathSegments(existingPath)
 	newParts := splitPathSegments(newPath)
 
-	minLen := min(len(newParts), len(existingParts))
+	existingLen, newLen := existingParts.remaining, newParts.remaining
+	minLen := min(newLen, existingLen)
 
 	firstParamPairIndex := -1
 	firstParamPairExistingSegment := ""
@@ -61,8 +74,8 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode, enf
 	firstStaticParamNewSegment := ""
 
 	for i := range minLen {
-		existingSegment := existingParts[i]
-		newSegment := newParts[i]
+		existingSegment := existingParts.next()
+		newSegment := newParts.next()
 		existingKind := classifySegment(existingSegment)
 		newKind := classifySegment(newSegment)
 
@@ -98,7 +111,7 @@ func detectPathConflict(existingPath, newPath string, mode PathConflictMode, enf
 		}
 	}
 
-	if len(existingParts) != len(newParts) {
+	if existingLen != newLen {
 		return nil
 	}
 

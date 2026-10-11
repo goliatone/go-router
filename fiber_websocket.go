@@ -578,6 +578,8 @@ func (c *fiberWebSocketContext) UpgradeData(key string) (any, bool) {
 	return val, ok
 }
 
+func (c *fiberWebSocketContext) setHandlerIndex(index int) { c.index = index }
+
 func (c *fiberWebSocketContext) Next() error {
 	c.index++
 	if c.index >= len(c.handlers) {

@@ -77,11 +77,12 @@ func compareRouteSpecificity(leftPath, rightPath string) int {
 	leftParts := splitPathSegments(leftPath)
 	rightParts := splitPathSegments(rightPath)
 
-	minLen := min(len(rightParts), len(leftParts))
+	leftLen, rightLen := leftParts.remaining, rightParts.remaining
+	minLen := min(rightLen, leftLen)
 
-	for i := range minLen {
-		leftSegment := leftParts[i]
-		rightSegment := rightParts[i]
+	for range minLen {
+		leftSegment := leftParts.next()
+		rightSegment := rightParts.next()
 		leftKind := classifySegment(leftSegment)
 		rightKind := classifySegment(rightSegment)
 
@@ -94,8 +95,8 @@ func compareRouteSpecificity(leftPath, rightPath string) int {
 		}
 	}
 
-	if len(leftParts) != len(rightParts) {
-		if len(leftParts) > len(rightParts) {
+	if leftLen != rightLen {
+		if leftLen > rightLen {
 			return 1
 		}
 		return -1

@@ -1408,6 +1408,8 @@ func (c *httpRouterContext) GetBool(key string, def bool) bool {
 	return c.store.GetBool(key, def)
 }
 
+func (c *httpRouterContext) setHandlerIndex(index int) { c.index = index }
+
 func (c *httpRouterContext) Next() error {
 	c.index++
 	if c.index >= len(c.handlers) {

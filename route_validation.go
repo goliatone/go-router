@@ -139,24 +139,30 @@ func detectBareIDParamLint(paramRoute, staticRoute *RouteDefinition) error {
 
 	paramParts := splitPathSegments(paramRoute.Path)
 	staticParts := splitPathSegments(staticRoute.Path)
-	if len(paramParts) != len(staticParts) {
+	if paramParts.remaining != staticParts.remaining {
 		return nil
 	}
 
-	for i, paramSegment := range paramParts {
+	for i := 0; paramParts.remaining > 0; i++ {
+		paramSegment := paramParts.next()
+		staticSegment := staticParts.next()
 		name, constraint, ok := parseParamSegment(paramSegment)
 		if !ok || name != "id" || constraint != "" {
 			continue
 		}
-		if classifySegment(staticParts[i]) != segmentStatic {
+		if classifySegment(staticSegment) != segmentStatic {
 			continue
 		}
 
-		for k := range paramParts {
+		paramCheck := splitPathSegments(paramRoute.Path)
+		staticCheck := splitPathSegments(staticRoute.Path)
+		for k := 0; paramCheck.remaining > 0; k++ {
+			paramSegment := paramCheck.next()
+			staticSegment := staticCheck.next()
 			if k == i {
 				continue
 			}
-			if paramParts[k] != staticParts[k] {
+			if paramSegment != staticSegment {
 				return nil
 			}
 		}

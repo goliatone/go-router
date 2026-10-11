@@ -122,18 +122,23 @@ type missHandler struct {
 // 3. Apply group-level and then global middlewares in reverse order.
 // Result: a slice of NamedHandler forming the chain.
 func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []namedMiddleware) []NamedHandler {
-	// We'll build the chain from the bottom (final handler) up.
-	chain := []NamedHandler{{Name: routeName, Handler: finalHandler}}
-
-	// Apply middlewares in reverse order, each wrapping the current chain head.
+	chain := make([]NamedHandler, len(middlewares)+1)
+	chain[len(middlewares)] = NamedHandler{Name: routeName, Handler: handlerAtIndex(len(middlewares), finalHandler)}
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		m := middlewares[i]
-		next := chain[0].Handler
-		mwHandler := m.Mw(next)
-		chain = append([]NamedHandler{{Name: m.Name, Handler: mwHandler}}, chain...)
+		chain[i] = NamedHandler{Name: m.Name, Handler: handlerAtIndex(i, m.Mw(chain[i+1].Handler))}
 	}
-
 	return chain
+}
+
+func handlerAtIndex(index int, handler HandlerFunc) HandlerFunc {
+	return func(c Context) error {
+		// Closure continuations and Context.Next must advance the same cursor.
+		if cursor, ok := c.(interface{ setHandlerIndex(int) }); ok {
+			cursor.setHandlerIndex(index)
+		}
+		return handler(c)
+	}
 }
 
 //	func (br *baseRouter) PrintRoutes() {

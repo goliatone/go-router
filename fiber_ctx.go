@@ -823,6 +823,8 @@ func (c *fiberContext) GetBool(key string, def bool) bool {
 	return c.store.GetBool(key, def)
 }
 
+func (c *fiberContext) setHandlerIndex(index int) { c.index = index }
+
 func (c *fiberContext) Next() error {
 	c.index++
 	if c.index >= len(c.handlers) {

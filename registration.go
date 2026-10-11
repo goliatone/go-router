@@ -195,7 +195,8 @@ func AnalyzeRouteShadowsWithSemantics(routes []RouteDefinition, semantics RouteM
 }
 
 func containsParameter(path string) bool {
-	for _, segment := range splitPathSegments(path) {
+	for parts := splitPathSegments(path); parts.remaining > 0; {
+		segment := parts.next()
 		if classifySegment(segment) == segmentParam {
 			return true
 		}
@@ -211,7 +212,8 @@ func trailingSlashEquivalent(left, right string) bool {
 }
 
 func containsCatchAll(path string) bool {
-	for _, segment := range splitPathSegments(path) {
+	for parts := splitPathSegments(path); parts.remaining > 0; {
+		segment := parts.next()
 		if classifySegment(segment) == segmentCatchAll {
 			return true
 		}
@@ -233,21 +235,23 @@ func routePatternContainsWithSemantics(earlierPath, candidatePath string, semant
 	earlier := splitPathSegments(earlierPath)
 	candidate := splitPathSegments(candidatePath)
 
-	for i := range earlier {
-		if classifySegment(earlier[i]) == segmentCatchAll {
-			return prefixesCompatible(earlier[:i], candidate)
+	for earlier.remaining > 0 {
+		earlierSegment := earlier.next()
+		earlierKind := classifySegment(earlierSegment)
+		if earlierKind == segmentCatchAll {
+			return true
 		}
-		if i >= len(candidate) {
+		if candidate.remaining == 0 {
 			return false
 		}
 
-		earlierKind := classifySegment(earlier[i])
-		candidateKind := classifySegment(candidate[i])
+		candidateSegment := candidate.next()
+		candidateKind := classifySegment(candidateSegment)
 		switch {
 		case candidateKind == segmentCatchAll:
 			return false
 		case earlierKind == segmentStatic && candidateKind == segmentStatic:
-			if earlier[i] != candidate[i] {
+			if earlierSegment != candidateSegment {
 				return false
 			}
 		case earlierKind == segmentStatic:
@@ -255,30 +259,11 @@ func routePatternContainsWithSemantics(earlierPath, candidatePath string, semant
 		}
 	}
 
-	return len(earlier) == len(candidate)
+	return candidate.remaining == 0
 }
 
 func hasTrailingSlash(value string) bool {
 	return len(value) > 1 && strings.HasSuffix(value, "/")
-}
-
-func prefixesCompatible(earlierPrefix, candidate []string) bool {
-	if len(candidate) < len(earlierPrefix) {
-		return false
-	}
-	for i, segment := range earlierPrefix {
-		earlierKind := classifySegment(segment)
-		candidateKind := classifySegment(candidate[i])
-		if candidateKind == segmentCatchAll {
-			return false
-		}
-		if earlierKind == segmentStatic {
-			if candidateKind != segmentStatic || segment != candidate[i] {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 func newRegistrationError(operation string, method HTTPMethod, path string, state RegistrationState, err error) error {

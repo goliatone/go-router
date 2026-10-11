@@ -1,9 +1,14 @@
 # Changelog
 
-# [Unreleased] - 0.62.3
+# [0.62.3](https://github.com/goliatone/go-router/compare/v0.62.2...v0.62.3) - (2026-10-11)
 
-- Avoid route-segment slice allocation during conflict checks, validation, ordering and shadow analysis.
-- Keep closure and index middleware continuations on one cursor so downstream handlers execute once.
+## <!-- 1 -->🐛 Bug Fixes
+
+- Tests and code quality ([0b84f81](https://github.com/goliatone/go-router/commit/0b84f81272f5d3a3e66d0aa78dc8077ad7facc2c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.62.2 ([ca424ff](https://github.com/goliatone/go-router/commit/ca424ffbaee34311ccca3bd52e08bd8e3124943e))  - (goliatone)
 
 # [0.62.2](https://github.com/goliatone/go-router/compare/v0.62.1...v0.62.2) - (2026-10-05)
 

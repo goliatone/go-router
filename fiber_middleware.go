@@ -55,6 +55,9 @@ func initSharedSubApp() {
 		if !ok {
 			return nil
 		}
+		// Native middleware may replace UserContext after the router cached it.
+		// Make that current context visible before re-entering the router chain.
+		state.routerCtx.SetContext(ctx.UserContext())
 		return state.next(state.routerCtx)
 	})
 }
@@ -85,6 +88,9 @@ func MiddlewareFromFiber(userFiberMw func(*fiber.Ctx) error) MiddlewareFunc {
 			}
 
 			realFiberCtx := fc.ctx
+			// Also synchronize updates made while native middleware unwinds, or
+			// when it short-circuits without calling the router's next handler.
+			defer func() { fc.SetContext(realFiberCtx.UserContext()) }()
 			reqCtx := realFiberCtx.Context() // *fasthttp.RequestCtx
 
 			// pass data using locals; restore the outer value afterwards so a

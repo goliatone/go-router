@@ -1,6 +1,27 @@
 # go-router
 
-A lightweight, generic HTTP router interface for Go that enables framework agnostic HTTP handling with built in adapters. This package provides an abstraction for routing, making it easy to switch between different HTTP router implementations.
+A framework-neutral HTTP and WebSocket routing layer with Fiber and
+httprouter adapters, shared request contexts, route registration/ownership policy,
+views and response capture, OpenAPI metadata, event streams, and optional
+RPC/SSE integration. Hosts own listeners, authentication policy, and domain routes.
+
+Use the Go toolchain required by `go.mod` (currently Go 1.26.0 or newer).
+
+## Package and documentation map
+
+| Surface | Responsibility | Reference |
+| --- | --- | --- |
+| Root `router` package | HTTP contexts/adapters, route registration, manifests, response state/capture, views, and WebSocket primitives | Sections below |
+| `eventstream` | Transport-neutral event stream messages, subscriptions, and framing contracts | `eventstream/*.go` |
+| `rpcfiber` | Mount go-command RPC endpoints on a Fiber-backed router | `rpcfiber/mount.go` |
+| `ssefiber` | Mount SSE delivery on a Fiber-backed router | `ssefiber/mount.go` |
+| Views | Embedded/disk template precedence and extension fallback | [View setup](VIEW_SETUP.md) |
+| WebSockets | High-level hub/client APIs, lower-level context APIs and lifecycle | [Overview](README_WEBSOCKET.md), [API](docs/WEBSOCKET_API.md), [lifecycle](docs/LIFECYCLE_HOOKS_CONTRACT.md), [timeouts](docs/WEBSOCKET_TIMEOUTS.md) |
+| Metadata | Struct/schema extraction and migration/performance guidance | [Extraction](docs/metadata_extraction_guide.md), [migration](docs/metadata_migration_guide.md), [performance](docs/metadata_performance_guide.md) |
+
+These packages belong to `github.com/goliatone/go-router`; they are not separate
+Go modules. Historical WebSocket designs/task breakdowns are background records;
+current source and the API/lifecycle guides define the implementation.
 
 ## Installation
 
@@ -175,6 +196,29 @@ parameter route is mounted before any wildcard/parameter route that contains
 it, choosing the earliest eligible declaration at each step to minimize other
 movement.
 
+### Inspecting registration state
+
+`RegistrationInspector.RegistrationSnapshot()` is a read-only capability.
+Snapshots include `State`, `Revision`, `DeclaredRoutes`, `MountedRoutes`, and
+adapter matching semantics. Treat collecting/finalizing snapshots as provisional;
+only a sealed snapshot describes the complete mounted dispatch table. Inspection
+does not call `Init()` or seal registration. `RoutingCapabilities`, route
+manifests, ownership checks and `AnalyzeRouteShadowsWithSemantics` support host
+startup diagnostics; they do not perform authenticated handler probes.
+
+### Rendering without committing a response
+
+`AsTemplateRenderer(ctx)` detects optional `RenderToWriter`/`RenderToBytes`
+capabilities. Use these to render a candidate template before sending it to the
+live response. `CaptureResponse(ctx, maxBodySize, handler)` isolates response
+status, headers and body; `ReplayCapturedResponse` commits a successful capture.
+The default capture limit is 1 MiB when the supplied limit is non-positive.
+Streams return `ErrResponseCaptureStream`, oversized bodies return
+`ErrResponseCaptureTooLarge`, and handler/render errors return no successful
+capture. Hosts still own cache eligibility, header filtering and fallback policy;
+replay does not decide whether captured cookies or headers are safe to reuse.
+See `response_capture.go`, `response_state.go`, and `template_renderer.go`.
+
 ## Usage
 
 ### Basic Example with Fiber
@@ -184,7 +228,6 @@ package main
 
 import (
     "github.com/goliatone/go-router"
-    "github.com/gofiber/fiber/v2"
 )
 
 func main() {
@@ -192,9 +235,11 @@ func main() {
     app := router.NewFiberAdapter()
 
     // Add middleware
-    app.Router().Use(func(c router.Context) error {
-        c.SetHeader("Content-Type", "application/json")
-        return c.Next()
+    app.Router().Use(func(next router.HandlerFunc) router.HandlerFunc {
+        return func(c router.Context) error {
+            c.SetHeader("Content-Type", "application/json")
+            return next(c)
+        }
     })
 
     // Add routes
@@ -203,7 +248,9 @@ func main() {
     })
 
     // Start server
-    app.Serve(":3000")
+    if err := app.Serve(":3000"); err != nil {
+        panic(err)
+    }
 }
 ```
 

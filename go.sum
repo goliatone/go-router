@@ -64,8 +64,8 @@ github.com/goliatone/go-command v0.24.3 h1:CZvM6xg2J1+e96Wu8uPaKyQmKzwLCypknko5J
 github.com/goliatone/go-command v0.24.3/go.mod h1:PGuCsS9jhVoWUaY+SZ9TAzvVnhzdwq1Tbs57PIv1myE=
 github.com/goliatone/go-composite-fs v0.3.0 h1:dM/iD097b7FWyMVduGpS9HK3Swig7FVNUWfIUs/hp7o=
 github.com/goliatone/go-composite-fs v0.3.0/go.mod h1:soZ1AneoCf50zh28NYag/HozxlvqgvmePsZo2tv1TRk=
-github.com/goliatone/go-crud v0.26.0 h1:C45qHkLGZNfmtKk1aqJJ8BCQvuVhpkOrFG1w/vq/LtQ=
-github.com/goliatone/go-crud v0.26.0/go.mod h1:nkxlvTsY3GFrU/+HxN5cvyL3CIvtWxXUrUi7To3u60Y=
+github.com/goliatone/go-crud v0.26.1 h1:yXUG/7xhK+ebBaPTqyWpKGPDq7fsH+h6LB42EW5Asdw=
+github.com/goliatone/go-crud v0.26.1/go.mod h1:XCWQSZ7PYCj8+4KTlqblSOaYuMPxInGkfwpSE49Nwg0=
 github.com/goliatone/go-errors v0.12.0 h1:FI3FHJe+sogfD+MZJqx8OVGDJqav5PNq1xi1UAXjBwk=
 github.com/goliatone/go-errors v0.12.0/go.mod h1:LvR8nteHvrUTbS6N7Gm/2of9yRyyLoxIB4VFPk+wkVU=
 github.com/goliatone/go-featuregate v0.6.1 h1:3fxOcSWTxpC3YxKJMDhM12j8vL/D+CUD7meS/L8b5CM=
@@ -78,12 +78,12 @@ github.com/goliatone/go-masker v0.2.0 h1:M+Xx+AVJqTpNCQNPrPgVL6ft7oao5oT+/jQ+G8X
 github.com/goliatone/go-masker v0.2.0/go.mod h1:n+AV93IO1rNI35kjbjfV1gMkjuIOSDVEzfhABTlCf4U=
 github.com/goliatone/go-print v0.4.1 h1:rRcmZOWd27gq25Ays0nRu09tAH6wgTdfshE4rPpNYNY=
 github.com/goliatone/go-print v0.4.1/go.mod h1:hx13/Im2TeOYwwBwj/ImfjneDQ0MyN0ybfrgHripAus=
-github.com/goliatone/go-repository-bun v0.16.1 h1:nTYn+MwwvhX4o2MuBYiM8aDYpO++2XM3b+9afu/EFNI=
-github.com/goliatone/go-repository-bun v0.16.1/go.mod h1:bOFyQOGKyPJX+tkd7A7DhASqcPMvwdhDq41AmWujFqs=
+github.com/goliatone/go-repository-bun v0.16.2 h1:tZ6NOI7iJoDvgpTCJtUDyG/kwgMPDnMao9ascQPOdqw=
+github.com/goliatone/go-repository-bun v0.16.2/go.mod h1:tCjJI6WF6wgpFMMUT9jxgEtuzXFde3MJ2WCLtBBglRA=
 github.com/goliatone/go-slug v0.1.0 h1:0APBcu2X9MWF2t6X3LN55XfQ47zf4FUzDmXYJ1YraAk=
 github.com/goliatone/go-slug v0.1.0/go.mod h1:8lXx322OHfQQzdrwikY2uqhQVmH3IVNGiVxn9kPmX1w=
-github.com/goliatone/go-users v0.27.1 h1:YvNekQxvds0m5bWfOJBk+Ke3PW8gzFUV0BoxrLKqcWs=
-github.com/goliatone/go-users v0.27.1/go.mod h1:FqLzJUocHiqCVjxvGMxvuyTMfCPizSQtdnGsjGnTQ/c=
+github.com/goliatone/go-users v0.27.2 h1:QHXnE9ID8p+XPl6KFbXDfXF2Ua6qjBHlRbQ1O74WNQA=
+github.com/goliatone/go-users v0.27.2/go.mod h1:7LFXYgadVwU/8B5wZqI3DMF/6RoMDoTfnJEWWQGmp8c=
 github.com/goliatone/hashid v0.2.3 h1:Mu67feoP4iyAIajLx8JfqtIrbRURHnFO+hGJ3kZa+fc=
 github.com/goliatone/hashid v0.2.3/go.mod h1:jgEJQBDWz7OSe4uWCcsu5rkb4HtKTNvgF4Wl3NPfC6E=
 github.com/goodsign/monday v1.0.2 h1:k8kRMkCRVfCTWOU4dRfRgneQsWlB1+mJd3MxG0lGLzQ=

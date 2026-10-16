@@ -38,9 +38,9 @@ require (
 
 require (
 	github.com/goliatone/go-auth v0.45.3
-	github.com/goliatone/go-crud v0.26.0
-	github.com/goliatone/go-repository-bun v0.16.1
-	github.com/goliatone/go-users v0.27.1
+	github.com/goliatone/go-crud v0.26.1
+	github.com/goliatone/go-repository-bun v0.16.2
+	github.com/goliatone/go-users v0.27.2
 )
 
 require (

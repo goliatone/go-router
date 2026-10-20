@@ -58,3 +58,7 @@ node_modules
 .gocache
 .modcache
 evidence
+.claude/
+.codex/
+.ctx/
+.tmp/

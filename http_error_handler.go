@@ -56,8 +56,7 @@ func httpStatusFromError(err error) (int, error) {
 		return http.StatusInternalServerError, err
 	}
 
-	var routerErr *goerrors.Error
-	if stderrors.As(err, &routerErr) {
+	if routerErr, ok := stderrors.AsType[*goerrors.Error](err); ok {
 		if routerErr.Code != 0 {
 			return routerErr.Code, err
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -643,8 +644,8 @@ func NewWSRateLimit(config ...WSRateLimitConfig) WebSocketMiddleware {
 // will execute WSRecover first, then WSLogger, then WSAuth when processing a request.
 func ChainWSMiddleware(middlewares ...WebSocketMiddleware) WebSocketMiddleware {
 	return func(next WSHandler) WSHandler {
-		for i := len(middlewares) - 1; i >= 0; i-- {
-			next = middlewares[i](next)
+		for _, middleware := range slices.Backward(middlewares) {
+			next = middleware(next)
 		}
 		return next
 	}

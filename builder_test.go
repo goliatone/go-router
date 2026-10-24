@@ -3,6 +3,7 @@ package router_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	goerrors "github.com/goliatone/go-errors"
@@ -390,8 +391,8 @@ func NewMockRouter() *MockRouter {
 func (m *MockRouter) Handle(method router.HTTPMethod, path string, handler router.HandlerFunc, mw ...router.MiddlewareFunc) router.RouteInfo {
 	allMw := append(m.Mw, mw...)
 	finalHandler := handler
-	for i := len(allMw) - 1; i >= 0; i-- {
-		finalHandler = allMw[i](finalHandler)
+	for _, a := range slices.Backward(allMw) {
+		finalHandler = a(finalHandler)
 	}
 	r := &MockRouteInfo{
 		Method:     method,

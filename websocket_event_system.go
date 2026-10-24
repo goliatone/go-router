@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -281,8 +282,8 @@ func (r *EventRouter) createHandlerChain(event *EventMessage) EventMiddlewareNex
 
 	// Build middleware chain in reverse order
 	handler := finalHandler
-	for i := len(r.middleware) - 1; i >= 0; i-- {
-		middleware := r.middleware[i]
+	for _, middleware := range slices.Backward(r.middleware) {
+
 		currentHandler := handler
 		handler = func(ctx context.Context, client WSClient, event *EventMessage) error {
 			return middleware(ctx, client, event, currentHandler)
@@ -442,8 +443,8 @@ func (ns *EventNamespace) createHandlerChain(event *EventMessage) EventMiddlewar
 
 	// Build middleware chain in reverse order
 	handler := finalHandler
-	for i := len(ns.middleware) - 1; i >= 0; i-- {
-		middleware := ns.middleware[i]
+	for _, middleware := range slices.Backward(ns.middleware) {
+
 		currentHandler := handler
 		handler = func(ctx context.Context, client WSClient, event *EventMessage) error {
 			return middleware(ctx, client, event, currentHandler)

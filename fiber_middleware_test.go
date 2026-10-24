@@ -85,8 +85,7 @@ func newFiberMiddlewareAdapter() router.Server[*fiber.App] {
 		return fiber.New(fiber.Config{
 			ErrorHandler: func(c *fiber.Ctx, err error) error {
 				code := http.StatusInternalServerError
-				var fiberErr *fiber.Error
-				if errors.As(err, &fiberErr) {
+				if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
 					code = fiberErr.Code
 				}
 				return c.Status(code).SendString("app error: " + err.Error())

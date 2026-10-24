@@ -104,7 +104,7 @@ func TestMiddlewareFromFiberCurrentUserContextRequestIsolation(t *testing.T) {
 	})
 	srv.Init()
 	var wg sync.WaitGroup
-	for i := 0; i < 24; i++ {
+	for i := range 24 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

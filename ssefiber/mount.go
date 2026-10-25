@@ -1,6 +1,7 @@
 package ssefiber
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -87,6 +88,11 @@ func defaultConfig() Config {
 
 // MountFiber registers the SSE handler on a Fiber-backed go-router router.
 func MountFiber(r router.Router[*fiber.App], opts ...Option) error {
+	return Mount(r, opts...)
+}
+
+// Mount registers the SSE handler on any streaming go-router backend.
+func Mount[T any](r router.Router[T], opts ...Option) error {
 	if r == nil {
 		return fmt.Errorf("sse fiber mount requires router")
 	}
@@ -119,8 +125,12 @@ func handlerWithConfig(cfg Config) router.HandlerFunc {
 		cursor := resolveCursor(ctx, cfg.CursorQueryParam)
 		effective := resolveEffectiveConfig(cfg, ctx)
 
-		sub, err := cfg.Stream.Subscribe(ctx.Context(), scope, cursor)
+		// Request wrappers may be pooled after SendStream returns. Keep only
+		// the standard context and immutable values in the writer goroutine.
+		streamCtx, cancel := context.WithCancel(ctx.Context())
+		sub, err := cfg.Stream.Subscribe(streamCtx, scope, cursor)
 		if err != nil {
+			cancel()
 			return err
 		}
 
@@ -130,7 +140,11 @@ func handlerWithConfig(cfg Config) router.HandlerFunc {
 		ctx.SetHeader("X-Accel-Buffering", "no")
 
 		reader, writer := io.Pipe()
+		// Closing the writer unblocks an in-progress pipe write on host cancellation.
+		stopCancel := context.AfterFunc(streamCtx, func() { _ = writer.Close() })
 		go func() {
+			defer stopCancel()
+			defer cancel()
 			defer writer.Close()
 
 			if effective.retry > 0 {
@@ -166,7 +180,7 @@ func handlerWithConfig(cfg Config) router.HandlerFunc {
 
 			for {
 				select {
-				case <-ctx.Context().Done():
+				case <-streamCtx.Done():
 					return
 				case now := <-heartbeatC:
 					if err := writeHeartbeatFrame(writer, heartbeatFrame{
@@ -188,7 +202,12 @@ func handlerWithConfig(cfg Config) router.HandlerFunc {
 			}
 		}()
 
-		return ctx.SendStream(reader)
+		streamReader := &cancelingStreamReader{PipeReader: reader, cancel: cancel}
+		if err := ctx.SendStream(streamReader); err != nil {
+			_ = streamReader.Close()
+			return err
+		}
+		return nil
 	}
 }
 
@@ -491,3 +510,12 @@ func normalizePath(path string, fallback string) string {
 	}
 	return path
 }
+
+// cancelingStreamReader gives the transport ownership of subscription cleanup.
+// Both Fiber and net/http close io.ReadCloser response streams on disconnect.
+type cancelingStreamReader struct {
+	*io.PipeReader
+	cancel context.CancelFunc
+}
+
+func (r *cancelingStreamReader) Close() error { r.cancel(); return r.PipeReader.Close() }

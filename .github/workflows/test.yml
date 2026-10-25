@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: "off"
 
     steps:
     - uses: actions/checkout@v4
@@ -32,20 +35,37 @@ jobs:
         export GOTOOLCHAIN=local
         go mod download
 
+    - name: Require simultaneous v2, v3 and HTTPRouter contracts
+      run: |
+        go test -mod=readonly . -list '^TestAdapterCompatibilityMatrix$' | grep -qx TestAdapterCompatibilityMatrix
+        go test -mod=readonly -v . -run '^TestAdapterCompatibilityMatrix$' -count=1
+
+    - name: Require live lifecycle and SSE cleanup
+      run: |
+        go test -mod=readonly -v . -run '^TestServerLifecycle|^TestFiberV3ServeListenConfigAndNativeStartup|^TestFiberV3WebSocketMiddlewareSnapshotAndOwnedShutdown' -count=1
+        go test -mod=readonly -v ./ssefiber -run '^TestMountLiveBackendReplayHeartbeatAndCleanup$' -count=1
+
+    - name: Require migration defect regressions
+      run: |
+        go test -mod=readonly . -list '^Test(FiberV3NativeMiddleware|FiberV3WebSocketDetached|FiberV3Snapshot|DualFiberViewAutoescape|FiberViewNestedEngineComposition|FiberV3ViewCachedExecutionState|FiberV3CachedHTTPRequest|FiberV3HTTPBridge|FiberV3DirectHTTP|FiberV3ViewForeign|FiberV3ViewNative|FiberV3ViewScoped|FiberV3ViewFunctionOverrides|FiberV3Legacy|FiberV3ViewExtensionConfigurationErrors|FiberV3HTTPCached|FiberV3ViewFilterResultBoundary|FiberV3ViewTransitiveMethodBoundary|FiberV3ViewClosedMethodGraph)' > /tmp/migration-regressions
+        for name in TestFiberV3NativeMiddlewareResponseState TestFiberV3NativeMiddlewareStateBeforeNextAndNestedUnwind TestFiberV3WebSocketDetachedMiddlewareState TestFiberV3SnapshotRawHeadersAndLocalOwnership TestDualFiberViewAutoescapeIsolation TestFiberViewNestedEngineComposition TestFiberV3ViewCachedExecutionState TestFiberV3CachedHTTPRequestFollowsContextReplacement TestFiberV3HTTPBridgeResponseState TestFiberV3DirectHTTPWriterUpdatesState TestFiberV3ViewForeignValuesFailClosed TestFiberV3ViewNativeValuesAndHelpers TestFiberV3ViewForeignValueHTTP TestFiberV3ViewScopedExtensions TestFiberV3ViewFunctionOverrides TestFiberV3LegacyViewExtensions TestFiberV3LegacyHelperValues TestFiberV3ViewExtensionConfigurationErrors TestFiberV3HTTPBridgeEmptyHeadAndCookies TestFiberV3HTTPCachedRequestContextReplacement TestFiberV3ViewFilterResultBoundary TestFiberV3ViewTransitiveMethodBoundary TestFiberV3ViewClosedMethodGraph; do
+          grep -Fxq "$name" /tmp/migration-regressions || exit 1
+        done
+
     - name: Run tests
       run: |
         export GOTOOLCHAIN=local
-        go test -v ./...
+        go test -mod=readonly -v ./...
 
     - name: Run tests with race detector
       run: |
         export GOTOOLCHAIN=local
-        go test -race -v ./...
+        go test -mod=readonly -race -v ./...
 
     - name: Run vet
       run: |
         export GOTOOLCHAIN=local
-        go vet ./...
+        go vet -mod=readonly ./...
 
     - name: Check formatting
       run: |
@@ -91,3 +111,39 @@ jobs:
     - name: Build SSE client
       working-directory: sseclient
       run: npm run build
+
+  nested-module-discovery:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.discover.outputs.modules }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: discover
+      name: Require an explicit CI entry for every active nested Go module
+      run: |
+        MODULES=$(python3 tools/quality/nested_modules.py)
+        echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
+
+  nested-modules:
+    needs: nested-module-discovery
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.nested-module-discovery.outputs.modules) }}
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: "off"
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up minimum Go toolchain
+      uses: actions/setup-go@v4
+      with:
+        go-version: "1.26.0"
+        check-latest: false
+        cache-dependency-path: |
+          go.sum
+          ${{ matrix.module }}/go.sum
+    - name: Test candidate module against this checkout
+      working-directory: ${{ matrix.module }}
+      run: go test -mod=readonly ./...

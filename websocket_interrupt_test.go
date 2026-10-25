@@ -43,6 +43,21 @@ func TestWebSocketInterruptReadUnblocksActiveRead(t *testing.T) {
 				return "ws://" + address + "/ws", shutdown
 			},
 		},
+		{
+			name: "FiberV3",
+			serve: func(t *testing.T, handler func(router.WebSocketContext) error) (string, func()) {
+				app, ok := router.NewFiberV3Adapter().(*router.FiberV3Adapter)
+				if !ok {
+					t.Fatal("expected FiberAdapter")
+				}
+				config := router.DefaultWebSocketConfig()
+				config.DisableKeepAlive = true
+				config.DisableReadDeadline = true
+				app.Router().WebSocket("/ws", config, handler)
+				address, shutdown := startFiberV3Server(t, app)
+				return "ws://" + address + "/ws", shutdown
+			},
+		},
 	}
 
 	for _, tt := range tests {

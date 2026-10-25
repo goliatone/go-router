@@ -178,6 +178,11 @@ func WithAfterInvokeHook(hook AfterInvokeHook) Option {
 
 // MountFiber mounts RPC invoke/discovery endpoints on a Fiber-backed go-router Router.
 func MountFiber(r router.Router[*fiber.App], srv MethodServer, opts ...Option) error {
+	return Mount(r, srv, opts...)
+}
+
+// Mount registers RPC endpoints on any go-router backend.
+func Mount[T any](r router.Router[T], srv MethodServer, opts ...Option) error {
 	if r == nil {
 		return fmt.Errorf("rpc fiber mount requires router")
 	}

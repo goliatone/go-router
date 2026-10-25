@@ -1211,11 +1211,26 @@ func (c *httpRouterContext) SendStream(r io.Reader) error {
 	if r == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
-	n, err := io.Copy(c.w, r)
+	if closer, ok := r.(io.Closer); ok {
+		defer closer.Close()
+	}
+	n, err := io.Copy(flushingStreamWriter{c.w}, r)
 	if err == nil {
 		c.markHTTPResponse(0, true, n, true)
 	}
 	return err
+}
+
+// A live stream must deliver each frame without waiting for the response buffer
+// to fill. Keep flush ownership at the transport boundary.
+type flushingStreamWriter struct{ http.ResponseWriter }
+
+func (w flushingStreamWriter) Write(p []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(p)
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	return n, err
 }
 
 func (c *httpRouterContext) JSON(code int, v any) error {

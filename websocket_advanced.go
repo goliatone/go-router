@@ -527,6 +527,17 @@ func (u *CustomUpgrader) Upgrade(ctx Context) (WebSocketContext, error) {
 		}
 		wsCtx, err = NewHTTPRouterWebSocketContext(c.w, c.r, c.params, wsConfig, c.views)
 
+	case *fiberV3Context:
+		// Fiber upgrade (mock implementation)
+		wsConfig := WebSocketConfig{
+			ReadBufferSize:    u.config.ReadBufferSize,
+			WriteBufferSize:   u.config.WriteBufferSize,
+			HandshakeTimeout:  u.config.HandshakeTimeout,
+			Subprotocols:      u.config.Subprotocols,
+			EnableCompression: u.config.EnableCompression,
+			CheckOrigin:       u.config.ValidateOrigin,
+		}
+		wsCtx, err = NewFiberV3WebSocketContext(c.ctx, wsConfig, c.logger)
 	case *fiberContext:
 		// Fiber upgrade (mock implementation)
 		wsConfig := WebSocketConfig{

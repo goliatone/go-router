@@ -47,12 +47,64 @@ type ViewConfigProvider interface {
 
 //nolint:nestif // Default view setup preserves existing embedded and filesystem source selection behavior.
 func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
+	lgr := getLogger(lgrs...)
+	finalTemplateFS, err := prepareViewTemplateFS(cfg, lgr)
+	if err != nil {
+		return nil, err
+	}
+	ext := strings.TrimSpace(cfg.GetExt())
+	var engine *django.Engine
+	if cfg.GetEmbed() {
+		engine = django.NewPathForwardingFileSystem(
+			http.FS(finalTemplateFS),
+			".", // embedded filesystems expect clean root
+			ext,
+		)
+	} else {
+		engine = django.New(cfg.GetDirOS(), ext)
+	}
+
+	pongo2.DefaultSet.Options.TrimBlocks = true
+	engine.Reload(cfg.GetReload())
+	engine.Debug(cfg.GetDebug())
+	engine.AddFuncMap(cfg.GetTemplateFunctions())
+
+	if cfg.GetDebug() {
+		lgr.Debug("View engine templates loaded from clean root.")
+		DebugAssetPaths(lgr, finalTemplateFS, "template FS")
+	}
+
+	return engine, nil
+}
+
+//nolint:gocyclo,nestif,dupl,funlen // View initialization keeps legacy embed, filesystem, and asset-helper setup in one public entry point.
+func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
+	lgr := getLogger(lgrs...)
+
+	viewEngine, err := DefaultViewEngine(opts, lgr)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing default view engine: %w", err)
+	}
+
+	d, ok := viewEngine.(interface {
+		AddFunc(name string, fn any) ftpl.IEngineCore
+	})
+	if !ok {
+		return nil, fmt.Errorf("view engine of type %T does not support AddFunc", viewEngine)
+	}
+
+	initializeViewHelpers(opts, lgr, func(name string, fn any) { d.AddFunc(name, fn) })
+
+	return viewEngine, nil
+}
+
+// prepareViewTemplateFS shares source selection across both native template cores.
+func prepareViewTemplateFS(cfg ViewConfigProvider, lgr Logger) (fs.FS, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("view engine config validation failed: %w", err)
 	}
 
 	ext := strings.TrimSpace(cfg.GetExt())
-	lgr := getLogger(lgrs...)
 	lgr.Debug("Initializing view engine...")
 
 	var finalTemplateFS fs.FS
@@ -106,46 +158,10 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 		finalTemplateFS = os.DirFS(dirOS)
 	}
 
-	var engine *django.Engine
-	if cfg.GetEmbed() {
-		engine = django.NewPathForwardingFileSystem(
-			http.FS(finalTemplateFS),
-			".", // embedded filesystems expect clean root
-			ext,
-		)
-	} else {
-		engine = django.New(cfg.GetDirOS(), ext)
-	}
-
-	pongo2.DefaultSet.Options.TrimBlocks = true
-	engine.Reload(cfg.GetReload())
-	engine.Debug(cfg.GetDebug())
-	engine.AddFuncMap(cfg.GetTemplateFunctions())
-
-	if cfg.GetDebug() {
-		lgr.Debug("View engine templates loaded from clean root.")
-		DebugAssetPaths(lgr, finalTemplateFS, "template FS")
-	}
-
-	return engine, nil
+	return finalTemplateFS, nil
 }
 
-//nolint:gocyclo,nestif,dupl,funlen // View initialization keeps legacy embed, filesystem, and asset-helper setup in one public entry point.
-func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
-	lgr := getLogger(lgrs...)
-
-	viewEngine, err := DefaultViewEngine(opts, lgr)
-	if err != nil {
-		return nil, fmt.Errorf("error initializing default view engine: %w", err)
-	}
-
-	d, ok := viewEngine.(interface {
-		AddFunc(name string, fn any) ftpl.IEngineCore
-	})
-	if !ok {
-		return nil, fmt.Errorf("view engine of type %T does not support AddFunc", viewEngine)
-	}
-
+func initializeViewHelpers(opts ViewConfigProvider, lgr Logger, addFunc func(string, any)) {
 	var finalAssetFS fs.FS
 	assetDir := strings.TrimSpace(opts.GetAssetsDir())
 	hasAssetFS := false
@@ -186,7 +202,7 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 		lgr.Debug("Asset URL prefix computed", "prefix", assetURLPrefix)
 
 		if cssPath != "" {
-			d.AddFunc("css", func(name string) template.HTML {
+			addFunc("css", func(name string) template.HTML {
 				var res template.HTML
 				g := glob.MustCompile(name)
 
@@ -220,7 +236,7 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 		}
 
 		if jsPath != "" {
-			d.AddFunc("js", func(name string) template.HTML {
+			addFunc("js", func(name string) template.HTML {
 				var res template.HTML
 				g := glob.MustCompile(name)
 
@@ -256,13 +272,12 @@ func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views,
 		lgr.Debug("Asset helpers disabled; asset filesystem unavailable")
 	}
 
-	d.AddFunc("to_json", toJSON)
-	d.AddFunc("match_str", matchStr)
-	d.AddFunc("str_time", makeTimeParser())
-	d.AddFunc("conditional_str", conditionalStr)
-	d.AddFunc("either", eitherCmp)
+	addFunc("to_json", toJSON)
+	addFunc("match_str", matchStr)
+	addFunc("str_time", makeTimeParser())
+	addFunc("conditional_str", conditionalStr)
+	addFunc("either", eitherCmp)
 
-	return viewEngine, nil
 }
 
 type fallbackFS struct {

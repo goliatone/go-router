@@ -30,7 +30,7 @@ func TestWebSocketPreUpgradeResponses(t *testing.T) {
 		{"legacy", errors.New("secret"), 400, false},
 		{"rendered", fmt.Errorf("handled: %w", ErrWebSocketUpgradeHandled), 401, true},
 	}
-	for _, mode := range []string{"fiber", "http", "fiber-middleware", "http-middleware"} {
+	for _, mode := range []string{"fiber", "http", "fiber-middleware", "http-middleware", "fiber-v3", "fiber-v3-middleware"} {
 		for _, tc := range cases {
 			t.Run(mode+"/"+tc.name, func(t *testing.T) {
 				cfg := DefaultWebSocketConfig()
@@ -54,7 +54,19 @@ func TestWebSocketPreUpgradeResponses(t *testing.T) {
 				req.Header.Set("Sec-WebSocket-Version", "13")
 				req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
 				var res *http.Response
-				if strings.HasPrefix(mode, "fiber") {
+				if strings.HasPrefix(mode, "fiber-v3") {
+					adapter := NewFiberV3Adapter()
+					if strings.Contains(mode, "middleware") {
+						adapter.Router().Get("/ws", ordinary, WebSocketUpgrade(cfg))
+					} else {
+						adapter.Router().WebSocket("/ws", cfg, upgraded)
+					}
+					var err error
+					res, err = adapter.WrappedRouter().Test(req)
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else if strings.HasPrefix(mode, "fiber") {
 					adapter := NewFiberAdapter().(*FiberAdapter)
 					if strings.Contains(mode, "middleware") {
 						adapter.Router().Get("/ws", ordinary, WebSocketUpgrade(cfg))

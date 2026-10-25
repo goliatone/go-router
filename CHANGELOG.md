@@ -1,5 +1,38 @@
 # Changelog
 
+# [0.63.0] - (unreleased)
+
+Prepared release candidate for v0.63.0. Publication remains pending.
+
+## <!-- 0 -->🚀 Features
+
+- Add explicit FiberV3 server, router, context, native middleware, error and WebSocket APIs. Existing unqualified Fiber entry points retain Fiber v2 types and behavior; both adapters can run in the same process.
+- Add v3 view constructors with isolated Django-syntax template sets, scoped escaping and explicit v7 helper/filter/tag extension ports. Preserve the legacy Django engine and template-core interfaces.
+- Add generic `rpcfiber.Mount` and `ssefiber.Mount` entry points for both Fiber adapters and HTTPRouter, while retaining the v2 `MountFiber` wrappers.
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Preserve v3 request context replacements, cancellation and unwind through native middleware and cached net/http requests; synchronize response state for native and net/http writes.
+- Preserve WebSocket request metadata and locals after native context recycling, deterministic backend selection, rejection responses and terminal read interruption.
+- Reject incompatible pongo2/v6 values and unsafe transitive model method results at the v3 view boundary, preserving escaping and boolean semantics. Keep template callbacks reentrant and render snapshots isolated.
+
+## <!-- 3 -->📚 Documentation
+
+- Add the [Fiber v3 migration guide](docs/fiber-v3-migration.md) and a runnable example with owned WebSocket/SSE shutdown. Hosts must stop their long-lived work before bounded server shutdown; native shutdown alone does not drain hijacked connections.
+- Document explicit helper/extension ports and conservative model-data limits. The scoped renderer pins the pongo2/v7 prerelease `v7.0.0-alpha.1.0.20260313142248-c0f82578df57`; downstream extension ports remain application-owned.
+
+## <!-- 6 -->🧪 Testing
+
+- Require simultaneous v2/v3/HTTPRouter contracts, real-listener lifecycle and stream cleanup checks, migration regressions and an explicit CI matrix for every active nested Go module.
+
+## <!-- 9 -->⬆️ Upgrades
+
+- Add Fiber v3.6.1, contrib/v3 WebSocket v1.2.9 and template/v2 v2.1.4 alongside the retained v2 stack. Shared dependencies include fasthttp v1.76.0; the Gorilla WebSocket security pin remains unchanged. Go 1.26.0 is the minimum toolchain.
+
+## <!-- 13 -->📦 Bumps
+
+- Synchronize router and browser-client version metadata to 0.63.0. Browser protocols and client APIs are unchanged; npm publication requires separate authorization.
+
 # [0.62.6](https://github.com/goliatone/go-router/compare/v0.62.5...v0.62.6) - (2026-10-20)
 
 ## <!-- 13 -->📦 Bumps

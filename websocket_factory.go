@@ -2,8 +2,10 @@ package router
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // WebSocketContextFactory creates adapter-specific WebSocket contexts
@@ -69,8 +71,47 @@ func (r *WebSocketFactoryRegistry) GetByContext(c Context) WebSocketContextFacto
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Try to match context type to registered factories
-	for _, factory := range r.factories {
+	// Native context identities take precedence over legacy substring matches.
+	var native string
+	switch c.(type) {
+	case *fiberV3Context, *fiberV3WebSocketContext:
+		native = "fiber-v3"
+	case *fiberContext, *fiberWebSocketContext:
+		native = "fiber"
+	case *httpRouterContext, *httpRouterWebSocketContext:
+		native = "httprouter"
+	}
+	if native != "" {
+		factory := r.factories[native]
+		if factory != nil && factory.SupportsWebSocket() {
+			return factory
+		}
+		return nil
+	}
+
+	// Custom capability matches precede legacy patterns. Sorted registry keys
+	// resolve capability ties; longest patterns win, then the sorted key.
+	names := make([]string, 0, len(r.factories))
+	for name := range r.factories {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var best WebSocketContextFactory
+	bestLength := -1
+	for _, name := range names {
+		factory := r.factories[name]
+		if factory == nil || !factory.SupportsWebSocket() {
+			continue
+		}
+		if matcher, ok := factory.(interface{ SupportsContext(Context) bool }); ok && matcher.SupportsContext(c) {
+			return factory
+		}
+	}
+	for _, name := range names {
+		factory := r.factories[name]
+		if factory == nil {
+			continue
+		}
 		if !factory.SupportsWebSocket() {
 			continue
 		}
@@ -81,20 +122,20 @@ func (r *WebSocketFactoryRegistry) GetByContext(c Context) WebSocketContextFacto
 		}); ok {
 			supportedTypes := extendedFactory.SupportedContextTypes()
 			for _, supportedType := range supportedTypes {
-				if contains(contextType, supportedType) {
-					return factory
+				if contains(contextType, supportedType) && len(supportedType) > bestLength {
+					best, bestLength = factory, len(supportedType)
 				}
 			}
 		} else {
 			// Fallback to the old method for backward compatibility
 			adapterName := factory.AdapterName()
-			if contains(contextType, adapterName) {
-				return factory
+			if contains(contextType, adapterName) && len(adapterName) > bestLength {
+				best, bestLength = factory, len(adapterName)
 			}
 		}
 	}
 
-	return nil
+	return best
 }
 
 // List returns all registered adapter names
@@ -114,9 +155,6 @@ var globalFactoryRegistry = NewWebSocketFactoryRegistry()
 
 // RegisterGlobalWebSocketFactory registers a factory globally
 func RegisterGlobalWebSocketFactory(adapterName string, factory WebSocketContextFactory) {
-	globalFactoryRegistry.Register(adapterName, factory)
-
-	// Also register in the legacy global variables for backwards compatibility
 	RegisterWebSocketFactory(adapterName, factory)
 }
 
@@ -225,10 +263,10 @@ func (w *WebSocketContextWrapper) SetConnected(connected bool) {
 }
 
 // generateConnectionID generates a unique connection ID
+var websocketConnectionSequence atomic.Uint64
+
 func generateConnectionID() string {
-	// Use a simple counter for now - in production, use UUID
-	// This will be improved when we add the UUID dependency
-	return fmt.Sprintf("ws-conn-%d", len(globalFactoryRegistry.factories))
+	return fmt.Sprintf("ws-conn-%d", websocketConnectionSequence.Add(1))
 }
 
 // Helper function to check if a string contains a substring (case-insensitive)

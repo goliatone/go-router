@@ -22,6 +22,10 @@ type SimpleViewConfig struct {
 	CSSPath    string
 	JSPath     string
 	TemplateFS []fs.FS
+	// FiberV3Functions overrides shared helpers only for the v3 runtime.
+	FiberV3Functions map[string]any
+	// FiberV3Extensions registers ports of filters and tags only for v3.
+	FiberV3Extensions func(FiberV3ViewExtensions) error
 }
 
 // NewSimpleViewConfig initializes a quick-start configuration rooted at dirOS.
@@ -91,6 +95,30 @@ func (c *SimpleViewConfig) WithURLPrefix(prefix string) *SimpleViewConfig {
 func (c *SimpleViewConfig) WithFunctions(funcs map[string]any) *SimpleViewConfig {
 	c.Functions = funcs
 	return c
+}
+
+// WithFiberV3Functions supplies v7 equivalents of helpers retained for v2.
+func (c *SimpleViewConfig) WithFiberV3Functions(funcs map[string]any) *SimpleViewConfig {
+	c.FiberV3Functions = funcs
+	return c
+}
+
+// WithFiberV3Extensions registers v7 filters and tags during engine creation.
+// Registrations are retained across loads/reloads and remain local to the engine.
+func (c *SimpleViewConfig) WithFiberV3Extensions(configure func(FiberV3ViewExtensions) error) *SimpleViewConfig {
+	c.FiberV3Extensions = configure
+	return c
+}
+
+func (c *SimpleViewConfig) GetFiberV3TemplateFunctions() map[string]any {
+	return c.FiberV3Functions
+}
+
+func (c *SimpleViewConfig) ConfigureFiberV3Views(extensions FiberV3ViewExtensions) error {
+	if c.FiberV3Extensions != nil {
+		return c.FiberV3Extensions(extensions)
+	}
+	return nil
 }
 
 // WithEmbedFS switches the config into embed mode with the provided templates.

@@ -53,6 +53,13 @@ type fasthttpResponseWriter struct {
 	header      http.Header
 	wroteHeader bool
 	wroteBody   bool
+	onWrite     func()
+}
+
+func (w *fasthttpResponseWriter) notifyWrite() {
+	if w.onWrite != nil {
+		w.onWrite()
+	}
 }
 
 func (w *fasthttpResponseWriter) Header() http.Header {
@@ -80,6 +87,7 @@ func (w *fasthttpResponseWriter) WriteHeader(status int) {
 		}
 	}
 	w.ctx.Response.SetStatusCode(status)
+	w.notifyWrite()
 }
 
 func (w *fasthttpResponseWriter) Write(p []byte) (int, error) {
@@ -87,13 +95,16 @@ func (w *fasthttpResponseWriter) Write(p []byte) (int, error) {
 		w.WriteHeader(http.StatusOK)
 	}
 	w.wroteBody = true
-	return w.ctx.Write(p)
+	n, err := w.ctx.Write(p)
+	w.notifyWrite()
+	return n, err
 }
 
 func (w *fasthttpResponseWriter) Finalize() {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
+	w.notifyWrite()
 }
 
 // Flush is best-effort on Fiber. It can flush headers but does not stream body

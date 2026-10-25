@@ -7,14 +7,18 @@ RPC/SSE integration. Hosts own listeners, authentication policy, and domain rout
 
 Use the Go toolchain required by `go.mod` (currently Go 1.26.0 or newer).
 
+Fiber v3 is available through explicit `NewFiberV3Adapter` APIs while existing
+Fiber entry points remain on v2. See the [migration guide](docs/fiber-v3-migration.md)
+and [runnable v3 example](examples/fiber-v3/main.go).
+
 ## Package and documentation map
 
 | Surface | Responsibility | Reference |
 | --- | --- | --- |
 | Root `router` package | HTTP contexts/adapters, route registration, manifests, response state/capture, views, and WebSocket primitives | Sections below |
 | `eventstream` | Transport-neutral event stream messages, subscriptions, and framing contracts | `eventstream/*.go` |
-| `rpcfiber` | Mount go-command RPC endpoints on a Fiber-backed router | `rpcfiber/mount.go` |
-| `ssefiber` | Mount SSE delivery on a Fiber-backed router | `ssefiber/mount.go` |
+| `rpcfiber` | Mount go-command RPC endpoints on any router backend | `rpcfiber/mount.go` |
+| `ssefiber` | Mount SSE delivery on streaming router backends | `ssefiber/mount.go` |
 | Views | Embedded/disk template precedence and extension fallback | [View setup](VIEW_SETUP.md) |
 | WebSockets | High-level hub/client APIs, lower-level context APIs and lifecycle | [Overview](README_WEBSOCKET.md), [API](docs/WEBSOCKET_API.md), [lifecycle](docs/LIFECYCLE_HOOKS_CONTRACT.md), [timeouts](docs/WEBSOCKET_TIMEOUTS.md) |
 | Metadata | Struct/schema extraction and migration/performance guidance | [Extraction](docs/metadata_extraction_guide.md), [migration](docs/metadata_migration_guide.md), [performance](docs/metadata_performance_guide.md) |

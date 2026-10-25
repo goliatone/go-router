@@ -58,6 +58,9 @@ func WebSocketUpgrade(config WebSocketConfig) MiddlewareFunc {
 
 			// Fiber upgrades must execute the rest of the handler chain inside the
 			// upgrader callback because fasthttp hijacks the request lifecycle.
+			if _, ok := c.(*fiberV3Context); ok {
+				return handleFiberV3MiddlewareWebSocketUpgrade(c, config, upgradeData)
+			}
 			if _, ok := c.(*fiberContext); ok {
 				return handleFiberMiddlewareWebSocketUpgrade(c, config, upgradeData)
 			}
@@ -139,28 +142,31 @@ func createWebSocketContext(c Context, config WebSocketConfig, protocol string, 
 
 // getWebSocketFactory returns the appropriate WebSocket factory for the context type
 func getWebSocketFactory(c Context) WebSocketContextFactory {
-	// Check if it's a Fiber context
-	if strings.Contains(fmt.Sprintf("%T", c), "fiber") {
-		return GetFiberWebSocketFactory()
+	if factory := globalFactoryRegistry.GetByContext(c); factory != nil {
+		return factory
 	}
-
-	// Check if it's an HTTP router context
-	contextType := fmt.Sprintf("%T", c)
-	if strings.Contains(contextType, "httpRouter") || strings.Contains(contextType, "HTTPRouter") {
-		return GetHTTPRouterWebSocketFactory()
+	switch c.(type) {
+	case *fiberContext, *fiberV3Context, *httpRouterContext:
+		return nil
 	}
-
-	// Default to HTTPRouter factory if no specific match (for backwards compatibility)
-	if httpRouterFactory != nil {
-		return GetHTTPRouterWebSocketFactory()
-	}
-
-	// Unknown context type
-	return nil
+	// Preserve the historical unknown-context fallback, without native collisions.
+	return GetHTTPRouterWebSocketFactory()
 }
 
 func inheritWebSocketRouteState(src Context, dst WebSocketContext) {
 	switch source := src.(type) {
+	case *fiberV3Context:
+		target, ok := dst.(*fiberV3WebSocketContext)
+		if !ok || target == nil || target.fiberV3Context == nil {
+			return
+		}
+		target.mergeStrategy = source.mergeStrategy
+		target.handlers = source.handlers
+		target.index = source.index
+		target.store = source.store
+		target.logger = source.logger
+		target.meta = source.meta
+		target.SetContext(source.Context())
 	case *fiberContext:
 		target, ok := dst.(*fiberWebSocketContext)
 		if !ok || target == nil || target.fiberContext == nil {
@@ -199,30 +205,23 @@ type WebSocketContextFactory interface {
 	AdapterName() string
 }
 
-// Global factory registry
-var (
-	fiberFactory      WebSocketContextFactory
-	httpRouterFactory WebSocketContextFactory
-)
-
-// RegisterWebSocketFactory registers a WebSocket factory for an adapter
+// RegisterWebSocketFactory preserves the legacy entry point while all reads
+// and writes use the synchronized registry.
 func RegisterWebSocketFactory(adapterName string, factory WebSocketContextFactory) {
+	key := adapterName
 	switch strings.ToLower(adapterName) {
-	case "fiber":
-		fiberFactory = factory
-	case "httprouter":
-		httpRouterFactory = factory
+	case "fiber", "fiber-v3", "httprouter":
+		key = strings.ToLower(adapterName)
 	}
+	globalFactoryRegistry.Register(key, factory)
 }
 
-// GetFiberWebSocketFactory returns the Fiber WebSocket factory
-func GetFiberWebSocketFactory() WebSocketContextFactory {
-	return fiberFactory
+func GetFiberWebSocketFactory() WebSocketContextFactory { return globalFactoryRegistry.Get("fiber") }
+func GetFiberV3WebSocketFactory() WebSocketContextFactory {
+	return globalFactoryRegistry.Get("fiber-v3")
 }
-
-// GetHTTPRouterWebSocketFactory returns the HTTPRouter WebSocket factory
 func GetHTTPRouterWebSocketFactory() WebSocketContextFactory {
-	return httpRouterFactory
+	return globalFactoryRegistry.Get("httprouter")
 }
 
 // DefaultWebSocketMiddleware creates WebSocket middleware with default configuration

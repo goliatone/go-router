@@ -45,7 +45,6 @@ type ViewConfigProvider interface {
 	GetTemplatesFS() []fs.FS
 }
 
-//nolint:nestif // Default view setup preserves existing embedded and filesystem source selection behavior.
 func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
 	lgr := getLogger(lgrs...)
 	finalTemplateFS, err := prepareViewTemplateFS(cfg, lgr)
@@ -77,7 +76,6 @@ func DefaultViewEngine(cfg ViewConfigProvider, lgrs ...Logger) (fiber.Views, err
 	return engine, nil
 }
 
-//nolint:gocyclo,nestif,dupl,funlen // View initialization keeps legacy embed, filesystem, and asset-helper setup in one public entry point.
 func InitializeViewEngine(opts ViewConfigProvider, lgrs ...Logger) (fiber.Views, error) {
 	lgr := getLogger(lgrs...)
 
@@ -104,48 +102,12 @@ func prepareViewTemplateFS(cfg ViewConfigProvider, lgr Logger) (fs.FS, error) {
 		return nil, fmt.Errorf("view engine config validation failed: %w", err)
 	}
 
-	ext := strings.TrimSpace(cfg.GetExt())
 	lgr.Debug("Initializing view engine...")
 
 	var finalTemplateFS fs.FS
 
 	if cfg.GetEmbed() {
-		lgr.Debug("Running in Embedded Mode")
-		templateSources := make([]fs.FS, 0)
-
-		if dcfg, ok := cfg.(interface{ GetDevDir() string }); ok {
-			devDir := dcfg.GetDevDir()
-			if devDir != "" {
-				absDevDir, err := filepath.Abs(devDir)
-				if err == nil && DirExists(absDevDir) {
-					lgr.Debug("Adding development override directory for templates", "dir", absDevDir)
-					templateSources = append(templateSources, os.DirFS(absDevDir))
-				}
-			}
-		}
-
-		if len(cfg.GetTemplatesFS()) > 0 {
-			templateSources = append(templateSources, cfg.GetTemplatesFS()...)
-		}
-
-		if len(templateSources) == 0 {
-			return nil, errors.New("no valid template sources found for embed mode")
-		}
-
-		compositeTemplateFS := cfs.NewOverlayFS(templateSources...)
-		templateRootPath := NormalizePath(cfg.GetDirFS())
-
-		subFS, err := autoSubFS(compositeTemplateFS, templateRootPath, lgr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to prepare embedded template filesystem: %w", err)
-		}
-		finalTemplateFS = subFS
-
-		// Wrap with extension-aware fallback for embedded loaders.
-		finalTemplateFS = fallbackFS{
-			fsys: finalTemplateFS,
-			ext:  ext,
-		}
+		return prepareEmbeddedViewFS(cfg, lgr)
 	} else {
 		// --- LIVE MODE LOGIC ---
 		lgr.Debug("Running in Live (Non-Embedded) Mode")
@@ -162,122 +124,103 @@ func prepareViewTemplateFS(cfg ViewConfigProvider, lgr Logger) (fs.FS, error) {
 }
 
 func initializeViewHelpers(opts ViewConfigProvider, lgr Logger, addFunc func(string, any)) {
-	var finalAssetFS fs.FS
-	assetDir := strings.TrimSpace(opts.GetAssetsDir())
-	hasAssetFS := false
-
-	if assetDir != "" {
-		if opts.GetEmbed() {
-			if opts.GetAssetsFS() == nil {
-				lgr.Debug("Asset directory configured but no embedded filesystem provided; disabling asset helpers")
-			} else {
-				subFS, err := autoSubFS(opts.GetAssetsFS(), NormalizePath(assetDir), lgr)
-				if err != nil {
-					lgr.Warn("Failed to prepare embedded asset filesystem: %v", err)
-				} else {
-					finalAssetFS = subFS
-					hasAssetFS = true
-				}
-			}
-		} else {
-			assetRootPath := filepath.Clean(assetDir)
-			finalAssetFS = os.DirFS(assetRootPath)
-			hasAssetFS = true
-
-			if !DirExists(assetRootPath) && opts.GetDebug() {
-				lgr.Warn("Asset directory does not exist; helpers will render empty output: %s", assetRootPath)
-			}
-		}
-	}
-
-	cssPath := NormalizePath(opts.GetCSSPath())
-	jsPath := NormalizePath(opts.GetJSPath())
-
-	if hasAssetFS {
-		assetURLPrefix := "/" + NormalizePath(opts.GetURLPrefix())
-		if assetURLPrefix == "/" {
-			assetURLPrefix = ""
-		}
-
-		lgr.Debug("Asset URL prefix computed", "prefix", assetURLPrefix)
-
-		if cssPath != "" {
-			addFunc("css", func(name string) template.HTML {
-				var res template.HTML
-				g := glob.MustCompile(name)
-
-				if err := fs.WalkDir(finalAssetFS, cssPath, func(path string, info fs.DirEntry, err error) error {
-					if err != nil {
-						return err
-					}
-					if info.IsDir() {
-						return nil
-					}
-					if g.Match(info.Name()) {
-						urlPath := assetURLPrefix + "/" + path
-						urlPath = ppath.Clean(urlPath)
-						res = template.HTML(`<link rel="stylesheet" href="` + stdhtml.EscapeString(urlPath) + `">`) // #nosec G203 -- asset helper intentionally returns escaped trusted markup for templates.
-						lgr.Debug("Resolved CSS asset", "name", name, "path", urlPath)
-						return filepath.SkipDir
-					}
-					return nil
-				}); err != nil {
-					lgr.Warn("Could not walk CSS assets", "path", cssPath, "error", err)
-				}
-
-				if res == "" && opts.GetDebug() {
-					res = template.HTML("<!-- CSS NOT FOUND: " + stdhtml.EscapeString(name) + " (looked in " + stdhtml.EscapeString(cssPath) + ") -->") // #nosec G203 -- debug-only comment is escaped before being marked as template HTML.
-					lgr.Warn("Could not resolve CSS", "name", name)
-				}
-				return res
-			})
-		} else if opts.GetDebug() {
-			lgr.Debug("CSS helper disabled; no CSS path configured")
-		}
-
-		if jsPath != "" {
-			addFunc("js", func(name string) template.HTML {
-				var res template.HTML
-				g := glob.MustCompile(name)
-
-				if err := fs.WalkDir(finalAssetFS, jsPath, func(path string, info fs.DirEntry, err error) error {
-					if err != nil {
-						return err
-					}
-					if info.IsDir() {
-						return nil
-					}
-					if g.Match(info.Name()) {
-						urlPath := assetURLPrefix + "/" + path
-						urlPath = ppath.Clean(urlPath)
-						res = template.HTML(`<script async src="` + stdhtml.EscapeString(urlPath) + `"></script>`) // #nosec G203 -- asset helper intentionally returns escaped trusted markup for templates.
-						lgr.Debug("Resolved JS asset", "name", name, "path", urlPath)
-						return filepath.SkipDir
-					}
-					return nil
-				}); err != nil {
-					lgr.Warn("Could not walk JS assets", "path", jsPath, "error", err)
-				}
-
-				if res == "" && opts.GetDebug() {
-					res = template.HTML("<!-- JS NOT FOUND: " + stdhtml.EscapeString(name) + " (looked in " + stdhtml.EscapeString(jsPath) + ") -->") // #nosec G203 -- debug-only comment is escaped before being marked as template HTML.
-					lgr.Warn("Could not resolve JS", "name", name)
-				}
-				return res
-			})
-		} else if opts.GetDebug() {
-			lgr.Debug("JS helper disabled; no JS path configured")
-		}
-	} else if assetDir != "" && opts.GetDebug() {
+	assetFS := prepareViewAssetFS(opts, lgr)
+	if assetFS != nil {
+		registerViewAssetHelpers(opts, lgr, assetFS, addFunc)
+	} else if opts.GetAssetsDir() != "" && opts.GetDebug() {
 		lgr.Debug("Asset helpers disabled; asset filesystem unavailable")
 	}
-
 	addFunc("to_json", toJSON)
 	addFunc("match_str", matchStr)
 	addFunc("str_time", makeTimeParser())
 	addFunc("conditional_str", conditionalStr)
 	addFunc("either", eitherCmp)
+}
 
+func viewDevTemplateSource(cfg ViewConfigProvider, lgr Logger) fs.FS {
+	dev, ok := cfg.(interface{ GetDevDir() string })
+	if !ok || dev.GetDevDir() == "" {
+		return nil
+	}
+	abs, err := filepath.Abs(dev.GetDevDir())
+	if err != nil || !DirExists(abs) {
+		return nil
+	}
+	lgr.Debug("Adding development override directory for templates", "dir", abs)
+	return os.DirFS(abs)
+}
+
+func prepareViewAssetFS(opts ViewConfigProvider, lgr Logger) fs.FS {
+	assetDir := strings.TrimSpace(opts.GetAssetsDir())
+	if assetDir == "" {
+		return nil
+	}
+	if !opts.GetEmbed() {
+		root := filepath.Clean(assetDir)
+		if !DirExists(root) && opts.GetDebug() {
+			lgr.Warn("Asset directory does not exist; helpers will render empty output: %s", root)
+		}
+		return os.DirFS(root)
+	}
+	if opts.GetAssetsFS() == nil {
+		lgr.Debug("Asset directory configured but no embedded filesystem provided; disabling asset helpers")
+		return nil
+	}
+	sub, err := autoSubFS(opts.GetAssetsFS(), NormalizePath(assetDir), lgr)
+	if err != nil {
+		lgr.Warn("Failed to prepare embedded asset filesystem: %v", err)
+		return nil
+	}
+	return sub
+}
+
+func registerViewAssetHelpers(opts ViewConfigProvider, lgr Logger, assets fs.FS, addFunc func(string, any)) {
+	prefix := "/" + NormalizePath(opts.GetURLPrefix())
+	if prefix == "/" {
+		prefix = ""
+	}
+	lgr.Debug("Asset URL prefix computed", "prefix", prefix)
+	for _, asset := range []struct{ name, path string }{{"css", opts.GetCSSPath()}, {"js", opts.GetJSPath()}} {
+		assetPath := NormalizePath(asset.path)
+		if assetPath == "" {
+			if opts.GetDebug() {
+				lgr.Debug(strings.ToUpper(asset.name) + " helper disabled; no path configured")
+			}
+			continue
+		}
+		addFunc(asset.name, viewAssetHelper(assets, asset.name, assetPath, prefix, opts.GetDebug(), lgr))
+	}
+}
+
+func viewAssetHelper(assets fs.FS, kind, assetPath, prefix string, debug bool, lgr Logger) func(string) template.HTML {
+	return func(name string) template.HTML {
+		var result template.HTML
+		pattern := glob.MustCompile(name)
+		if err := fs.WalkDir(assets, assetPath, func(path string, info fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info.IsDir() || !pattern.Match(info.Name()) {
+				return nil
+			}
+			urlPath := ppath.Clean(prefix + "/" + path)
+			escaped := stdhtml.EscapeString(urlPath)
+			markup := `<link rel="stylesheet" href="` + escaped + `">`
+			if kind == "js" {
+				markup = `<script async src="` + escaped + `"></script>`
+			}
+			result = template.HTML(markup) // #nosec G203 -- only fixed tags and an escaped asset URL form this trusted template markup.
+			lgr.Debug("Resolved "+strings.ToUpper(kind)+" asset", "name", name, "path", urlPath)
+			return filepath.SkipDir
+		}); err != nil {
+			lgr.Warn("Could not walk "+strings.ToUpper(kind)+" assets", "path", assetPath, "error", err)
+		}
+		if result == "" && debug {
+			result = template.HTML("<!-- " + strings.ToUpper(kind) + " NOT FOUND: " + stdhtml.EscapeString(name) + " (looked in " + stdhtml.EscapeString(assetPath) + ") -->") // #nosec G203 -- debug-only markup escapes all variable text.
+			lgr.Warn("Could not resolve "+strings.ToUpper(kind), "name", name)
+		}
+		return result
+	}
 }
 
 type fallbackFS struct {
@@ -594,4 +537,35 @@ func getLogger(lgrs ...Logger) Logger {
 		return lgrs[0]
 	}
 	return &defaultLogger{}
+}
+
+func prepareEmbeddedViewFS(cfg ViewConfigProvider, lgr Logger) (fs.FS, error) {
+	lgr.Debug("Running in Embedded Mode")
+	templateSources := make([]fs.FS, 0)
+
+	if devFS := viewDevTemplateSource(cfg, lgr); devFS != nil {
+		templateSources = append(templateSources, devFS)
+	}
+
+	templateSources = append(templateSources, cfg.GetTemplatesFS()...)
+
+	if len(templateSources) == 0 {
+		return nil, errors.New("no valid template sources found for embed mode")
+	}
+
+	compositeTemplateFS := cfs.NewOverlayFS(templateSources...)
+	templateRootPath := NormalizePath(cfg.GetDirFS())
+
+	subFS, err := autoSubFS(compositeTemplateFS, templateRootPath, lgr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare embedded template filesystem: %w", err)
+	}
+	finalTemplateFS := subFS
+
+	// Wrap with extension-aware fallback for embedded loaders.
+	finalTemplateFS = fallbackFS{
+		fsys: finalTemplateFS,
+		ext:  strings.TrimSpace(cfg.GetExt()),
+	}
+	return finalTemplateFS, nil
 }

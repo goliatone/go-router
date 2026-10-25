@@ -26,3 +26,28 @@ func closeWebSocketConn(t *testing.T, conn *websocket.Conn) {
 		t.Logf("websocket close failed: %v", err)
 	}
 }
+
+func requireTestType[T any](t *testing.T, value any) T {
+	t.Helper()
+	typed, ok := value.(T)
+	if !ok {
+		t.Fatalf("unexpected fixture type %T", value)
+	}
+	return typed
+}
+
+func checkTestError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func testHTTPGet(t *testing.T, client *http.Client, url string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}

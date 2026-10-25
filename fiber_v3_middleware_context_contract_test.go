@@ -70,11 +70,11 @@ func TestMiddlewareFromFiberPreservesCurrentUserContextV3(t *testing.T) {
 				return c.SendStatus(http.StatusOK)
 			})
 			srv.Init()
-			resp, err := srv.WrappedRouter().Test(httptest.NewRequest("GET", "/resource", nil), fiber.TestConfig{Timeout: 0, FailOnTimeout: false})
+			resp, err := srv.WrappedRouter().Test(httptest.NewRequestWithContext(t.Context(), "GET", "/resource", nil), fiber.TestConfig{Timeout: 0, FailOnTimeout: false})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer closeWebSocketResponse(t, resp)
 			want := http.StatusOK
 			if mode == "short-circuit" {
 				want = http.StatusForbidden
@@ -108,14 +108,14 @@ func TestMiddlewareFromFiberCurrentUserContextRequestIsolationV3(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			req := httptest.NewRequest("GET", "/resource", nil)
+			req := httptest.NewRequestWithContext(t.Context(), "GET", "/resource", nil)
 			req.Header.Set("X-Fixture-Actor", fmt.Sprintf("user-%d", i))
 			resp, err := srv.WrappedRouter().Test(req, fiber.TestConfig{Timeout: 0, FailOnTimeout: false})
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			defer resp.Body.Close()
+			defer closeWebSocketResponse(t, resp)
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("request %d status %d", i, resp.StatusCode)
 			}

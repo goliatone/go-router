@@ -72,15 +72,7 @@ func (r *WebSocketFactoryRegistry) GetByContext(c Context) WebSocketContextFacto
 	defer r.mu.RUnlock()
 
 	// Native context identities take precedence over legacy substring matches.
-	var native string
-	switch c.(type) {
-	case *fiberV3Context, *fiberV3WebSocketContext:
-		native = "fiber-v3"
-	case *fiberContext, *fiberWebSocketContext:
-		native = "fiber"
-	case *httpRouterContext, *httpRouterWebSocketContext:
-		native = "httprouter"
-	}
+	native := nativeWebSocketAdapter(c)
 	if native != "" {
 		factory := r.factories[native]
 		if factory != nil && factory.SupportsWebSocket() {
@@ -103,34 +95,19 @@ func (r *WebSocketFactoryRegistry) GetByContext(c Context) WebSocketContextFacto
 		if factory == nil || !factory.SupportsWebSocket() {
 			continue
 		}
-		if matcher, ok := factory.(interface{ SupportsContext(Context) bool }); ok && matcher.SupportsContext(c) {
+		if factoryMatchesWebSocketContext(factory, c) {
 			return factory
 		}
 	}
 	for _, name := range names {
 		factory := r.factories[name]
-		if factory == nil {
-			continue
-		}
-		if !factory.SupportsWebSocket() {
+		if factory == nil || !factory.SupportsWebSocket() {
 			continue
 		}
 
-		// First try to use SupportedContextTypes if the factory implements it
-		if extendedFactory, ok := factory.(interface {
-			SupportedContextTypes() []string
-		}); ok {
-			supportedTypes := extendedFactory.SupportedContextTypes()
-			for _, supportedType := range supportedTypes {
-				if contains(contextType, supportedType) && len(supportedType) > bestLength {
-					best, bestLength = factory, len(supportedType)
-				}
-			}
-		} else {
-			// Fallback to the old method for backward compatibility
-			adapterName := factory.AdapterName()
-			if contains(contextType, adapterName) && len(adapterName) > bestLength {
-				best, bestLength = factory, len(adapterName)
+		for _, supportedType := range webSocketContextPatterns(factory) {
+			if contains(contextType, supportedType) && len(supportedType) > bestLength {
+				best, bestLength = factory, len(supportedType)
 			}
 		}
 	}
@@ -302,4 +279,29 @@ func DefaultWebSocketFactoryConfig() WebSocketFactoryConfig {
 		MaxConnections:    1000,
 		EnableCompression: false,
 	}
+}
+
+func nativeWebSocketAdapter(c Context) string {
+	var native string
+	switch c.(type) {
+	case *fiberV3Context, *fiberV3WebSocketContext:
+		native = "fiber-v3"
+	case *fiberContext, *fiberWebSocketContext:
+		native = "fiber"
+	case *httpRouterContext, *httpRouterWebSocketContext:
+		native = "httprouter"
+	}
+	return native
+}
+
+func webSocketContextPatterns(factory WebSocketContextFactory) []string {
+	if extended, ok := factory.(interface{ SupportedContextTypes() []string }); ok {
+		return extended.SupportedContextTypes()
+	}
+	return []string{factory.AdapterName()}
+}
+
+func factoryMatchesWebSocketContext(factory WebSocketContextFactory, c Context) bool {
+	matcher, ok := factory.(interface{ SupportsContext(Context) bool })
+	return ok && matcher.SupportsContext(c)
 }

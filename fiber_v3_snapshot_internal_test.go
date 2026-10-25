@@ -14,7 +14,10 @@ func TestFiberV3SnapshotRawHeadersAndLocalOwnership(t *testing.T) {
 	request.Request.Header.Set("x-aCtOr", "alice")
 	native := app.AcquireCtx(request)
 	defer app.ReleaseCtx(native)
-	base := NewFiberV3Context(native, nil).(*fiberV3Context)
+	base, ok := NewFiberV3Context(native, nil).(*fiberV3Context)
+	if !ok {
+		t.Fatal("unexpected Fiber v3 context type")
+	}
 	native.Locals(fiberV3MiddlewareKey{}, &fiberV3MiddlewareState{routerCtx: base})
 	buffer := []byte("original")
 	native.Locals("buffer", buffer)
@@ -28,7 +31,11 @@ func TestFiberV3SnapshotRawHeadersAndLocalOwnership(t *testing.T) {
 			t.Fatalf("header %q = %q", key, base.Header(key))
 		}
 	}
-	if got := string(base.Locals("buffer").([]byte)); got != "original" {
+	bufferValue, ok := base.Locals("buffer").([]byte)
+	if !ok {
+		t.Fatal("missing snapshot buffer")
+	}
+	if got := string(bufferValue); got != "original" {
 		t.Fatalf("request-backed buffer retained: %q", got)
 	}
 	if base.Locals(fiberV3MiddlewareKey{}) != nil {

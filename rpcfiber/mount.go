@@ -569,15 +569,7 @@ func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta, policy MetaMe
 		if elem.Kind() != reflect.Struct {
 			return payload
 		}
-		metaField := elem.FieldByName("Meta")
-		if !metaField.IsValid() || !metaField.CanSet() || metaField.Type() != requestMetaType {
-			return payload
-		}
-		currentMeta, ok := metaField.Interface().(cmdrpc.RequestMeta)
-		if !ok {
-			return payload
-		}
-		metaField.Set(reflect.ValueOf(mergeRequestMetaWithPolicy(extracted, currentMeta, policy)))
+		mergeTransportMetaField(elem, extracted, policy)
 		return payload
 	}
 
@@ -587,15 +579,9 @@ func applyTransportMeta(payload any, extracted cmdrpc.RequestMeta, policy MetaMe
 
 	copyValue := reflect.New(value.Type()).Elem()
 	copyValue.Set(value)
-	metaField := copyValue.FieldByName("Meta")
-	if !metaField.IsValid() || !metaField.CanSet() || metaField.Type() != requestMetaType {
+	if !mergeTransportMetaField(copyValue, extracted, policy) {
 		return payload
 	}
-	currentMeta, ok := metaField.Interface().(cmdrpc.RequestMeta)
-	if !ok {
-		return payload
-	}
-	metaField.Set(reflect.ValueOf(mergeRequestMetaWithPolicy(extracted, currentMeta, policy)))
 	return copyValue.Interface()
 }
 
@@ -1094,4 +1080,17 @@ func normalizePath(path, fallback string) string {
 		path = "/" + path
 	}
 	return path
+}
+
+func mergeTransportMetaField(value reflect.Value, extracted cmdrpc.RequestMeta, policy MetaMergePolicy) bool {
+	field := value.FieldByName("Meta")
+	if !field.IsValid() || !field.CanSet() || field.Type() != requestMetaType {
+		return false
+	}
+	current, ok := field.Interface().(cmdrpc.RequestMeta)
+	if !ok {
+		return false
+	}
+	field.Set(reflect.ValueOf(mergeRequestMetaWithPolicy(extracted, current, policy)))
+	return true
 }

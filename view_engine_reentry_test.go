@@ -3,7 +3,6 @@ package router_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,7 +61,7 @@ func TestFiberViewNestedEngineComposition(t *testing.T) {
 				outer, inner := create(outerV3), create(innerV3)
 				innerValue := "&lt;x&gt;"
 				if innerV3 {
-					inner.(interface{ SetAutoEscape(bool) }).SetAutoEscape(false)
+					requireTestType[interface{ SetAutoEscape(bool) }](t, inner).SetAutoEscape(false)
 					innerValue = "<x>"
 				}
 				addViewFunc(t, outer, "fragment", func() (string, error) {
@@ -99,7 +98,7 @@ func TestFiberViewNestedEngineComposition(t *testing.T) {
 		done := make(chan error, 1)
 		go func() { done <- engine.Render(&held, "held", map[string]any{"value": "<x>"}) }()
 		<-entered
-		engine.(interface{ SetAutoEscape(bool) }).SetAutoEscape(false)
+		requireTestType[interface{ SetAutoEscape(bool) }](t, engine).SetAutoEscape(false)
 		var other bytes.Buffer
 		if err := engine.Render(&other, "inner", map[string]any{"value": "<x>"}); err != nil {
 			t.Fatal(err)
@@ -145,7 +144,7 @@ func TestFiberV3ViewCachedExecutionState(t *testing.T) {
 			for range 12 {
 				var out bytes.Buffer
 				if err := engine.Render(&out, "state", map[string]any{"values": []int{1, 1, 2}}); err != nil || out.String() != "a1ba2" {
-					t.Error(fmt.Errorf("per-render tag state: %q %v", out.String(), err))
+					t.Errorf("per-render tag state: %q %v", out.String(), err)
 					return
 				}
 			}

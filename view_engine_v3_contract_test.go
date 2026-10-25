@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -103,16 +104,16 @@ func TestFiberV3ViewForeignValueHTTP(t *testing.T) {
 	views := newContractViews(t, `{{ echo(input) }}`, map[string]any{"echo": func(s string) any { return p6.AsValue(s) }}, false)
 	adapter := router.NewFiberV3Adapter(func(*fiber3.App) *fiber3.App { return fiber3.New(fiber3.Config{Views: views}) })
 	adapter.Router().Get("/page", func(c router.Context) error { return c.Render("page", map[string]any{"input": c.Query("input")}) })
-	resp, err := adapter.WrappedRouter().Test(httptest.NewRequest("GET", "/page?input=%3Cscript%3Ebad%3C/script%3E", nil))
+	resp, err := adapter.WrappedRouter().Test(httptest.NewRequestWithContext(t.Context(), "GET", "/page?input=%3Cscript%3Ebad%3C/script%3E", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeWebSocketResponse(t, resp)
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != 500 || strings.Contains(string(body), "<script>") {
+	if resp.StatusCode != http.StatusInternalServerError || strings.Contains(string(body), "<script>") {
 		t.Fatalf("status=%d body=%q", resp.StatusCode, body)
 	}
 }
@@ -133,7 +134,7 @@ func TestFiberV3ViewScopedExtensions(t *testing.T) {
 				if err := views[i].Load(); err == nil {
 					t.Fatal("unregistered extension unexpectedly loaded")
 				}
-				ext := views[i].(router.FiberV3ViewExtensions)
+				ext := requireTestType[router.FiberV3ViewExtensions](t, views[i])
 				prefix := fmt.Sprint(i)
 				fn := func(in, param *p7.Value) (*p7.Value, error) { return p7.AsValue(prefix + in.String()), nil }
 				parser := func(_ *p7.Parser, _ *p7.Token, _ *p7.Parser) (p7.INodeTag, error) { return contractTag(prefix), nil }

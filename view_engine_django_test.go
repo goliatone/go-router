@@ -40,8 +40,8 @@ func TestDualFiberViewAutoescapeIsolation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			old := legacy.(configurableDjangoViews)
-			new := modern.(configurableDjangoViews)
+			old := requireTestType[configurableDjangoViews](t, legacy)
+			new := requireTestType[configurableDjangoViews](t, modern)
 			render := func(engine configurableDjangoViews, escaped bool) error {
 				var out bytes.Buffer
 				if err := engine.Render(&out, "page", map[string]any{"value": "<b>unsafe</b>"}, "layout"); err != nil {

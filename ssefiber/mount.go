@@ -141,70 +141,20 @@ func handlerWithConfig(cfg Config) router.HandlerFunc {
 
 		reader, writer := io.Pipe()
 		// Closing the writer unblocks an in-progress pipe write on host cancellation.
-		stopCancel := context.AfterFunc(streamCtx, func() { _ = writer.Close() })
+		stopCancel := context.AfterFunc(streamCtx, func() { _ = writer.CloseWithError(nil) })
 		go func() {
 			defer stopCancel()
 			defer cancel()
-			defer writer.Close()
+			defer writer.CloseWithError(nil)
 
-			if effective.retry > 0 {
-				if err := writeRetryDirective(writer, effective.retry); err != nil {
-					_ = writer.CloseWithError(err)
-					return
-				}
-			}
-
-			if sub.CursorGap {
-				if err := writeGapFrame(writer, streamGapFrame{
-					Reason:               sub.CursorGapReason,
-					LastEventID:          cursor,
-					FallbackTransport:    "polling",
-					ResumeSupported:      false,
-					RequiresGapReconcile: true,
-					Timestamp:            time.Now().UTC().Format(time.RFC3339Nano),
-				}); err != nil {
-					_ = writer.CloseWithError(err)
-				}
-				return
-			}
-
-			var (
-				heartbeatTicker *time.Ticker
-				heartbeatC      <-chan time.Time
-			)
-			if effective.heartbeat > 0 {
-				heartbeatTicker = time.NewTicker(effective.heartbeat)
-				heartbeatC = heartbeatTicker.C
-				defer heartbeatTicker.Stop()
-			}
-
-			for {
-				select {
-				case <-streamCtx.Done():
-					return
-				case now := <-heartbeatC:
-					if err := writeHeartbeatFrame(writer, heartbeatFrame{
-						Timestamp: now.UTC().Format(time.RFC3339Nano),
-						ScopeKey:  sub.ScopeKey,
-					}); err != nil {
-						_ = writer.CloseWithError(err)
-						return
-					}
-				case record, ok := <-sub.Records:
-					if !ok {
-						return
-					}
-					if err := writeRecordFrame(writer, record); err != nil {
-						_ = writer.CloseWithError(err)
-						return
-					}
-				}
-			}
+			writeSubscription(streamCtx, writer, sub, cursor, effective)
 		}()
 
 		streamReader := &cancelingStreamReader{PipeReader: reader, cancel: cancel}
 		if err := ctx.SendStream(streamReader); err != nil {
-			_ = streamReader.Close()
+			if closeErr := streamReader.Close(); closeErr != nil {
+				return fmt.Errorf("send stream: %w; close stream: %w", err, closeErr)
+			}
 			return err
 		}
 		return nil
@@ -519,3 +469,60 @@ type cancelingStreamReader struct {
 }
 
 func (r *cancelingStreamReader) Close() error { r.cancel(); return r.PipeReader.Close() }
+
+func writeSubscription(streamCtx context.Context, writer *io.PipeWriter, sub *eventstream.Subscription, cursor string, effective effectiveConfig) {
+
+	if effective.retry > 0 {
+		if err := writeRetryDirective(writer, effective.retry); err != nil {
+			_ = writer.CloseWithError(err)
+			return
+		}
+	}
+
+	if sub.CursorGap {
+		if err := writeGapFrame(writer, streamGapFrame{
+			Reason:               sub.CursorGapReason,
+			LastEventID:          cursor,
+			FallbackTransport:    "polling",
+			ResumeSupported:      false,
+			RequiresGapReconcile: true,
+			Timestamp:            time.Now().UTC().Format(time.RFC3339Nano),
+		}); err != nil {
+			_ = writer.CloseWithError(err)
+		}
+		return
+	}
+
+	var (
+		heartbeatTicker *time.Ticker
+		heartbeatC      <-chan time.Time
+	)
+	if effective.heartbeat > 0 {
+		heartbeatTicker = time.NewTicker(effective.heartbeat)
+		heartbeatC = heartbeatTicker.C
+		defer heartbeatTicker.Stop()
+	}
+
+	for {
+		select {
+		case <-streamCtx.Done():
+			return
+		case now := <-heartbeatC:
+			if err := writeHeartbeatFrame(writer, heartbeatFrame{
+				Timestamp: now.UTC().Format(time.RFC3339Nano),
+				ScopeKey:  sub.ScopeKey,
+			}); err != nil {
+				_ = writer.CloseWithError(err)
+				return
+			}
+		case record, ok := <-sub.Records:
+			if !ok {
+				return
+			}
+			if err := writeRecordFrame(writer, record); err != nil {
+				_ = writer.CloseWithError(err)
+				return
+			}
+		}
+	}
+}

@@ -1207,12 +1207,16 @@ func (c *httpRouterContext) Send(body []byte) error {
 	return err
 }
 
-func (c *httpRouterContext) SendStream(r io.Reader) error {
+func (c *httpRouterContext) SendStream(r io.Reader) (err error) {
 	if r == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
 	if closer, ok := r.(io.Closer); ok {
-		defer closer.Close()
+		defer func() {
+			if closeErr := closer.Close(); closeErr != nil {
+				err = errors.Join(err, closeErr)
+			}
+		}()
 	}
 	n, err := io.Copy(flushingStreamWriter{c.w}, r)
 	if err == nil {

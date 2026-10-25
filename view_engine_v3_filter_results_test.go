@@ -30,7 +30,7 @@ func TestFiberV3ViewFilterResultBoundary(t *testing.T) {
 		} {
 			t.Run(tc.name+"/reload="+map[bool]string{false: "false", true: "true"}[reload], func(t *testing.T) {
 				views := newContractViews(t, `{{ input|result_boundary }}`, nil, reload)
-				err := views.(router.FiberV3ViewExtensions).RegisterFilter("result_boundary", func(_, _ *p7.Value) (*p7.Value, error) { return tc.value, tc.failure })
+				err := requireTestType[router.FiberV3ViewExtensions](t, views).RegisterFilter("result_boundary", func(_, _ *p7.Value) (*p7.Value, error) { return tc.value, tc.failure })
 				if err != nil {
 					t.Fatal(err)
 				}

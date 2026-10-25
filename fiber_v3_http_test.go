@@ -19,14 +19,14 @@ import (
 
 func v3Response(t *testing.T, app *fiber3.App, method, path, body string) (int, string, http.Header) {
 	t.Helper()
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cookie", "name=test")
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer closeWebSocketResponse(t, resp)
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestFiberV3HTTPContracts(t *testing.T) {
 			Name string `cookie:"name"`
 		}
 		if err := c.CookieParser(&cookie); err != nil || cookie.Name != "test" {
-			return fmt.Errorf("cookie: %v", err)
+			return fmt.Errorf("cookie: %w", err)
 		}
 		c.Cookie(&router.Cookie{Name: "result", Value: "yes", HTTPOnly: true})
 		return c.SendString("metadata")
@@ -159,13 +159,13 @@ func TestFiberV3ServeListenConfigAndNativeStartup(t *testing.T) {
 			})
 			addr := lifecycleReceive(t, address)
 			lifecycleReceive(t, before)
-			resp, err := http.Get("http://" + addr.String() + "/ready")
+			resp, err := testHTTPGet(t, http.DefaultClient, "http://"+addr.String()+"/ready")
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer closeWebSocketResponse(t, resp)
 			data, err := io.ReadAll(resp.Body)
-			if err != nil || string(data) != "ready" || resp.StatusCode != 200 {
+			if err != nil || string(data) != "ready" || resp.StatusCode != http.StatusOK {
 				t.Fatalf("%s %v", data, err)
 			}
 		})

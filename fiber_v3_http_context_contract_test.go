@@ -48,7 +48,7 @@ func TestFiberV3CachedHTTPRequestFollowsContextReplacement(t *testing.T) {
 	var workers sync.WaitGroup
 	for i := range 24 {
 		workers.Go(func() {
-			req := httptest.NewRequest("GET", "/context", nil)
+			req := httptest.NewRequestWithContext(t.Context(), "GET", "/context", nil)
 			req.Header.Set("X-Actor", fmt.Sprint(i))
 			code, body, err := serveFiberMiddlewareRequestV3(app, req)
 			if err != nil || code != 200 || body != "ok" {
@@ -65,12 +65,23 @@ func TestFiberV3HTTPBridgeResponseState(t *testing.T) {
 		code               int
 		handler            http.HandlerFunc
 	}{
-		{"denial", "GET", "denied", 401, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(401); _, _ = w.Write([]byte("denied")) }},
-		{"head", "HEAD", "", 401, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(401); _, _ = w.Write([]byte("denied")) }},
-		{"empty-write", "GET", "", 200, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte{}) }},
-		{"no-content", "GET", "", 204, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }},
+		{"denial", "GET", "denied", 401, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, writeErr := w.Write([]byte("denied"))
+			checkTestError(t, writeErr)
+		}},
+		{"head", "HEAD", "", 401, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, writeErr := w.Write([]byte("denied"))
+			checkTestError(t, writeErr)
+		}},
+		{"empty-write", "GET", "", 200, func(w http.ResponseWriter, _ *http.Request) {
+			_, writeErr := w.Write([]byte{})
+			checkTestError(t, writeErr)
+		}},
+		{"no-content", "GET", "", 204, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }},
 		{"no-op", "GET", "", 200, func(http.ResponseWriter, *http.Request) {}},
-		{"flush", "GET", "", 200, func(w http.ResponseWriter, _ *http.Request) { w.(http.Flusher).Flush() }},
+		{"flush", "GET", "", 200, func(w http.ResponseWriter, _ *http.Request) { requireTestType[http.Flusher](t, w).Flush() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := router.NewFiberV3Adapter()
@@ -104,7 +115,7 @@ func TestFiberV3DirectHTTPWriterUpdatesState(t *testing.T) {
 	s.Router().Get("/direct", func(c router.Context) error {
 		hc, _ := router.AsHTTPContext(c)
 		w := hc.Response()
-		w.WriteHeader(202)
+		w.WriteHeader(http.StatusAccepted)
 		if _, err := w.Write([]byte("direct")); err != nil {
 			return err
 		}

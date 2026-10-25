@@ -129,27 +129,29 @@ type typedHandlerImpl[T any] struct {
 }
 
 func (h *typedHandlerImpl[T]) Handle(ctx context.Context, client WSClient, event *EventMessage) error {
-	var data T
-
-	// Convert event data to the expected type
-	if event.Data != nil {
-		// If data is already the correct type
-		if typedData, ok := event.Data.(T); ok {
-			data = typedData
-		} else {
-			// Try to convert via JSON marshaling
-			jsonData, err := json.Marshal(event.Data)
-			if err != nil {
-				return fmt.Errorf("failed to marshal event data: %w", err)
-			}
-
-			if err := json.Unmarshal(jsonData, &data); err != nil {
-				return fmt.Errorf("failed to unmarshal event data to type %T: %w", data, err)
-			}
-		}
+	data, err := typedEventData[T](event.Data)
+	if err != nil {
+		return err
 	}
-
 	return h.handler(ctx, client, data)
+}
+
+func typedEventData[T any](value any) (T, error) {
+	var data T
+	if value == nil {
+		return data, nil
+	}
+	if typed, ok := value.(T); ok {
+		return typed, nil
+	}
+	jsonData, err := json.Marshal(value)
+	if err != nil {
+		return data, fmt.Errorf("failed to marshal event data: %w", err)
+	}
+	if err := json.Unmarshal(jsonData, &data); err != nil {
+		return data, fmt.Errorf("failed to unmarshal event data to type %T: %w", data, err)
+	}
+	return data, nil
 }
 
 func (h *typedHandlerImpl[T]) EventType() string {

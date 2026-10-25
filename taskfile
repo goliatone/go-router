@@ -172,16 +172,25 @@ function _go:tool:ensure {
 
 function _go:packages {
     local go_bin
-    local -a patterns=()
+    local module_path
+    local packages
+    local pkg
 
     go_bin=$(_go:bin) || return 1
     if [ "$#" -gt 0 ]; then
-        patterns=("$@")
-    else
-        patterns=("./...")
+        "${go_bin}" list "$@"
+        return $?
     fi
 
-    "${go_bin}" list "${patterns[@]}"
+    module_path=$("${go_bin}" list -m -f '{{.Path}}') || return 1
+    packages=$("${go_bin}" list ./...) || return 1
+    while IFS= read -r pkg; do
+        # Historical integration evidence is not a maintained router package.
+        case "${pkg}" in
+            "${module_path}/evidence"|"${module_path}/evidence/"*) continue ;;
+        esac
+        printf '.%s\n' "${pkg#"${module_path}"}"
+    done <<< "${packages}"
 }
 
 function _go:package_dirs {
@@ -199,14 +208,8 @@ function _go:package_dirs {
 }
 
 function _go:files {
-    find . -type f -name '*.go' \
-        -not -path './.git/*' \
-        -not -path './.gocache/*' \
-        -not -path './.tmp/*' \
-        -not -path './node_modules/*' \
-        -not -path './client/node_modules/*' \
-        -not -path './sseclient/node_modules/*' \
-        | sort
+    # Include new maintained source, while preserving ignored evidence/caches.
+    git ls-files --cached --others --exclude-standard -- '*.go' | sort -u
 }
 
 function _go:lint:patterns {
@@ -215,7 +218,7 @@ function _go:lint:patterns {
         return 0
     fi
 
-    printf '%s\n' "./..."
+    _go:packages
 }
 
 ##########################################
@@ -506,31 +509,33 @@ function go:security:govulncheck {
 
 function go:security:gosec {
     local gosec_bin
+    local pattern
     local -a patterns=()
 
     gosec_bin=$(_go:tool:ensure "gosec" "github.com/securego/gosec/v2/cmd/gosec@${GO_GOSEC_VERSION}") || return 1
     _go:quality:prepare_env || return 1
-    if [ "$#" -gt 0 ]; then
-        patterns=("$@")
-    else
-        patterns=("./...")
-    fi
+    while IFS= read -r pattern; do
+        if [ -n "${pattern}" ]; then
+            patterns+=("${pattern}")
+        fi
+    done < <(_go:lint:patterns "$@")
     "${gosec_bin}" -exclude-dir=.tmp "${patterns[@]}"
 }
 
 function go:security:gosec:baseline {
     local gosec_bin
     local baseline_path
+    local pattern
     local -a patterns=()
 
     gosec_bin=$(_go:tool:ensure "gosec" "github.com/securego/gosec/v2/cmd/gosec@${GO_GOSEC_VERSION}") || return 1
     baseline_path="${GO_QUALITY_BASELINE_DIR}/gosec.txt"
     _go:quality:prepare_env || return 1
-    if [ "$#" -gt 0 ]; then
-        patterns=("$@")
-    else
-        patterns=("./...")
-    fi
+    while IFS= read -r pattern; do
+        if [ -n "${pattern}" ]; then
+            patterns+=("${pattern}")
+        fi
+    done < <(_go:lint:patterns "$@")
     GOSEC_BIN="${gosec_bin}" GOSEC_ARGS="-exclude-dir=.tmp" "${GO_QUALITY_BASELINE_SCRIPT}" check gosec "${baseline_path}" "${patterns[@]}"
 }
 
@@ -560,16 +565,17 @@ function go:baseline:update:golangci-lint {
 function go:baseline:update:gosec {
     local gosec_bin
     local baseline_path
+    local pattern
     local -a patterns=()
 
     gosec_bin=$(_go:tool:ensure "gosec" "github.com/securego/gosec/v2/cmd/gosec@${GO_GOSEC_VERSION}") || return 1
     baseline_path="${GO_QUALITY_BASELINE_DIR}/gosec.txt"
     _go:quality:prepare_env || return 1
-    if [ "$#" -gt 0 ]; then
-        patterns=("$@")
-    else
-        patterns=("./...")
-    fi
+    while IFS= read -r pattern; do
+        if [ -n "${pattern}" ]; then
+            patterns+=("${pattern}")
+        fi
+    done < <(_go:lint:patterns "$@")
     GOSEC_BIN="${gosec_bin}" GOSEC_ARGS="-exclude-dir=.tmp" "${GO_QUALITY_BASELINE_SCRIPT}" update gosec "${baseline_path}" "${patterns[@]}"
 }
 

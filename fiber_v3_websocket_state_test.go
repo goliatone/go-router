@@ -15,7 +15,7 @@ import (
 func TestFiberV3WebSocketDetachedMiddlewareState(t *testing.T) {
 	for _, direct := range []bool{true, false} {
 		t.Run(fmt.Sprintf("direct=%t", direct), func(t *testing.T) {
-			s := router.NewFiberV3Adapter().(*router.FiberV3Adapter)
+			s := requireTestType[*router.FiberV3Adapter](t, router.NewFiberV3Adapter())
 			type scopeKey struct{}
 			s.Router().Use(router.MiddlewareFromFiberV3(func(c fiber3.Ctx) error {
 				c.Locals("native-actor", c.Query("actor"))
@@ -43,7 +43,7 @@ func TestFiberV3WebSocketDetachedMiddlewareState(t *testing.T) {
 				if _, _, err := ws.ReadMessage(); err != nil {
 					return err
 				}
-				if ws.GetString("actor", "") != "alice" || ws.GetString("hook-store", "") != "kept" || ws.Locals("native-actor") != "alice" || ws.Locals("hook-local") != "kept" || ws.Locals(scopeKey{}) != "tenant" || string(ws.Locals("buffer").([]byte)) != "owned" {
+				if ws.GetString("actor", "") != "alice" || ws.GetString("hook-store", "") != "kept" || ws.Locals("native-actor") != "alice" || ws.Locals("hook-local") != "kept" || ws.Locals(scopeKey{}) != "tenant" || string(requireTestType[[]byte](t, ws.Locals("buffer"))) != "owned" {
 					return ws.WriteMessage(router.TextMessage, []byte("middleware state lost"))
 				}
 				if ws.Header("X-Actor") != "alice" || ws.Header("x-actor") != "alice" || ws.Header("X-ACTOR") != "alice" {
@@ -60,7 +60,7 @@ func TestFiberV3WebSocketDetachedMiddlewareState(t *testing.T) {
 					workers.Go(func() { ws.Locals(i, i); ws.LocalsMerge("concurrent", map[string]any{fmt.Sprint(i): i}) })
 				}
 				workers.Wait()
-				if len(ws.Locals("concurrent").(map[string]any)) != 8 {
+				if len(requireTestType[map[string]any](t, ws.Locals("concurrent"))) != 8 {
 					return ws.WriteMessage(router.TextMessage, []byte("concurrent local merge lost"))
 				}
 				return ws.WriteMessage(router.TextMessage, []byte("ok"))
@@ -68,7 +68,7 @@ func TestFiberV3WebSocketDetachedMiddlewareState(t *testing.T) {
 			if direct {
 				s.Router().WebSocket("/ws", cfg, handler)
 			} else {
-				s.Router().Get("/ws", func(c router.Context) error { return handler(c.(router.WebSocketContext)) }, router.WebSocketUpgrade(cfg))
+				s.Router().Get("/ws", func(c router.Context) error { return handler(requireTestType[router.WebSocketContext](t, c)) }, router.WebSocketUpgrade(cfg))
 			}
 			s.Router().Get("/reuse", func(c router.Context) error { return c.SendString("recycled") })
 			addr, shutdown := startFiberV3Server(t, s)
@@ -78,17 +78,19 @@ func TestFiberV3WebSocketDetachedMiddlewareState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer conn.Close()
+			defer closeWebSocketConn(t, conn)
 			for range 16 {
-				resp, err := http.Get("http://" + addr + "/reuse?actor=other")
-				if err != nil {
-					t.Fatal(err)
+				reuseResp, reuseErr := testHTTPGet(t, http.DefaultClient, "http://"+addr+"/reuse?actor=other")
+				if reuseErr != nil {
+					t.Fatal(reuseErr)
 				}
-				_, _ = io.Copy(io.Discard, resp.Body)
-				_ = resp.Body.Close()
+				if _, copyErr := io.Copy(io.Discard, reuseResp.Body); copyErr != nil {
+					t.Error(copyErr)
+				}
+				closeWebSocketResponse(t, reuseResp)
 			}
-			if err := conn.WriteMessage(websocket.TextMessage, []byte("inspect")); err != nil {
-				t.Fatal(err)
+			if writeErr := conn.WriteMessage(websocket.TextMessage, []byte("inspect")); writeErr != nil {
+				t.Fatal(writeErr)
 			}
 			_, data, err := conn.ReadMessage()
 			if err != nil || string(data) != "ok" {

@@ -12,8 +12,9 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
+
+	"github.com/valyala/fasthttp"
 )
 
 type fiberContext struct {
@@ -300,27 +301,12 @@ func (c *fiberContext) RenderToWriter(w io.Writer, name string, bind any, layout
 	if w == nil {
 		return fmt.Errorf("render: writer is nil")
 	}
-
 	ctx := c.liveCtx()
 	if ctx == nil {
 		return fmt.Errorf("context unavailable")
 	}
-
 	cfg := ctx.App().Config()
-	if cfg.Views == nil {
-		return fmt.Errorf("render: no template engine registered")
-	}
-
-	merged, err := MergeLocalsWithViewData(ctx, c.logger, c.mergeStrategy, bind)
-	if err != nil {
-		return err
-	}
-
-	if len(layouts) == 0 && cfg.ViewsLayout != "" {
-		layouts = []string{cfg.ViewsLayout}
-	}
-
-	return cfg.Views.Render(w, name, merged, layouts...)
+	return renderFiberViews(w, cfg.Views, cfg.ViewsLayout, name, layouts, func() (map[string]any, error) { return MergeLocalsWithViewData(ctx, c.logger, c.mergeStrategy, bind) })
 }
 
 func (c *fiberContext) RenderToBytes(name string, bind any, layouts ...string) ([]byte, error) {
@@ -336,35 +322,11 @@ func MergeLocalsWithViewData(ctx *fiber.Ctx, logger Logger, strategy RenderMerge
 	if strategy == nil {
 		strategy = defaultRenderMergeStrategy
 	}
-
-	var data map[string]any
-	if bind == nil {
-		data = map[string]any{}
-	} else {
-		serialized, err := SerializeAsContext(bind)
-		if err != nil {
-			return nil, fmt.Errorf("render: error serializing vars: %w", err)
-		}
-		data = serialized
-		if data == nil {
-			data = map[string]any{}
-		}
-	}
-
+	var visit func(func([]byte, any))
 	if ctx != nil && ctx.App().Config().PassLocalsToViews {
-		ctx.Context().VisitUserValues(func(key []byte, val any) {
-			k := string(key)
-			if existing, ok := data[k]; ok {
-				if resolved, set := strategy(k, existing, val, logger); set {
-					data[k] = resolved
-				}
-				return
-			}
-			data[k] = val
-		})
+		visit = ctx.Context().VisitUserValues
 	}
-
-	return data, nil
+	return mergeFiberViewData(bind, logger, strategy, visit)
 }
 
 func (c *fiberContext) Body() []byte {
@@ -521,29 +483,11 @@ func (c *fiberContext) Query(name string, defaultValue ...string) string {
 }
 
 func (c *fiberContext) QueryValues(name string) []string {
+	var args *fasthttp.Args
 	if ctx := c.liveCtx(); ctx != nil {
-		args := ctx.Request().URI().QueryArgs()
-		values := []string{}
-		for key, value := range args.All() {
-			if string(key) == name {
-				values = append(values, string(value))
-			}
-		}
-		if len(values) > 0 {
-			return values
-		}
+		args = ctx.Request().URI().QueryArgs()
 	}
-	if meta := c.getMeta(); meta != nil {
-		if values, ok := meta.queriesMulti[name]; ok {
-			out := make([]string, len(values))
-			copy(out, values)
-			return out
-		}
-		if val, ok := meta.queries[name]; ok {
-			return []string{val}
-		}
-	}
-	return []string{}
+	return fiberQueryValues(args, name, c.getMeta)
 }
 
 func (c *fiberContext) QueryInt(name string, defaultValue int) int {

@@ -63,9 +63,9 @@ func TestDualFiberViewEnginePairs(t *testing.T) {
 					if !ok {
 						return fmt.Errorf("renderer missing")
 					}
-					data, err := renderer.RenderToBytes("page", router.ViewContext{"title": "view"}, "layout")
-					if err != nil {
-						return err
+					data, renderErr := renderer.RenderToBytes("page", router.ViewContext{"title": "view"}, "layout")
+					if renderErr != nil {
+						return renderErr
 					}
 					state, _ := router.AsResponseState(c)
 					if state.ResponseWritten() {
@@ -82,7 +82,7 @@ func TestDualFiberViewEnginePairs(t *testing.T) {
 				} else {
 					s := router.NewFiberAdapter(func(*fiber2.App) *fiber2.App { return fiber2.New(fiber2.Config{Views: views, PassLocalsToViews: true}) })
 					s.Router().Get("/view", handler)
-					code, body, err = serveFiberMiddlewareRequest(s.WrappedRouter(), httptest.NewRequest("GET", "/view", nil))
+					code, body, err = serveFiberMiddlewareRequest(s.WrappedRouter(), httptest.NewRequestWithContext(t.Context(), "GET", "/view", nil))
 					if err != nil {
 						t.Fatal(err)
 					}

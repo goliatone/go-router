@@ -2,9 +2,10 @@ package router
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
+
+	"github.com/valyala/fasthttp"
 )
 
 var _ DownloadResponder = (*fiberV3Context)(nil)
@@ -17,29 +18,13 @@ func (c *fiberV3Context) WriteStream(_ context.Context, contentType string, r io
 	if c == nil || r == nil {
 		return nil
 	}
-
-	options := ResolveStreamOptions(opts...)
-	if contentType == "" {
-		contentType = defaultDownloadContentType
+	var native *fasthttp.RequestCtx
+	if ctx := c.liveCtx(); ctx != nil {
+		native = ctx.RequestCtx()
 	}
-
-	applyDownloadHeaders(c, contentType, options)
-
-	ctx := c.liveCtx()
-	if ctx == nil {
-		return errors.New("context unavailable")
+	if err := prepareFiberStream(c, native, contentType, r, opts...); err != nil {
+		return err
 	}
-
-	size := -1
-	if options.ContentLength > 0 {
-		maxInt := int64(^uint(0) >> 1)
-		if options.ContentLength <= maxInt {
-			size = int(options.ContentLength)
-		}
-	}
-
-	ctx.RequestCtx().SetBodyStream(r, size)
-	ctx.Status(http.StatusOK)
 	c.statusCode = http.StatusOK
 	c.written = true
 	c.stream = true

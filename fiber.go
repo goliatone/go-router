@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -180,28 +179,7 @@ func (a *FiberAdapter) WrapHandler(h HandlerFunc) any {
 }
 
 func (r *FiberRouter) Static(prefix, root string, config ...Static) Router[*fiber.App] {
-	fullPrefix := r.joinPath(r.prefix, prefix)
-	path, handler := r.makeStaticHandler(fullPrefix, root, config...)
-	wildcard := r.joinPath(path, "*")
-	// Register immediately so static routes can take precedence over catch-all
-	// routes (e.g. "/*") that are typically registered later. When
-	// specificity ordering is enabled, registration is deferred to Init.
-	if path != "/" {
-		if route, ok := r.handleFull(GET, path, handler).(*RouteDefinition); ok {
-			r.applyInternalRouteName(route, "static.get")
-		}
-	}
-	if route, ok := r.handleFull(GET, wildcard, handler).(*RouteDefinition); ok {
-		r.applyInternalRouteName(route, "static.get")
-	}
-	if path != "/" {
-		if route, ok := r.handleFull(HEAD, path, handler).(*RouteDefinition); ok {
-			r.applyInternalRouteName(route, "static.head")
-		}
-	}
-	if route, ok := r.handleFull(HEAD, wildcard, handler).(*RouteDefinition); ok {
-		r.applyInternalRouteName(route, "static.head")
-	}
+	registerFiberStaticRoutes(&r.BaseRouter, r.handleFull, prefix, root, config...)
 	return r
 }
 
@@ -240,27 +218,7 @@ func (r *FiberRouter) handleLateRoute(method HTTPMethod, fullPath string, handle
 // handleLocked registers fullPath with an already resolved middleware chain.
 // Callers must hold the root registration lock.
 func (r *FiberRouter) handleLocked(method HTTPMethod, fullPath string, handler HandlerFunc, allMw []namedMiddleware) (RouteInfo, bool) {
-	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
-		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
-		switch r.conflictPolicy {
-		case HTTPRouterConflictLogAndSkip:
-			if r.logger != nil {
-				r.logger.Warn("route conflict skipped: %v", err)
-			}
-			return noopRouteInfo, false
-		case HTTPRouterConflictLogAndContinue:
-			if r.logger != nil {
-				r.logger.Warn("route conflict detected: %v", err)
-			}
-		case HTTPRouterConflictPanic:
-			panic(err)
-		}
-	}
-
-	route := r.addRoute(method, fullPath, handler, "", allMw)
-	r.routeRegistration(route)
-
-	return route, true
+	return handleFiberRoute(&r.BaseRouter, r.detectRouteConflict(method, fullPath), r.conflictPolicy, r.pathConflictMode, r.routeRegistration, method, fullPath, handler, allMw)
 }
 
 func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
@@ -389,23 +347,7 @@ func (a *FiberAdapter) Init() {
 		a.Router()
 	}
 
-	// Static and other adapter-owned late declarations must join the same plan
-	// before it is sealed and sorted.
-	a.router.registerLateRoutes(a.router)
-	if !a.router.root.beginFinalization() {
-		a.initialized = true
-		return
-	}
-	defer a.router.root.finishFinalization()
-
-	if a.strictRoutes {
-		if errs := a.router.ValidateRoutes(); len(errs) > 0 {
-			panic(errors.Join(errs...))
-		}
-	}
-
-	a.router.registerDeferredRoutes()
-	a.router.registerMissHandlers()
+	finalizeFiberRoutes(&a.router.BaseRouter, a.router, a.strictRoutes)
 	a.initialized = true
 }
 
@@ -437,9 +379,6 @@ type FiberRouter struct {
 }
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
-	fullPrefix := r.joinPath(r.prefix, prefix)
-	r.logger.Debug("creating route group", "prefix", fullPrefix)
-
 	return &FiberRouter{
 		app:                      r.app,
 		mergeStrategy:            r.mergeStrategy,
@@ -448,15 +387,7 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 		enforceCatchAllConflicts: r.enforceCatchAllConflicts,
 		enforceRouteLints:        r.enforceRouteLints,
 		orderRoutesBySpecificity: r.orderRoutesBySpecificity,
-		BaseRouter: BaseRouter{
-			prefix: r.joinPath(r.prefix, prefix),
-			// middlewares: append([]namedMiddleware{}, r.middlewares...),
-			middlewares:      slices.Clone(r.middlewares),
-			logger:           r.logger,
-			namedRoutePolicy: r.namedRoutePolicy,
-			routes:           r.routes,
-			root:             r.root,
-		},
+		BaseRouter:               fiberGroupBase(&r.BaseRouter, prefix),
 	}
 }
 
@@ -513,40 +444,7 @@ func (r *FiberRouter) HandleMiss(method HTTPMethod, handler HandlerFunc, m ...Mi
 }
 
 func (r *FiberRouter) Handle(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) RouteInfo {
-	fullPath := r.joinPath(r.prefix, pathStr)
-	r.root.beginMutation("register route", method, fullPath)
-	changed := false
-	defer func() { r.root.endMutation(changed) }()
-	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
-		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
-		switch r.conflictPolicy {
-		case HTTPRouterConflictLogAndSkip:
-			if r.logger != nil {
-				r.logger.Warn("route conflict skipped: %v", err)
-			}
-			return noopRouteInfo
-		case HTTPRouterConflictLogAndContinue:
-			if r.logger != nil {
-				r.logger.Warn("route conflict detected: %v", err)
-			}
-		case HTTPRouterConflictPanic:
-			panic(err)
-		}
-	}
-
-	allMw := slices.Clone(r.middlewares)
-	for _, mw := range m {
-		allMw = append(allMw, namedMiddleware{
-			Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
-			Mw:   mw,
-		})
-	}
-
-	route := r.addRoute(method, fullPath, handler, "", allMw)
-	r.routeRegistration(route)
-	changed = true
-
-	return route
+	return declareFiberRoute(&r.BaseRouter, r.detectRouteConflict, r.routeRegistration, r.conflictPolicy, r.pathConflictMode, method, pathStr, handler, m...)
 }
 
 func (r *FiberRouter) TryReplace(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, error) {
@@ -554,33 +452,7 @@ func (r *FiberRouter) TryReplace(method HTTPMethod, pathStr string, handler Hand
 }
 
 func (r *FiberRouter) TryReplaceWithOptions(method HTTPMethod, pathStr string, handler HandlerFunc, options RouteMutationOptions, m ...MiddlewareFunc) (RouteInfo, error) {
-	fullPath := r.joinPath(r.prefix, pathStr)
-	r.root.registrationMu.Lock()
-	defer r.root.registrationMu.Unlock()
-	if r.root.registrationState() != RegistrationCollecting {
-		return nil, newRegistrationError("replace route", method, fullPath, r.root.registrationState(), ErrRouterSealed)
-	}
-
-	for _, route := range r.root.routes {
-		if route.Method != method || route.Path != fullPath {
-			continue
-		}
-		allMw := slices.Clone(route.middlewares)
-		if options.ReplaceMiddleware {
-			allMw = slices.Clone(r.middlewares)
-		}
-		for _, mw := range m {
-			allMw = append(allMw, namedMiddleware{
-				Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
-				Mw:   mw,
-			})
-		}
-		route.middlewares = slices.Clone(allMw)
-		route.Handlers = chainHandlers(handler, route.Name, allMw)
-		r.root.revision++
-		return route, nil
-	}
-	return nil, newRouteNotFoundError(method, fullPath)
+	return replaceFiberRoute(&r.BaseRouter, method, pathStr, handler, options, m...)
 }
 
 func (r *FiberRouter) TryUpsert(method HTTPMethod, pathStr string, handler HandlerFunc, m ...MiddlewareFunc) (RouteInfo, bool, error) {
@@ -588,52 +460,7 @@ func (r *FiberRouter) TryUpsert(method HTTPMethod, pathStr string, handler Handl
 }
 
 func (r *FiberRouter) TryUpsertWithOptions(method HTTPMethod, pathStr string, handler HandlerFunc, options RouteMutationOptions, m ...MiddlewareFunc) (RouteInfo, bool, error) {
-	fullPath := r.joinPath(r.prefix, pathStr)
-	r.root.registrationMu.Lock()
-	defer r.root.registrationMu.Unlock()
-	if r.root.registrationState() != RegistrationCollecting {
-		return nil, false, newRegistrationError("upsert route", method, fullPath, r.root.registrationState(), ErrRouterSealed)
-	}
-	for _, route := range r.root.routes {
-		if route.Method == method && route.Path == fullPath {
-			allMw := slices.Clone(route.middlewares)
-			if options.ReplaceMiddleware {
-				allMw = slices.Clone(r.middlewares)
-			}
-			if !options.MiddlewareOnAddOnly {
-				for _, mw := range m {
-					allMw = append(allMw, namedMiddleware{
-						Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
-						Mw:   mw,
-					})
-				}
-			}
-			route.middlewares = slices.Clone(allMw)
-			route.Handlers = chainHandlers(handler, route.Name, allMw)
-			r.root.revision++
-			return route, true, nil
-		}
-	}
-	if conflict := r.detectRouteConflict(method, fullPath); conflict != nil {
-		err := newRouteConflictError(method, fullPath, conflict, r.conflictPolicy, r.pathConflictMode)
-		if r.logger != nil {
-			r.logger.Warn("route conflict detected during upsert: %v", err)
-		}
-		if r.conflictPolicy != HTTPRouterConflictLogAndContinue {
-			return nil, false, err
-		}
-	}
-	allMw := slices.Clone(r.middlewares)
-	for _, mw := range m {
-		allMw = append(allMw, namedMiddleware{
-			Name: fmt.Sprintf("%s %s %s", method, pathStr, funcName(mw)),
-			Mw:   mw,
-		})
-	}
-	route := r.addRoute(method, fullPath, handler, "", allMw)
-	r.routeRegistration(route)
-	r.root.revision++
-	return route, false, nil
+	return upsertFiberRoute(&r.BaseRouter, r.detectRouteConflict, r.routeRegistration, r.conflictPolicy, r.pathConflictMode, method, pathStr, handler, options, m...)
 }
 
 func (r *FiberRouter) Get(path string, handler HandlerFunc, mw ...MiddlewareFunc) RouteInfo {

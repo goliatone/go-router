@@ -25,7 +25,7 @@ func (l graphLeaf) Allowed() any { return p6.AsValue(false) }
 
 type graphModel struct{ Input string }
 
-func (m graphModel) Leaf() graphLeaf { return graphLeaf{m.Input} }
+func (m graphModel) Leaf() graphLeaf { return graphLeaf(m) }
 
 type graphPointerLeaf struct{ Input string }
 
@@ -62,7 +62,7 @@ func (m graphErrorModel) Problem() error { return graphError{m.Input} }
 
 type graphInterfaceModel struct{ Input string }
 
-func (m graphInterfaceModel) Leaf() any { return graphLeaf{m.Input} }
+func (m graphInterfaceModel) Leaf() any { return graphLeaf(m) }
 
 type graphConcreteErrorModel struct{ Input string }
 
@@ -140,7 +140,7 @@ func TestFiberV3ViewTransitiveMethodBoundary(t *testing.T) {
 	// Results from both registered helpers and filters pass through the graph proof.
 	for _, source := range []string{`{{ model(input).Leaf().Payload() }}`, `{% with input|model_port as model %}{{ model.Leaf().Payload() }}{% endwith %}`, `{{ problem(input).Problem().Payload() }}`, `{% with input|error_port as model %}{{ model.Problem().Payload() }}{% endwith %}`} {
 		views := newContractViews(t, source, map[string]any{"model": func(s string) graphModel { return graphModel{s} }, "problem": func(s string) graphErrorModel { return graphErrorModel{s} }}, false)
-		ext := views.(router.FiberV3ViewExtensions)
+		ext := requireTestType[router.FiberV3ViewExtensions](t, views)
 		if err := ext.RegisterFilter("model_port", func(in, _ *p7.Value) (*p7.Value, error) { return p7.AsValue(graphModel{in.String()}), nil }); err != nil {
 			t.Fatal(err)
 		}

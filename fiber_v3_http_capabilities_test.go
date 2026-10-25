@@ -17,13 +17,24 @@ func TestFiberV3HTTPBridgeEmptyHeadAndCookies(t *testing.T) {
 		status             int
 		handler            http.HandlerFunc
 	}{
-		{"denial", "GET", "denied", 401, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(401); _, _ = io.WriteString(w, "denied") }},
-		{"header-only", "GET", "", 403, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(403) }},
-		{"empty-write", "GET", "", 200, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(nil) }},
+		{"denial", "GET", "denied", 401, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, writeErr := io.WriteString(w, "denied")
+			checkTestError(t, writeErr)
+		}},
+		{"header-only", "GET", "", 403, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }},
+		{"empty-write", "GET", "", 200, func(w http.ResponseWriter, _ *http.Request) { _, writeErr := w.Write(nil); checkTestError(t, writeErr) }},
 		{"empty-handler", "GET", "", 200, func(http.ResponseWriter, *http.Request) {}},
-		{"no-content", "GET", "", 204, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }},
-		{"head", "HEAD", "", 202, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(202); _, _ = io.WriteString(w, "discard") }},
-		{"implicit-status", "GET", "written", 200, func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "written") }},
+		{"no-content", "GET", "", 204, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }},
+		{"head", "HEAD", "", 202, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
+			_, writeErr := io.WriteString(w, "discard")
+			checkTestError(t, writeErr)
+		}},
+		{"implicit-status", "GET", "written", 200, func(w http.ResponseWriter, _ *http.Request) {
+			_, writeErr := io.WriteString(w, "written")
+			checkTestError(t, writeErr)
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := router.NewFiberV3Adapter()
@@ -78,7 +89,7 @@ func TestFiberV3HTTPCachedRequestContextReplacement(t *testing.T) {
 			if hc.Request().Context().Value(key{}) != "after" {
 				return fmt.Errorf("native unwind context not synchronized")
 			}
-			c.SetContext(nil)
+			c.SetContext(nil) //nolint:staticcheck // Regression explicitly verifies the supported nil-context reset contract.
 			if hc.Request().Context().Value(key{}) != nil || hc.Request().Context().Err() != nil {
 				return fmt.Errorf("nil context reset did not refresh HTTP request")
 			}

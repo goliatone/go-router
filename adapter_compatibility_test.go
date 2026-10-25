@@ -2,6 +2,7 @@ package router_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -74,7 +75,7 @@ func mountCompatibility[T any](t *testing.T, name string, s router.Server[T]) co
 		return router.ReplayCapturedResponse(c, captured)
 	})
 	r.Get("/download", func(c router.Context) error {
-		return c.(router.DownloadResponder).WriteStream(c.Context(), "text/plain", strings.NewReader("downloaded"))
+		return requireTestType[router.DownloadResponder](t, c).WriteStream(c.Context(), "text/plain", strings.NewReader("downloaded"))
 	})
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("static"), 0600); err != nil {
@@ -91,7 +92,7 @@ func mountCompatibility[T any](t *testing.T, name string, s router.Server[T]) co
 		return ws.WriteMessage(kind, data)
 	}
 	r.WebSocket("/ws", config, echo)
-	r.Get("/ws-middleware", func(c router.Context) error { return echo(c.(router.WebSocketContext)) }, router.WebSocketUpgrade(config))
+	r.Get("/ws-middleware", func(c router.Context) error { return echo(requireTestType[router.WebSocketContext](t, c)) }, router.WebSocketUpgrade(config))
 	return compatibilityServer{server: s, name: name, address: lifecycleAddress(t), done: make(chan error, 1)}
 }
 
@@ -125,7 +126,7 @@ func TestAdapterCompatibilityMatrix(t *testing.T) {
 			if err := s.server.Shutdown(ctx); err != nil {
 				t.Error(err)
 			}
-			if err := lifecycleReceive(t, s.done); err != nil && err != http.ErrServerClosed {
+			if err := lifecycleReceive(t, s.done); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				t.Error(err)
 			}
 		})
@@ -136,10 +137,12 @@ func TestAdapterCompatibilityMatrix(t *testing.T) {
 		t.Run(s.name, func(t *testing.T) {
 			deadline := time.Now().Add(time.Second)
 			for {
-				resp, err := client.Get("http://" + s.address + "/ready")
+				resp, err := testHTTPGet(t, client, "http://"+s.address+"/ready")
 				if err == nil {
-					io.Copy(io.Discard, resp.Body)
-					resp.Body.Close()
+					if _, copyErr := io.Copy(io.Discard, resp.Body); copyErr != nil {
+						t.Error(copyErr)
+					}
+					closeWebSocketResponse(t, resp)
 					break
 				}
 				if time.Now().After(deadline) {
@@ -152,7 +155,7 @@ func TestAdapterCompatibilityMatrix(t *testing.T) {
 				status       int
 				body         string
 			}{{"GET", "/api/items/42", 200, "item=42"}, {"HEAD", "/head", 204, ""}, {"GET", "/render", 202, `{"render":"page:matrix"}`}, {"GET", "/download", 200, "downloaded"}, {"GET", "/assets/file.txt", 200, "static"}, {"GET", "/missing", 404, ""}} {
-				req, err := http.NewRequest(tc.method, "http://"+s.address+tc.path, nil)
+				req, err := http.NewRequestWithContext(t.Context(), tc.method, "http://"+s.address+tc.path, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -161,7 +164,7 @@ func TestAdapterCompatibilityMatrix(t *testing.T) {
 					t.Fatal(err)
 				}
 				body, readErr := io.ReadAll(resp.Body)
-				resp.Body.Close()
+				closeWebSocketResponse(t, resp)
 				if readErr != nil || resp.StatusCode != tc.status || !strings.Contains(string(body), tc.body) {
 					t.Fatalf("%s: %d %s %v", tc.path, resp.StatusCode, body, readErr)
 				}
@@ -172,13 +175,13 @@ func TestAdapterCompatibilityMatrix(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				conn.SetReadDeadline(time.Now().Add(time.Second))
-				if err := conn.WriteMessage(websocket.TextMessage, []byte(s.name)); err != nil {
-					conn.Close()
-					t.Fatal(err)
+				checkTestError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+				if writeErr := conn.WriteMessage(websocket.TextMessage, []byte(s.name)); writeErr != nil {
+					closeWebSocketConn(t, conn)
+					t.Fatal(writeErr)
 				}
 				_, body, err := conn.ReadMessage()
-				conn.Close()
+				closeWebSocketConn(t, conn)
 				if err != nil || string(body) != s.name {
 					t.Fatalf("%s: %s %v", path, body, err)
 				}

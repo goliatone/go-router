@@ -46,7 +46,7 @@ func TestWebSocketPreUpgradeResponses(t *testing.T) {
 				called := false
 				upgraded := func(WebSocketContext) error { called = true; return nil }
 				ordinary := func(Context) error { called = true; return nil }
-				req := httptest.NewRequest("GET", "http://example.com/ws", nil)
+				req := httptest.NewRequestWithContext(t.Context(), "GET", "http://example.com/ws", nil)
 				req.RequestURI = "/ws"
 				req.Header.Set("Host", "example.com")
 				req.Header.Set("Upgrade", "websocket")
@@ -67,7 +67,10 @@ func TestWebSocketPreUpgradeResponses(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else if strings.HasPrefix(mode, "fiber") {
-					adapter := NewFiberAdapter().(*FiberAdapter)
+					adapter, ok := NewFiberAdapter().(*FiberAdapter)
+					if !ok {
+						t.Fatal("unexpected Fiber adapter type")
+					}
 					if strings.Contains(mode, "middleware") {
 						adapter.Router().Get("/ws", ordinary, WebSocketUpgrade(cfg))
 					} else {
@@ -89,7 +92,11 @@ func TestWebSocketPreUpgradeResponses(t *testing.T) {
 					server.WrappedRouter().ServeHTTP(rec, req)
 					res = rec.Result()
 				}
-				defer res.Body.Close()
+				defer func() {
+					if closeErr := res.Body.Close(); closeErr != nil {
+						t.Error(closeErr)
+					}
+				}()
 				raw, err := io.ReadAll(res.Body)
 				if err != nil {
 					t.Fatal(err)

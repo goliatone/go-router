@@ -3,6 +3,7 @@ package ssefiber_test
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -60,12 +61,14 @@ func TestMountLiveBackendReplayHeartbeatAndCleanup(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				listener, err := net.Listen("tcp4", "127.0.0.1:0")
+				listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp4", "127.0.0.1:0")
 				if err != nil {
 					t.Fatal(err)
 				}
 				address := listener.Addr().String()
-				listener.Close()
+				if closeErr := listener.Close(); closeErr != nil {
+					t.Fatal(closeErr)
+				}
 				serveDone := make(chan error, 1)
 				go func() { serveDone <- f.server.Serve(address) }()
 				client := &http.Client{Timeout: 3 * time.Second}
@@ -73,13 +76,13 @@ func TestMountLiveBackendReplayHeartbeatAndCleanup(t *testing.T) {
 					cancel()
 					ctx, c := context.WithTimeout(context.Background(), time.Second)
 					defer c()
-					if err := f.server.Shutdown(ctx); err != nil {
-						t.Error(err)
+					if shutdownErr := f.server.Shutdown(ctx); shutdownErr != nil {
+						t.Error(shutdownErr)
 					}
 					select {
-					case err := <-serveDone:
-						if err != nil && err != http.ErrServerClosed {
-							t.Error(err)
+					case serveErr := <-serveDone:
+						if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+							t.Error(serveErr)
 						}
 					case <-time.After(time.Second):
 						t.Error("server did not stop")
@@ -88,18 +91,26 @@ func TestMountLiveBackendReplayHeartbeatAndCleanup(t *testing.T) {
 				})
 				deadline := time.Now().Add(time.Second)
 				for {
-					resp, err := client.Get("http://" + address + "/ready")
-					if err == nil {
-						io.Copy(io.Discard, resp.Body)
-						resp.Body.Close()
+					request, requestErr := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/ready", nil)
+					if requestErr != nil {
+						t.Fatal(requestErr)
+					}
+					readyResponse, readyErr := client.Do(request)
+					if readyErr == nil {
+						if _, copyErr := io.Copy(io.Discard, readyResponse.Body); copyErr != nil {
+							t.Error(copyErr)
+						}
+						if closeErr := readyResponse.Body.Close(); closeErr != nil {
+							t.Error(closeErr)
+						}
 						break
 					}
 					if time.Now().After(deadline) {
-						t.Fatal(err)
+						t.Fatal(readyErr)
 					}
 					time.Sleep(time.Millisecond)
 				}
-				req, err := http.NewRequest("GET", "http://"+address+"/events?cursor=missing", nil)
+				req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/events?cursor=missing", nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -108,8 +119,12 @@ func TestMountLiveBackendReplayHeartbeatAndCleanup(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer resp.Body.Close()
-				if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "text/event-stream" {
+				defer func() {
+					if closeErr := resp.Body.Close(); closeErr != nil {
+						t.Error(closeErr)
+					}
+				}()
+				if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/event-stream" {
 					t.Fatal(resp.Status)
 				}
 				scanner := bufio.NewScanner(resp.Body)
@@ -135,7 +150,9 @@ func TestMountLiveBackendReplayHeartbeatAndCleanup(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					resp.Body.Close()
+					if closeErr := resp.Body.Close(); closeErr != nil {
+						t.Error(closeErr)
+					}
 				}
 				deadline = time.Now().Add(time.Second)
 				for stream.SnapshotStats().ActiveSubscribers != 0 {

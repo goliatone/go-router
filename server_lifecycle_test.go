@@ -46,7 +46,7 @@ func lifecycleFixtures() map[string]func() lifecycleFixture {
 
 func lifecycleAddress(t *testing.T) string {
 	t.Helper()
-	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +72,11 @@ func lifecycleReceive[T any](t *testing.T, ch <-chan T) T {
 func TestServerLifecycleStartupFailure(t *testing.T) {
 	for name, factory := range lifecycleFixtures() {
 		t.Run(name, func(t *testing.T) {
-			l, err := net.Listen("tcp4", "127.0.0.1:0")
+			l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp4", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer l.Close()
+			defer func() { checkTestError(t, l.Close()) }()
 			f := factory()
 			f.get("/ready", func(c router.Context) error { return c.SendString("ready") })
 			f.server.Init()
@@ -137,10 +137,10 @@ func TestServerLifecycleDrainAndDeadline(t *testing.T) {
 				})
 				readyUntil := time.Now().Add(2 * time.Second)
 				for {
-					resp, err := client.Get("http://" + address + "/ready")
+					resp, err := testHTTPGet(t, client, "http://"+address+"/ready")
 					if err == nil {
 						body, readErr := io.ReadAll(resp.Body)
-						resp.Body.Close()
+						closeWebSocketResponse(t, resp)
 						if readErr != nil || string(body) != "ready" || resp.StatusCode != http.StatusOK {
 							t.Fatalf("readiness response: %q, %v", body, readErr)
 						}
@@ -153,9 +153,9 @@ func TestServerLifecycleDrainAndDeadline(t *testing.T) {
 				}
 				response := make(chan error, 1)
 				go func() {
-					resp, err := client.Get("http://" + address + "/held")
+					resp, err := testHTTPGet(t, client, "http://"+address+"/held")
 					if err == nil {
-						defer resp.Body.Close()
+						defer closeWebSocketResponse(t, resp)
 						var body []byte
 						body, err = io.ReadAll(resp.Body)
 						if err == nil && (string(body) != "completed" || resp.StatusCode != http.StatusOK) {

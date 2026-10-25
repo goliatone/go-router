@@ -231,6 +231,8 @@ func (c *fiberV3WebSocketContext) WriteJSON(v any) error {
 }
 
 // ReadJSON reads a JSON message
+//
+//nolint:dupl // Native v3 connection and state locks intentionally mirror v2 read-interruption semantics.
 func (c *fiberV3WebSocketContext) ReadJSON(v any) error {
 	c.mu.RLock()
 	conn := c.conn
@@ -459,6 +461,7 @@ func (c *fiberV3WebSocketContext) SetPongHandler(handler func(data []byte) error
 	}
 }
 
+//nolint:dupl // Keep native v3 ping/pong handlers paired with the v2 locking and callback contract.
 func (c *fiberV3WebSocketContext) installPingHandler(conn *websocket.Conn) {
 	if conn == nil {
 		return
@@ -652,7 +655,11 @@ func init() {
 func FiberV3WebSocketHandler(config WebSocketConfig, handler func(WebSocketContext) error) fiber.Handler {
 	upgrade := fiberV3WebSocketHandler(config, handler)
 	return func(c fiber.Ctx) error {
-		return upgrade(NewFiberV3Context(c, &defaultLogger{}).(*fiberV3Context))
+		base, ok := NewFiberV3Context(c, &defaultLogger{}).(*fiberV3Context)
+		if !ok {
+			return fmt.Errorf("unexpected Fiber v3 context type")
+		}
+		return upgrade(base)
 	}
 }
 
@@ -779,7 +786,11 @@ func runFiberV3WebSocketUpgrade(c fiber.Ctx, logger Logger, prototype *fiberV3Co
 			conn.SetReadLimit(config.MaxMessageSize)
 		}
 
-		defer baseWsCtx.Close()
+		defer func() {
+			if closeErr := baseWsCtx.Close(); closeErr != nil {
+				baseWsCtx.logger.Info("WebSocket handler cleanup failed", "error", closeErr)
+			}
+		}()
 
 		baseWsCtx.installPingHandler(conn)
 		baseWsCtx.installPongHandler(conn)

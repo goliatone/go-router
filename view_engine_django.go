@@ -44,58 +44,34 @@ func (e *fiberV3DjangoViewEngine) Load() error {
 
 func (e *fiberV3DjangoViewEngine) loadLocked() error {
 	e.Loaded = false
-	var loader pongo2.TemplateLoader
-	var err error
-	if e.FileSystem != nil {
-		loader = fiberV3DjangoFSLoader{fs: e.FileSystem, directory: e.Directory}
-	} else {
-		loader, err = pongo2.NewLocalFileSystemLoader(e.Directory)
-	}
+	loader, err := e.templateLoader()
 	if err != nil {
 		return err
 	}
 	set := pongo2.NewSet("fiber-v3", loader)
 	set.SetAutoescape(e.autoescape)
 	for name, filter := range e.filters {
-		if err := set.RegisterFilter(name, filter); err != nil {
-			return err
+		if registerErr := set.RegisterFilter(name, filter); registerErr != nil {
+			return registerErr
 		}
 	}
 	for name, parser := range e.tags {
-		if err := set.RegisterTag(name, parser); err != nil {
-			return err
+		if registerErr := set.RegisterTag(name, parser); registerErr != nil {
+			return registerErr
 		}
 	}
 	globals, err := fiberV3ViewValue(e.Funcmap, "globals")
 	if err != nil {
 		return err
 	}
-	set.Globals.Update(globals.(map[string]any))
+	globalValues, ok := globals.(map[string]any)
+	if !ok {
+		return fmt.Errorf("invalid template globals type %T", globals)
+	}
+	set.Globals.Update(globalValues)
 	templates := make(map[string]*pongo2.Template)
 	walk := func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info == nil || info.IsDir() || !core.HasExtension(path, e.Extension) {
-			return nil
-		}
-		name, err := core.TemplateName(e.Directory, path, e.Extension)
-		if err != nil {
-			return err
-		}
-		data, err := core.ReadFile(path, e.FileSystem)
-		if err != nil {
-			return err
-		}
-		tmpl, err := set.FromBytes(data)
-		if err != nil {
-			return err
-		}
-		templates[name] = tmpl
-		if e.Verbose {
-			log.Printf("views: parsed template: %s", name)
-		}
-		return nil
+		return e.parseTemplate(set, templates, path, info, walkErr)
 	}
 	if e.FileSystem != nil {
 		err = core.Walk(e.FileSystem, e.Directory, walk)
@@ -118,6 +94,7 @@ type fiberV3DjangoFSLoader struct {
 }
 
 func (l fiberV3DjangoFSLoader) Abs(_, name string) string { return name }
+
 func (l fiberV3DjangoFSLoader) Get(name string) (io.Reader, error) {
 	return l.fs.Open(filepath.Join(l.directory, name))
 }
@@ -178,14 +155,8 @@ func fiberV3DjangoBinding(binding any) (pongo2.Context, error) {
 	bind := make(pongo2.Context, value.Len())
 	for _, key := range value.MapKeys() {
 		name := key.String()
-		valid := name != ""
-		for _, ch := range name {
-			if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '_') {
-				valid = false
-				break
-			}
-		}
-		if valid {
+
+		if fiberV3BindingIdentifier(name) {
 			item, err := fiberV3ViewValue(value.MapIndex(key).Interface(), "binding."+name)
 			if err != nil {
 				return nil, err
@@ -194,4 +165,50 @@ func fiberV3DjangoBinding(binding any) (pongo2.Context, error) {
 		}
 	}
 	return bind, nil
+}
+
+func (e *fiberV3DjangoViewEngine) templateLoader() (pongo2.TemplateLoader, error) {
+	if e.FileSystem != nil {
+		return fiberV3DjangoFSLoader{fs: e.FileSystem, directory: e.Directory}, nil
+	}
+	return pongo2.NewLocalFileSystemLoader(e.Directory)
+}
+
+func (e *fiberV3DjangoViewEngine) parseTemplate(set *pongo2.TemplateSet, templates map[string]*pongo2.Template, path string, info os.FileInfo, walkErr error) error {
+	if walkErr != nil {
+		return walkErr
+	}
+	if info == nil || info.IsDir() || !core.HasExtension(path, e.Extension) {
+		return nil
+	}
+	name, err := core.TemplateName(e.Directory, path, e.Extension)
+	if err != nil {
+		return err
+	}
+	data, err := core.ReadFile(path, e.FileSystem)
+	if err != nil {
+		return err
+	}
+	tmpl, err := set.FromBytes(data)
+	if err != nil {
+		return err
+	}
+	templates[name] = tmpl
+	if e.Verbose {
+		log.Printf("views: parsed template: %s", name)
+	}
+	return nil
+}
+
+func fiberV3BindingIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, ch := range name {
+		if ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }

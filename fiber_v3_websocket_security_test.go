@@ -13,7 +13,7 @@ import (
 )
 
 func TestFiberV3WebSocketRejectsCrossOriginByDefault(t *testing.T) {
-	app := router.NewFiberV3Adapter().(*router.FiberV3Adapter)
+	app := requireTestType[*router.FiberV3Adapter](t, router.NewFiberV3Adapter())
 	app.Router().WebSocket("/ws", router.DefaultWebSocketConfig(), func(ws router.WebSocketContext) error {
 		return nil
 	})
@@ -25,15 +25,16 @@ func TestFiberV3WebSocketRejectsCrossOriginByDefault(t *testing.T) {
 	headers := http.Header{}
 	headers.Set("Origin", "https://evil.example.com")
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	closeWebSocketResponse(t, resp)
 	if err == nil {
-		conn.Close()
+		closeWebSocketConn(t, conn)
 		t.Fatal("expected cross-origin websocket dial to be rejected")
 	}
 }
 
 func TestFiberV3WebSocketAllowsSameOriginWithExplicitOriginOnNonDefaultPort(t *testing.T) {
-	app := router.NewFiberV3Adapter().(*router.FiberV3Adapter)
+	app := requireTestType[*router.FiberV3Adapter](t, router.NewFiberV3Adapter())
 	app.Router().WebSocket("/ws", router.DefaultWebSocketConfig(), func(ws router.WebSocketContext) error {
 		return nil
 	})
@@ -45,15 +46,16 @@ func TestFiberV3WebSocketAllowsSameOriginWithExplicitOriginOnNonDefaultPort(t *t
 	headers := http.Header{}
 	headers.Set("Origin", "http://"+address)
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	closeWebSocketResponse(t, resp)
 	if err != nil {
 		t.Fatalf("expected same-origin websocket dial to succeed, got %v", err)
 	}
-	_ = conn.Close()
+	closeWebSocketConn(t, conn)
 }
 
 func TestFiberV3WebSocketRejectsCrossOriginWithForbiddenStatus(t *testing.T) {
-	app := router.NewFiberV3Adapter().(*router.FiberV3Adapter)
+	app := requireTestType[*router.FiberV3Adapter](t, router.NewFiberV3Adapter())
 	app.Router().WebSocket("/ws", router.DefaultWebSocketConfig(), func(ws router.WebSocketContext) error {
 		return nil
 	})
@@ -61,7 +63,7 @@ func TestFiberV3WebSocketRejectsCrossOriginWithForbiddenStatus(t *testing.T) {
 	address, shutdown := startFiberV3Server(t, app)
 	defer shutdown()
 
-	req, err := http.NewRequest(http.MethodGet, "http://"+address+"/ws", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/ws", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -75,7 +77,7 @@ func TestFiberV3WebSocketRejectsCrossOriginWithForbiddenStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handshake request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeWebSocketResponse(t, resp)
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected cross-origin handshake to return 403, got %d", resp.StatusCode)
@@ -93,21 +95,22 @@ func TestFiberV3OnMessageCloseDoesNotDeadlock(t *testing.T) {
 		return nil
 	}
 
-	app := router.NewFiberV3Adapter().(*router.FiberV3Adapter)
+	app := requireTestType[*router.FiberV3Adapter](t, router.NewFiberV3Adapter())
 	app.Router().WebSocket("/ws", config, func(ws router.WebSocketContext) error {
-		_, _, _ = ws.ReadMessage()
-		return nil
+		_, _, readErr := ws.ReadMessage()
+		return readErr
 	})
 
 	address, shutdown := startFiberV3Server(t, app)
 	defer shutdown()
 
 	wsURL := "ws://" + address + "/ws"
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	closeWebSocketResponse(t, resp)
 	if err != nil {
 		t.Fatalf("failed to connect websocket: %v", err)
 	}
-	defer conn.Close()
+	defer closeWebSocketConn(t, conn)
 
 	if err := conn.WriteMessage(websocket.TextMessage, []byte("close")); err != nil {
 		t.Fatalf("failed to write websocket message: %v", err)
@@ -125,7 +128,7 @@ func TestFiberV3OnMessageCloseDoesNotDeadlock(t *testing.T) {
 
 func startFiberV3Server(t *testing.T, app *router.FiberV3Adapter) (string, func()) {
 	t.Helper()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

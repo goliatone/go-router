@@ -108,6 +108,7 @@ func TestMountFiber_DefaultRoutesAndMethodAwareDecodeV3(t *testing.T) {
 	require.Nil(t, output.Error)
 	assert.Equal(t, "Ada", output.Data["name"])
 
+	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, "header-actor", capturedMeta.ActorID)
 	assert.Equal(t, "query-tenant", capturedMeta.Tenant)
 	assert.Equal(t, "payload-req", capturedMeta.RequestID)
@@ -147,9 +148,11 @@ func TestMountFiber_DiscoveryDisabledSkipsEndpointsRouteV3(t *testing.T) {
 	app := adapter.WrappedRouter()
 
 	resp := testRequestV3(t, app, http.MethodPost, "/api/rpc", `{"method":"example.echo","params":{"data":{"name":"Ada"}}}`, nil)
+	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	resp = testRequestV3(t, app, http.MethodGet, "/api/rpc/endpoints", "", nil)
+	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
@@ -182,6 +185,7 @@ func TestMountFiber_MetaMergePolicyTransportOverridesV3(t *testing.T) {
 		"X-Actor-ID": "header-actor",
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, "header-actor", capturedMeta.ActorID)
 	assert.Equal(t, "query-tenant", capturedMeta.Tenant)
 }
@@ -191,7 +195,9 @@ func TestMountFiber_CustomMetaExtractorsAndHooksV3(t *testing.T) {
 	r := adapter.Router()
 
 	r.Use(router.ToMiddleware(func(c router.Context) error {
+		//nolint:staticcheck // RPC extractor compatibility explicitly supports these legacy string context keys.
 		ctx := context.WithValue(c.Context(), "rpc.actorId", "actor-from-context")
+		//nolint:staticcheck // Exercise the documented legacy RPC request-id context key.
 		ctx = context.WithValue(ctx, "rpc.requestId", "request-from-context")
 		c.SetContext(ctx)
 		return c.Next()
@@ -376,7 +382,7 @@ func testRequestV3(
 ) *http.Response {
 	t.Helper()
 
-	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), method, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	for key, value := range headers {
 		req.Header.Set(key, value)
@@ -389,9 +395,10 @@ func testRequestV3(
 
 func decodeResponseV3(t *testing.T, resp *http.Response, target any) {
 	t.Helper()
-	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
 	require.NoError(t, err)
+	require.NoError(t, closeErr)
 	require.NoError(t, json.Unmarshal(raw, target), string(raw))
 }
 

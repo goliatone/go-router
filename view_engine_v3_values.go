@@ -41,12 +41,7 @@ func fiberV3NormalizeValue(v reflect.Value, path string, depth int, adapt bool) 
 		return reflect.Value{}, fiberV3ValueError(path, "pongo2/v6.Value is incompatible with the scoped runtime")
 	}
 	if t == fiberV3ValueType {
-		if !v.IsNil() {
-			if _, err := fiberV3NormalizeValue(reflect.ValueOf(v.Interface().(*p7.Value).Interface()), path, depth+1, false); err != nil {
-				return reflect.Value{}, err
-			}
-		}
-		return v, nil // Preserve the native runtime's safe/unsafe distinction.
+		return fiberV3ValidateBox(v, path, depth)
 	}
 	if v.Kind() == reflect.Interface {
 		if v.IsNil() {
@@ -62,127 +57,168 @@ func fiberV3NormalizeValue(v reflect.Value, path string, depth int, adapt bool) 
 
 	switch v.Kind() {
 	case reflect.Func:
-		if !adapt {
-			return reflect.Value{}, fiberV3ValueError(path, "callable fields/boxed callables require an explicit view helper")
-		}
-		if v.IsNil() {
-			return reflect.Value{}, fiberV3ValueError(path, "nil template helper")
-		}
-		for i := 0; i < t.NumIn(); i++ {
-			if fiberV3ContainsForeignType(t.In(i), map[reflect.Type]bool{}) {
-				return reflect.Value{}, fiberV3ValueError(path, "helper accepts pongo2/v6.Value")
-			}
-		}
-		for i := 0; i < t.NumOut(); i++ {
-			if fiberV3ContainsForeignType(t.Out(i), map[reflect.Type]bool{}) {
-				return reflect.Value{}, fiberV3ValueError(path, "helper returns pongo2/v6.Value")
-			}
-		}
-		if t.NumOut() < 1 || t.NumOut() > 2 || t.NumOut() == 2 && !t.Out(1).Implements(fiberV3ErrorType) {
-			return reflect.Value{}, fiberV3ValueError(path, "helper must return a value or (value, error)")
-		}
-		inputs := make([]reflect.Type, t.NumIn())
-		for i := range inputs {
-			inputs[i] = t.In(i)
-		}
-		wrapper := reflect.FuncOf(inputs, []reflect.Type{fiberV3ValueType, fiberV3ErrorType}, t.IsVariadic())
-		return reflect.MakeFunc(wrapper, func(args []reflect.Value) []reflect.Value {
-			var result []reflect.Value
-			if t.IsVariadic() {
-				result = v.CallSlice(args)
-			} else {
-				result = v.Call(args)
-			}
-			failure := func(err error) []reflect.Value {
-				return []reflect.Value{reflect.Zero(fiberV3ValueType), reflect.ValueOf(err)}
-			}
-			if len(result) == 2 {
-				err, _ := result[1].Interface().(error)
-				if err != nil {
-					return failure(err)
-				}
-			}
-			normalized, err := fiberV3NormalizeValue(result[0], path+" result", 0, true)
-			if err != nil {
-				return failure(err)
-			}
-			var output any
-			if normalized.IsValid() {
-				output = normalized.Interface()
-			}
-			boxed, ok := output.(*p7.Value)
-			if !ok {
-				boxed = p7.AsValue(output)
-			}
-			return []reflect.Value{reflect.ValueOf(boxed), reflect.Zero(fiberV3ErrorType)}
-		}), nil
+		return fiberV3NormalizeHelper(v, path, adapt)
 	case reflect.Map:
+		return fiberV3NormalizeMap(v, path, depth, adapt)
+	case reflect.Slice, reflect.Array:
+		return fiberV3NormalizeSequence(v, path, depth, adapt)
+	case reflect.Pointer, reflect.Struct:
+		return fiberV3NormalizeModel(v, path, depth, adapt)
+	}
+	return v, nil
+}
+
+func fiberV3ValidateBox(v reflect.Value, path string, depth int) (reflect.Value, error) {
+	if v.IsNil() {
+		return v, nil
+	}
+	boxed, ok := v.Interface().(*p7.Value)
+	if !ok {
+		return reflect.Value{}, fiberV3ValueError(path, "invalid scoped value")
+	}
+	if _, err := fiberV3NormalizeValue(reflect.ValueOf(boxed.Interface()), path, depth+1, false); err != nil {
+		return reflect.Value{}, err
+	}
+	return v, nil // Preserve native safe/unsafe values.
+}
+
+func fiberV3ValidateHelper(v reflect.Value, path string, adapt bool) error {
+	t := v.Type()
+
+	if !adapt {
+		return fiberV3ValueError(path, "callable fields/boxed callables require an explicit view helper")
+	}
+	if v.IsNil() {
+		return fiberV3ValueError(path, "nil template helper")
+	}
+	for in := range t.Ins() {
+		if fiberV3ContainsForeignType(in, map[reflect.Type]bool{}) {
+			return fiberV3ValueError(path, "helper accepts pongo2/v6.Value")
+		}
+	}
+	for out := range t.Outs() {
+		if fiberV3ContainsForeignType(out, map[reflect.Type]bool{}) {
+			return fiberV3ValueError(path, "helper returns pongo2/v6.Value")
+		}
+	}
+	if t.NumOut() < 1 || t.NumOut() > 2 || t.NumOut() == 2 && !t.Out(1).Implements(fiberV3ErrorType) {
+		return fiberV3ValueError(path, "helper must return a value or (value, error)")
+	}
+	return nil
+}
+
+func fiberV3NormalizeHelper(v reflect.Value, path string, adapt bool) (reflect.Value, error) {
+	if err := fiberV3ValidateHelper(v, path, adapt); err != nil {
+		return reflect.Value{}, err
+	}
+	t := v.Type()
+
+	inputs := make([]reflect.Type, t.NumIn())
+	for i := range inputs {
+		inputs[i] = t.In(i)
+	}
+	wrapper := reflect.FuncOf(inputs, []reflect.Type{fiberV3ValueType, fiberV3ErrorType}, t.IsVariadic())
+	return reflect.MakeFunc(wrapper, func(args []reflect.Value) []reflect.Value {
+		var result []reflect.Value
+		if t.IsVariadic() {
+			result = v.CallSlice(args)
+		} else {
+			result = v.Call(args)
+		}
+		failure := func(err error) []reflect.Value {
+			return []reflect.Value{reflect.Zero(fiberV3ValueType), reflect.ValueOf(err)}
+		}
+		if len(result) == 2 {
+			if callErr, ok := result[1].Interface().(error); ok && callErr != nil {
+				return failure(callErr)
+			}
+		}
+		normalized, err := fiberV3NormalizeValue(result[0], path+" result", 0, true)
+		if err != nil {
+			return failure(err)
+		}
+		var output any
+		if normalized.IsValid() {
+			output = normalized.Interface()
+		}
+		boxed, ok := output.(*p7.Value)
+		if !ok {
+			boxed = p7.AsValue(output)
+		}
+		return []reflect.Value{reflect.ValueOf(boxed), reflect.Zero(fiberV3ErrorType)}
+	}), nil
+}
+
+func fiberV3NormalizeMap(v reflect.Value, path string, depth int, adapt bool) (reflect.Value, error) {
+	t := v.Type()
+
+	if v.IsNil() {
+		return v, nil
+	}
+	out := reflect.MakeMapWithSize(t, v.Len())
+	iter := v.MapRange()
+	for iter.Next() {
+		if _, err := fiberV3NormalizeValue(iter.Key(), path+" key", depth+1, false); err != nil {
+			return reflect.Value{}, err
+		}
+		item, err := fiberV3NormalizeValue(iter.Value(), path+" item", depth+1, adapt)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		if !item.IsValid() {
+			item = reflect.Zero(t.Elem())
+		}
+		if !item.Type().AssignableTo(t.Elem()) {
+			return reflect.Value{}, fiberV3ValueError(path, "adapted helper requires a map/slice of any")
+		}
+		out.SetMapIndex(iter.Key(), item)
+	}
+	return out, nil
+}
+
+func fiberV3NormalizeSequence(v reflect.Value, path string, depth int, adapt bool) (reflect.Value, error) {
+	t := v.Type()
+
+	if v.Kind() == reflect.Slice && v.IsNil() {
+		return v, nil
+	}
+	var out reflect.Value
+	if v.Kind() == reflect.Slice {
+		out = reflect.MakeSlice(t, v.Len(), v.Len())
+	} else {
+		out = reflect.New(t).Elem()
+	}
+	for i := 0; i < v.Len(); i++ {
+		item, err := fiberV3NormalizeValue(v.Index(i), path+" item", depth+1, adapt)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		if !item.IsValid() {
+			item = reflect.Zero(t.Elem())
+		}
+		if !item.Type().AssignableTo(t.Elem()) {
+			return reflect.Value{}, fiberV3ValueError(path, "adapted helper requires a map/slice of any")
+		}
+		out.Index(i).Set(item)
+	}
+	return out, nil
+}
+
+func fiberV3NormalizeModel(v reflect.Value, path string, depth int, adapt bool) (reflect.Value, error) {
+
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return v, nil
 		}
-		out := reflect.MakeMapWithSize(t, v.Len())
-		iter := v.MapRange()
-		for iter.Next() {
-			if _, err := fiberV3NormalizeValue(iter.Key(), path+" key", depth+1, false); err != nil {
-				return reflect.Value{}, err
-			}
-			item, err := fiberV3NormalizeValue(iter.Value(), path+" item", depth+1, adapt)
-			if err != nil {
-				return reflect.Value{}, err
-			}
-			if !item.IsValid() {
-				item = reflect.Zero(t.Elem())
-			}
-			if !item.Type().AssignableTo(t.Elem()) {
-				return reflect.Value{}, fiberV3ValueError(path, "adapted helper requires a map/slice of any")
-			}
-			out.SetMapIndex(iter.Key(), item)
+		_, err := fiberV3NormalizeValue(v.Elem(), path, depth+1, false)
+		return v, err
+	}
+	for field := range v.Type().Fields() {
+		if !field.IsExported() {
+			continue
 		}
-		return out, nil
-	case reflect.Slice, reflect.Array:
-		if v.Kind() == reflect.Slice && v.IsNil() {
-			return v, nil
-		}
-		var out reflect.Value
-		if v.Kind() == reflect.Slice {
-			out = reflect.MakeSlice(t, v.Len(), v.Len())
-		} else {
-			out = reflect.New(t).Elem()
-		}
-		for i := 0; i < v.Len(); i++ {
-			item, err := fiberV3NormalizeValue(v.Index(i), path+" item", depth+1, adapt)
-			if err != nil {
-				return reflect.Value{}, err
-			}
-			if !item.IsValid() {
-				item = reflect.Zero(t.Elem())
-			}
-			if !item.Type().AssignableTo(t.Elem()) {
-				return reflect.Value{}, fiberV3ValueError(path, "adapted helper requires a map/slice of any")
-			}
-			out.Index(i).Set(item)
-		}
-		return out, nil
-	case reflect.Pointer, reflect.Struct:
-
-		if v.Kind() == reflect.Pointer {
-			if v.IsNil() {
-				return v, nil
-			}
-			item, err := fiberV3NormalizeValue(v.Elem(), path, depth+1, false)
-			if err != nil {
-				return reflect.Value{}, err
-			}
-			// Validate rather than copy opaque objects (including self-references).
-			_ = item
-		} else {
-			for i := 0; i < v.NumField(); i++ {
-				if t.Field(i).IsExported() {
-					if _, err := fiberV3NormalizeValue(v.Field(i), path+"."+t.Field(i).Name, depth+1, false); err != nil {
-						return reflect.Value{}, err
-					}
-				}
-			}
+		if _, err := fiberV3NormalizeValue(v.Field(field.Index[0]), path+"."+field.Name, depth+1, false); err != nil {
+			return reflect.Value{}, err
 		}
 	}
 	return v, nil
@@ -202,22 +238,13 @@ func fiberV3ContainsForeignType(t reflect.Type, seen map[reflect.Type]bool) bool
 	case reflect.Map:
 		return fiberV3ContainsForeignType(t.Key(), seen) || fiberV3ContainsForeignType(t.Elem(), seen)
 	case reflect.Struct:
-		for i := 0; i < t.NumField(); i++ {
-			if t.Field(i).IsExported() && fiberV3ContainsForeignType(t.Field(i).Type, seen) {
+		for field := range t.Fields() {
+			if field.IsExported() && fiberV3ContainsForeignType(field.Type, seen) {
 				return true
 			}
 		}
 	case reflect.Func:
-		for i := 0; i < t.NumIn(); i++ {
-			if fiberV3ContainsForeignType(t.In(i), seen) {
-				return true
-			}
-		}
-		for i := 0; i < t.NumOut(); i++ {
-			if fiberV3ContainsForeignType(t.Out(i), seen) {
-				return true
-			}
-		}
+		return fiberV3ForeignSignature(t, seen)
 	}
 	return false
 }
@@ -241,8 +268,8 @@ func fiberV3DynamicType(t reflect.Type, seen map[reflect.Type]bool) bool {
 	case reflect.Map:
 		return fiberV3DynamicType(t.Key(), seen) || fiberV3DynamicType(t.Elem(), seen)
 	case reflect.Struct:
-		for i := 0; i < t.NumField(); i++ {
-			if t.Field(i).IsExported() && fiberV3DynamicType(t.Field(i).Type, seen) {
+		for field := range t.Fields() {
+			if field.IsExported() && fiberV3DynamicType(field.Type, seen) {
 				return true
 			}
 		}
@@ -254,8 +281,8 @@ func fiberV3DynamicType(t reflect.Type, seen map[reflect.Type]bool) bool {
 // another object with a dynamic getter. The shared visited set terminates
 // recursive type graphs; no application method is invoked during validation.
 func fiberV3DynamicMethods(t reflect.Type, seen map[reflect.Type]bool) bool {
-	for i := 0; i < t.NumMethod(); i++ {
-		method := t.Method(i).Type
+	for method := range t.Methods() {
+		method := method.Type
 		for j := 1; j < method.NumIn(); j++ {
 			if fiberV3ContainsForeignType(method.In(j), make(map[reflect.Type]bool)) {
 				return true
@@ -271,6 +298,21 @@ func fiberV3DynamicMethods(t reflect.Type, seen map[reflect.Type]bool) bool {
 			if fiberV3DynamicType(method.Out(j), seen) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func fiberV3ForeignSignature(t reflect.Type, seen map[reflect.Type]bool) bool {
+
+	for in := range t.Ins() {
+		if fiberV3ContainsForeignType(in, seen) {
+			return true
+		}
+	}
+	for out := range t.Outs() {
+		if fiberV3ContainsForeignType(out, seen) {
+			return true
 		}
 	}
 	return false

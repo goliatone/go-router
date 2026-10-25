@@ -13,7 +13,7 @@ import (
 )
 
 func TestFiberV3WebSocketMiddlewareSnapshotAndOwnedShutdown(t *testing.T) {
-	s := router.NewFiberV3Adapter().(*router.FiberV3Adapter)
+	s := requireTestType[*router.FiberV3Adapter](t, router.NewFiberV3Adapter())
 	cfg := router.DefaultWebSocketConfig()
 	cfg.DisableReadDeadline = true
 	cfg.Subprotocols = []string{"t03"}
@@ -33,7 +33,7 @@ func TestFiberV3WebSocketMiddlewareSnapshotAndOwnedShutdown(t *testing.T) {
 			stopped <- errors.New("upgrade data missing")
 			return nil
 		}
-		if ws.(interface{ Request() *http.Request }).Request() != nil {
+		if requireTestType[interface{ Request() *http.Request }](t, ws).Request() != nil {
 			stopped <- errors.New("pooled request retained")
 			return nil
 		}
@@ -51,7 +51,7 @@ func TestFiberV3WebSocketMiddlewareSnapshotAndOwnedShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer closeWebSocketConn(t, conn)
 	var ws router.WebSocketContext
 	select {
 	case ws = <-connected:
@@ -60,7 +60,7 @@ func TestFiberV3WebSocketMiddlewareSnapshotAndOwnedShutdown(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("upgrade timeout")
 	}
-	if err := ws.(router.WebSocketReadInterrupter).InterruptRead(); err != nil {
+	if err := requireTestType[router.WebSocketReadInterrupter](t, ws).InterruptRead(); err != nil {
 		t.Fatal(err)
 	}
 	if err := lifecycleReceive(t, stopped); !errors.Is(err, router.ErrWebSocketReadInterrupted) {

@@ -53,7 +53,7 @@ func DefaultHTTPErrorHandler(cfg HTTPErrorHandlerConfig) func(c Context, err err
 
 func httpStatusFromError(err error) (int, error) {
 	if err == nil {
-		return http.StatusInternalServerError, err
+		return http.StatusInternalServerError, nil
 	}
 
 	if routerErr, ok := stderrors.AsType[*goerrors.Error](err); ok {

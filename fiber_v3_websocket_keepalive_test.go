@@ -37,7 +37,7 @@ func testFiberV3WebSocketIdleConnection(t *testing.T, middleware bool) {
 		return ws.WriteMessage(messageType, data)
 	}
 	if middleware {
-		app.Router().Get("/ws", func(c router.Context) error { return handler(c.(router.WebSocketContext)) }, router.WebSocketUpgrade(config))
+		app.Router().Get("/ws", func(c router.Context) error { return handler(requireTestType[router.WebSocketContext](t, c)) }, router.WebSocketUpgrade(config))
 	} else {
 		app.Router().WebSocket("/ws", config, handler)
 	}

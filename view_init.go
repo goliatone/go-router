@@ -188,11 +188,11 @@ func registerViewAssetHelpers(opts ViewConfigProvider, lgr Logger, assets fs.FS,
 			}
 			continue
 		}
-		addFunc(asset.name, viewAssetHelper(assets, asset.name, assetPath, prefix, opts.GetDebug(), lgr))
+		addFunc(asset.name, viewAssetHelper(assets, asset.name, assetPath, prefix, opts.GetDebug, lgr))
 	}
 }
 
-func viewAssetHelper(assets fs.FS, kind, assetPath, prefix string, debug bool, lgr Logger) func(string) template.HTML {
+func viewAssetHelper(assets fs.FS, kind, assetPath, prefix string, isDebug func() bool, lgr Logger) func(string) template.HTML {
 	return func(name string) template.HTML {
 		var result template.HTML
 		pattern := glob.MustCompile(name)
@@ -215,7 +215,7 @@ func viewAssetHelper(assets fs.FS, kind, assetPath, prefix string, debug bool, l
 		}); err != nil {
 			lgr.Warn("Could not walk "+strings.ToUpper(kind)+" assets", "path", assetPath, "error", err)
 		}
-		if result == "" && debug {
+		if result == "" && isDebug() {
 			result = template.HTML("<!-- " + strings.ToUpper(kind) + " NOT FOUND: " + stdhtml.EscapeString(name) + " (looked in " + stdhtml.EscapeString(assetPath) + ") -->") // #nosec G203 -- debug-only markup escapes all variable text.
 			lgr.Warn("Could not resolve "+strings.ToUpper(kind), "name", name)
 		}

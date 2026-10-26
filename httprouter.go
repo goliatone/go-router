@@ -1207,14 +1207,19 @@ func (c *httpRouterContext) Send(body []byte) error {
 	return err
 }
 
-func (c *httpRouterContext) SendStream(r io.Reader) (err error) {
+func (c *httpRouterContext) SendStream(r io.Reader) error {
 	if r == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
 	if closer, ok := r.(io.Closer); ok {
 		defer func() {
 			if closeErr := closer.Close(); closeErr != nil {
-				err = errors.Join(err, closeErr)
+				// Cleanup must not turn a completed stream into a second response.
+				logger := Logger(&defaultLogger{})
+				if c.router != nil && c.router.logger != nil {
+					logger = c.router.logger
+				}
+				logger.Warn("stream close failed: %v", closeErr)
 			}
 		}()
 	}

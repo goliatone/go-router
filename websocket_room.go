@@ -54,7 +54,10 @@ type Room struct {
 	cancel    context.CancelFunc
 	destroyed bool
 	destroyMu sync.RWMutex
+	watchDone chan struct{}
 }
+
+var errRoomAlreadyDestroyed = errors.New("room already destroyed")
 
 // RoomConfig contains configuration for a room
 type RoomConfig struct {
@@ -126,6 +129,7 @@ func NewRoom(id, name string, config RoomConfig, hub *WSHub) *Room {
 		logger:    &defaultLogger{},
 		ctx:       ctx,
 		cancel:    cancel,
+		watchDone: make(chan struct{}),
 	}
 
 	// Set default values
@@ -143,6 +147,8 @@ func NewRoom(id, name string, config RoomConfig, hub *WSHub) *Room {
 	// Start empty room destroyer if configured
 	if config.DestroyWhenEmpty {
 		go room.watchEmpty()
+	} else {
+		close(room.watchDone)
 	}
 
 	return room
@@ -188,19 +194,24 @@ func (r *Room) AddClient(ctx context.Context, client WSClient) error {
 		}
 	}
 
-	// Check capacity
-	r.clientsMu.RLock()
+	// Authorization may have yielded while the room was destroyed. Serialize
+	// the final membership change with destruction, without locking callbacks.
+	clientID := client.ID()
+	r.destroyMu.RLock()
+	if r.destroyed {
+		r.destroyMu.RUnlock()
+		return errors.New("room is destroyed")
+	}
+	r.clientsMu.Lock()
 	currentCount := len(r.clients)
-	r.clientsMu.RUnlock()
-
 	if currentCount >= r.config.MaxClients {
+		r.clientsMu.Unlock()
+		r.destroyMu.RUnlock()
 		return fmt.Errorf("room is full (%d/%d)", currentCount, r.config.MaxClients)
 	}
-
-	// Add client
-	r.clientsMu.Lock()
-	r.clients[client.ID()] = client
+	r.clients[clientID] = client
 	r.clientsMu.Unlock()
+	r.destroyMu.RUnlock()
 
 	// Trigger onJoin hooks
 	r.triggerOnJoin(ctx, client)
@@ -488,25 +499,46 @@ func (r *Room) GetInfo() RoomInfo {
 	}
 }
 
-// Destroy destroys the room
+// Destroy destroys the room and waits for its empty-room watcher to stop.
+// Application event hooks retain their asynchronous execution semantics.
 func (r *Room) Destroy() error {
-	r.destroyMu.Lock()
-	defer r.destroyMu.Unlock()
+	if err := r.destroy(); err != nil {
+		return err
+	}
+	<-r.watchDone
+	return nil
+}
 
+// destroy also serves the empty-room watcher, which must not wait for itself.
+func (r *Room) destroy() error {
+	r.destroyMu.Lock()
 	if r.destroyed {
-		return errors.New("room already destroyed")
+		r.destroyMu.Unlock()
+		return errRoomAlreadyDestroyed
 	}
 
 	r.destroyed = true
 	now := time.Now()
 	r.destroyedAt = &now
+	r.destroyMu.Unlock()
+	r.cancel()
+
+	// Detachment never calls back into destruction, and only removes this
+	// instance so delayed cleanup cannot remove a replacement with the same ID.
+	if r.hub != nil && r.hub.roomManager != nil {
+		r.hub.roomManager.detachRoom(r)
+	}
 
 	// Trigger onDestroy hooks
 	r.triggerOnDestroy()
 
-	// Remove all clients
+	// Snapshot and clear membership before invoking client code. Notifications
+	// may query room state or create another room and must not hold either lock.
 	r.clientsMu.Lock()
-	for _, client := range r.clients {
+	clients := r.clients
+	r.clients = make(map[string]WSClient)
+	r.clientsMu.Unlock()
+	for _, client := range clients {
 		// Notify client they're being removed
 		if err := client.SendJSON(map[string]any{
 			"type":   "room:destroyed",
@@ -519,21 +551,6 @@ func (r *Room) Destroy() error {
 				"error", err)
 		}
 	}
-	r.clients = make(map[string]WSClient)
-	r.clientsMu.Unlock()
-
-	// Cancel context
-	r.cancel()
-
-	// Remove from hub if it exists
-	if r.hub != nil {
-		if err := r.hub.removeRoom(r.id); err != nil {
-			r.logger.Error("Failed to remove room from hub",
-				"room_id", r.id,
-				"error", err)
-		}
-	}
-
 	return nil
 }
 
@@ -635,6 +652,7 @@ func (r *Room) broadcastPresenceUpdate(ctx context.Context, action string, clien
 
 //nolint:nestif // Empty-room lifecycle needs nested timer state inside the ticker select.
 func (r *Room) watchEmpty() {
+	defer close(r.watchDone)
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -653,7 +671,7 @@ func (r *Room) watchEmpty() {
 					emptyStartTime = &now
 				} else if time.Since(*emptyStartTime) > r.config.EmptyDestroyDelay {
 					// Room has been empty for too long, destroy it
-					if err := r.Destroy(); err != nil {
+					if err := r.destroy(); err != nil && !errors.Is(err, errRoomAlreadyDestroyed) {
 						r.logger.Error("Failed to destroy empty room",
 							"room_id", r.id,
 							"error", err)

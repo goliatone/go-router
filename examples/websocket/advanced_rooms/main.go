@@ -5,8 +5,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
@@ -95,7 +101,7 @@ func main() {
 
 	// Register routes
 	app.Router().Get("/", homeHandler)
-	app.Router().WebSocket("/ws/rooms", config, roomHandler)
+	app.Router().WebSocket("/ws/rooms", config, trackWebSocket(roomHandler))
 
 	// Health check endpoint
 	app.Router().Get("/api/rooms", func(ctx router.Context) error {
@@ -112,7 +118,7 @@ func main() {
 	log.Printf("WebSocket endpoint: ws://localhost%s/ws/rooms", port)
 	log.Printf("Test page: http://localhost%s/", port)
 
-	if err := app.Serve(port); err != nil {
+	if err := runDemo(app, port); err != nil {
 		log.Fatal("Server error:", err)
 	}
 }
@@ -887,4 +893,109 @@ type CursorPosition struct {
 type Selection struct {
 	Start CursorPosition `json:"start"`
 	End   CursorPosition `json:"end"`
+}
+
+var demoSockets = struct {
+	sync.Mutex
+	readers  map[router.WebSocketReadInterrupter]struct{}
+	workers  sync.WaitGroup
+	stopping bool
+}{readers: make(map[router.WebSocketReadInterrupter]struct{})}
+
+func trackWebSocket(handler func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return func(ws router.WebSocketContext) error {
+		reader, ok := ws.(router.WebSocketReadInterrupter)
+		if !ok {
+			return fmt.Errorf("websocket read interruption unavailable")
+		}
+		demoSockets.Lock()
+		if demoSockets.stopping {
+			demoSockets.Unlock()
+			return ws.Close()
+		}
+		demoSockets.readers[reader] = struct{}{}
+		demoSockets.workers.Add(1)
+		demoSockets.Unlock()
+		defer func() {
+			if err := ws.Close(); err != nil {
+				log.Printf("websocket close: %v", err)
+			}
+			demoSockets.Lock()
+			delete(demoSockets.readers, reader)
+			demoSockets.Unlock()
+			demoSockets.workers.Done()
+		}()
+		return handler(ws)
+	}
+}
+
+func runDemo(server interface {
+	Serve(string) error
+	Shutdown(context.Context) error
+}, address string) error {
+	host, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-host.Done():
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	demoSockets.Lock()
+	demoSockets.stopping = true
+	readers := make([]router.WebSocketReadInterrupter, 0, len(demoSockets.readers))
+	for reader := range demoSockets.readers {
+		readers = append(readers, reader)
+	}
+	demoSockets.Unlock()
+	for _, reader := range readers {
+		if err := reader.InterruptRead(); err != nil {
+			log.Printf("interrupt websocket: %v", err)
+		}
+	}
+	joined := make(chan struct{})
+	go func() { demoSockets.workers.Wait(); close(joined) }()
+	var workerErr error
+	select {
+	case <-joined:
+	case <-ctx.Done():
+		workerErr = ctx.Err()
+	}
+	var roomErr error
+	if workerErr == nil {
+		roomErr = closeDemoRooms()
+	}
+	shutdownErr := server.Shutdown(ctx)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-ctx.Done():
+			serveErr = ctx.Err()
+		}
+	}
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
+	}
+	return errors.Join(serveErr, workerErr, roomErr, shutdownErr)
+}
+
+// Readers leave their rooms before destruction cancels and joins room watchers.
+func closeDemoRooms() error {
+	var cleanupErr error
+	for _, info := range hub.ListRooms() {
+		room, err := hub.GetRoom(info.ID)
+		if err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+			continue
+		}
+		if err := room.Destroy(); err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
+	}
+	return errors.Join(cleanupErr, hub.Close())
 }

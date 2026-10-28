@@ -136,6 +136,7 @@ func popHTTPRouterNamedRoutePolicy(router *httprouter.Router) (NamedRouteCollisi
 type HTTPServer struct {
 	mu                sync.Mutex
 	httpRouter        *httprouter.Router
+	serverMu          sync.Mutex
 	server            *http.Server
 	router            *HTTPRouter
 	views             Views
@@ -443,13 +444,20 @@ func (a *HTTPServer) Serve(address string) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// Publish the fully initialized server before exposing it to Shutdown.
+	a.serverMu.Lock()
 	a.server = srv
+	a.serverMu.Unlock()
 	return srv.ListenAndServe()
 }
 
 func (a *HTTPServer) Shutdown(ctx context.Context) error {
-	if a.server != nil {
-		return a.server.Shutdown(ctx)
+	a.serverMu.Lock()
+	srv := a.server
+	a.serverMu.Unlock()
+	// Do not hold the publication lock while waiting for in-flight requests.
+	if srv != nil {
+		return srv.Shutdown(ctx)
 	}
 	return nil
 }

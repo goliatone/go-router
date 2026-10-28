@@ -4,11 +4,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
@@ -170,14 +176,16 @@ func main() {
 
 	// Register routes
 	app.Router().Get("/", apiPageHandler)
-	app.Router().WebSocket("/ws/api", wsConfig, apiHandler)
+	app.Router().WebSocket("/ws/api", wsConfig, trackWebSocket(apiHandler))
 
 	// Start server
 	port := ":8083"
 	log.Printf("JSON API Server starting on %s", port)
 	log.Printf("Open http://localhost%s/ to test the API", port)
 
-	log.Fatal(app.Serve(port))
+	if err := runDemo(app, port); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // Process API request
@@ -543,7 +551,7 @@ func removeSubscription(sub *Subscription) {
 
 func notifySubscribers(resource, action string, data any) {
 	subMu.RLock()
-	subs := subscriptions[resource]
+	subs := append([]*Subscription(nil), subscriptions[resource]...)
 	subMu.RUnlock()
 
 	log.Printf("[NOTIFY] Sending '%s' notification for resource '%s' to %d subscribers", action, resource, len(subs))
@@ -566,8 +574,16 @@ func notifySubscribers(resource, action string, data any) {
 	}
 
 	for _, sub := range subs {
-		// Send notification to subscriber
+		// Join notification workers during host shutdown as well as readers.
+		demoSockets.Lock()
+		if demoSockets.stopping {
+			demoSockets.Unlock()
+			break
+		}
+		demoSockets.workers.Add(1)
+		demoSockets.Unlock()
 		go func(s *Subscription) {
+			defer demoSockets.workers.Done()
 			if err := s.Client.Conn.WriteJSON(notification); err != nil {
 				log.Printf("[NOTIFY] Failed to send notification to client %s: %v", s.Client.ID[:8], err)
 			}
@@ -821,3 +837,88 @@ func apiPageHandler(ctx router.Context) error {
 }
 
 // Note: convertToHTTPHandler function removed - using unified app.Serve() instead
+
+var demoSockets = struct {
+	sync.Mutex
+	readers  map[router.WebSocketReadInterrupter]struct{}
+	workers  sync.WaitGroup
+	stopping bool
+}{readers: make(map[router.WebSocketReadInterrupter]struct{})}
+
+func trackWebSocket(handler func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return func(ws router.WebSocketContext) error {
+		reader, ok := ws.(router.WebSocketReadInterrupter)
+		if !ok {
+			return fmt.Errorf("websocket read interruption unavailable")
+		}
+		demoSockets.Lock()
+		if demoSockets.stopping {
+			demoSockets.Unlock()
+			return ws.Close()
+		}
+		demoSockets.readers[reader] = struct{}{}
+		demoSockets.workers.Add(1)
+		demoSockets.Unlock()
+		defer func() {
+			if err := ws.Close(); err != nil {
+				log.Printf("websocket close: %v", err)
+			}
+			demoSockets.Lock()
+			delete(demoSockets.readers, reader)
+			demoSockets.Unlock()
+			demoSockets.workers.Done()
+		}()
+		return handler(ws)
+	}
+}
+
+func runDemo(server interface {
+	Serve(string) error
+	Shutdown(context.Context) error
+}, address string) error {
+	host, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-host.Done():
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	demoSockets.Lock()
+	demoSockets.stopping = true
+	readers := make([]router.WebSocketReadInterrupter, 0, len(demoSockets.readers))
+	for reader := range demoSockets.readers {
+		readers = append(readers, reader)
+	}
+	demoSockets.Unlock()
+	for _, reader := range readers {
+		if err := reader.InterruptRead(); err != nil {
+			log.Printf("interrupt websocket: %v", err)
+		}
+	}
+	joined := make(chan struct{})
+	go func() { demoSockets.workers.Wait(); close(joined) }()
+	var workerErr error
+	select {
+	case <-joined:
+	case <-ctx.Done():
+		workerErr = ctx.Err()
+	}
+	shutdownErr := server.Shutdown(ctx)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-ctx.Done():
+			serveErr = ctx.Err()
+		}
+	}
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
+	}
+	return errors.Join(serveErr, workerErr, shutdownErr)
+}

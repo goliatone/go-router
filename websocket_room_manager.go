@@ -143,23 +143,28 @@ func (rm *RoomManager) GetOrCreateRoom(ctx context.Context, id, name string, con
 
 // RemoveRoom removes a room from the manager
 func (rm *RoomManager) RemoveRoom(id string) error {
-	rm.roomsMu.Lock()
-	defer rm.roomsMu.Unlock()
-
+	rm.roomsMu.RLock()
 	room, exists := rm.rooms[id]
+	rm.roomsMu.RUnlock()
 	if !exists {
 		return fmt.Errorf("room %s not found", id)
 	}
 
-	// Destroy the room if not already destroyed
-	if !room.IsDestroyed() {
-		if err := room.Destroy(); err != nil {
-			return err
-		}
+	// Destruction invokes application code and detaches from the hub. Neither
+	// operation may run under the manager's registry lock.
+	if err := room.Destroy(); err != nil && !errors.Is(err, errRoomAlreadyDestroyed) {
+		return err
 	}
-
-	delete(rm.rooms, id)
+	rm.detachRoom(room)
 	return nil
+}
+
+func (rm *RoomManager) detachRoom(room *Room) {
+	rm.roomsMu.Lock()
+	defer rm.roomsMu.Unlock()
+	if rm.rooms[room.id] == room {
+		delete(rm.rooms, room.id)
+	}
 }
 
 // ListRooms returns a list of all rooms
@@ -427,15 +432,6 @@ func EnhanceWSHub(hub *WSHub) {
 			},
 		})
 	}
-}
-
-// Add these methods to WSHub (would be added via edit)
-
-func (h *WSHub) removeRoom(roomID string) error {
-	if h.roomManager != nil {
-		return h.roomManager.RemoveRoom(roomID)
-	}
-	return nil
 }
 
 func (h *WSHub) CreateRoom(ctx context.Context, id, name string, config RoomConfig) (*Room, error) {

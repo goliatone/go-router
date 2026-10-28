@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -1029,6 +1030,9 @@ func runDemo(server interface {
 		case <-ctx.Done():
 			serveErr = ctx.Err()
 		}
+	}
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
 	}
 	return errors.Join(serveErr, workerErr, shutdownErr)
 }

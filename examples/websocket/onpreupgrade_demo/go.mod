@@ -2,9 +2,7 @@ module onpreupgrade-demo
 
 go 1.26.0
 
-replace github.com/goliatone/go-router => ../../..
-
-require github.com/goliatone/go-router v0.0.0-00010101000000-000000000000
+require github.com/goliatone/go-router v0.63.0
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

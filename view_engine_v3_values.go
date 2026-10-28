@@ -49,6 +49,13 @@ func fiberV3NormalizeValue(v reflect.Value, path string, depth int, adapt bool) 
 		}
 		return fiberV3NormalizeValue(v.Elem(), path, depth+1, adapt)
 	}
+	// ViewContext is shared view data, but its Update method returns a dynamic
+	// map. Strip that method surface only where the normalized copy is used by
+	// the evaluator; boxed values and opaque model fields must still fail closed.
+	if adapt && t == reflect.TypeFor[ViewContext]() {
+		v = v.Convert(reflect.TypeFor[map[string]any]())
+		t = v.Type()
+	}
 	// Opaque models keep their type, so every reachable method result must be
 	// closed data. Those calls are made by pongo2 and cannot be wrapped here.
 	if fiberV3DynamicMethods(t, make(map[reflect.Type]bool)) {
@@ -168,8 +175,8 @@ func fiberV3NormalizeMap(v reflect.Value, path string, depth int, adapt bool) (r
 		if !item.IsValid() {
 			item = reflect.Zero(t.Elem())
 		}
-		if !item.Type().AssignableTo(t.Elem()) {
-			return reflect.Value{}, fiberV3ValueError(path, "adapted helper requires a map/slice of any")
+		if !fiberV3ContainerAssignable(item.Type(), t.Elem()) {
+			return reflect.Value{}, fiberV3ValueError(path, "adapted view data requires a map/slice of any")
 		}
 		out.SetMapIndex(iter.Key(), item)
 	}
@@ -196,12 +203,20 @@ func fiberV3NormalizeSequence(v reflect.Value, path string, depth int, adapt boo
 		if !item.IsValid() {
 			item = reflect.Zero(t.Elem())
 		}
-		if !item.Type().AssignableTo(t.Elem()) {
-			return reflect.Value{}, fiberV3ValueError(path, "adapted helper requires a map/slice of any")
+		if !fiberV3ContainerAssignable(item.Type(), t.Elem()) {
+			return reflect.Value{}, fiberV3ValueError(path, "adapted view data requires a map/slice of any")
 		}
 		out.Index(i).Set(item)
 	}
 	return out, nil
+}
+
+func fiberV3ContainerAssignable(from, to reflect.Type) bool {
+	// Assignability alone permits a plain map to regain ViewContext's methods
+	// inside a typed container. Preserve safe named helpers, but never restore
+	// an unchecked dynamic method surface on a normalized value.
+	return from.AssignableTo(to) && (from == to || to.Kind() == reflect.Interface ||
+		!fiberV3DynamicMethods(to, make(map[reflect.Type]bool)))
 }
 
 func fiberV3NormalizeModel(v reflect.Value, path string, depth int, adapt bool) (reflect.Value, error) {

@@ -14,7 +14,7 @@ import (
 
 	"github.com/goliatone/go-errors"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/go-router/flash"
 	flashmw "github.com/goliatone/go-router/middleware/flash"
@@ -221,18 +221,20 @@ func newFiberAdapter() router.Server[*fiber.App] {
 		WithURLPrefix("static").
 		WithReload(true)
 
-	viewEngine, err := router.InitializeViewEngine(cfg)
+	viewEngine, err := router.InitializeFiberV3ViewEngine(cfg)
 	if err != nil {
 		log.Fatalf("failed to initialize view engine: %v", err)
 	}
 
-	app := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+	app := router.NewFiberV3AdapterWithConfig(router.FiberV3AdapterConfig{
+		ListenConfig: fiber.ListenConfig{EnablePrintRoutes: true},
+	}, func(a *fiber.App) *fiber.App {
 		return fiber.New(
 			fiber.Config{
-				AppName:           "Go Router - Fiber",
-				EnablePrintRoutes: true,
-				PassLocalsToViews: true,
-				Views:             viewEngine,
+				AppName:                 "Go Router - Fiber v3",
+				PassLocalsToViews:       true,
+				Views:                   viewEngine,
+				DisableHeadAutoRegister: true,
 			},
 		)
 	})
@@ -419,7 +421,7 @@ func main() {
 	store := NewUserStore()
 
 	// Serve static files
-	app.WrappedRouter().Static("/static", exampleViewsDir())
+	app.Router().Static("/static", exampleViewsDir())
 
 	// Create API routes
 	createRoutes(app, store)
@@ -457,20 +459,30 @@ The API version: v0.0.0..
 
 	router.ServeOpenAPI(front, openAPIRenderer)
 
-	go func() {
-		if err := app.Serve(":9092"); err != nil {
-			log.Panic(err)
+	host, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- app.Serve(":9092") }()
+	select {
+	case err := <-serveDone:
+		if err != nil {
+			log.Fatal(err)
 		}
-	}()
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
-	_ = <-c
-
-	ctx := context.TODO()
+		return
+	case <-host.Done():
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	if err := app.Shutdown(ctx); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
+	}
+	select {
+	case err := <-serveDone:
+		if err != nil {
+			log.Fatal(err)
+		}
+	case <-ctx.Done():
+		log.Fatal(ctx.Err())
 	}
 
 }

@@ -4,8 +4,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
@@ -13,7 +19,7 @@ import (
 
 func main() {
 	// Create Fiber adapter with WebSocket support
-	app := router.NewFiberAdapter()
+	app := router.NewFiberV3Adapter()
 
 	// WebSocket configuration
 	config := router.DefaultWebSocketConfig()
@@ -68,7 +74,7 @@ func main() {
 	}
 
 	// Add WebSocket route using the unified interface - works with ANY adapter!
-	app.Router().WebSocket("/ws", config, wsHandler)
+	app.Router().WebSocket("/ws", config, trackWebSocket(wsHandler))
 
 	// Add a simple HTTP route for testing
 	app.Router().Get("/", func(c router.Context) error {
@@ -137,5 +143,89 @@ func main() {
 	fmt.Println("Starting server on :3000")
 	fmt.Println("Open http://localhost:3000 to test WebSocket functionality")
 
-	log.Fatal(app.Serve(":3000"))
+	if err := runDemo(app, ":3000"); err != nil {
+		log.Fatal(err)
+	}
+}
+
+var demoSockets = struct {
+	sync.Mutex
+	readers  map[router.WebSocketReadInterrupter]struct{}
+	workers  sync.WaitGroup
+	stopping bool
+}{readers: make(map[router.WebSocketReadInterrupter]struct{})}
+
+func trackWebSocket(handler func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return func(ws router.WebSocketContext) error {
+		reader, ok := ws.(router.WebSocketReadInterrupter)
+		if !ok {
+			return fmt.Errorf("websocket read interruption unavailable")
+		}
+		demoSockets.Lock()
+		if demoSockets.stopping {
+			demoSockets.Unlock()
+			return ws.Close()
+		}
+		demoSockets.readers[reader] = struct{}{}
+		demoSockets.workers.Add(1)
+		demoSockets.Unlock()
+		defer func() {
+			if err := ws.Close(); err != nil {
+				log.Printf("websocket close: %v", err)
+			}
+			demoSockets.Lock()
+			delete(demoSockets.readers, reader)
+			demoSockets.Unlock()
+			demoSockets.workers.Done()
+		}()
+		return handler(ws)
+	}
+}
+
+func runDemo(server interface {
+	Serve(string) error
+	Shutdown(context.Context) error
+}, address string) error {
+	host, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-host.Done():
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	demoSockets.Lock()
+	demoSockets.stopping = true
+	readers := make([]router.WebSocketReadInterrupter, 0, len(demoSockets.readers))
+	for reader := range demoSockets.readers {
+		readers = append(readers, reader)
+	}
+	demoSockets.Unlock()
+	for _, reader := range readers {
+		if err := reader.InterruptRead(); err != nil {
+			log.Printf("interrupt websocket: %v", err)
+		}
+	}
+	joined := make(chan struct{})
+	go func() { demoSockets.workers.Wait(); close(joined) }()
+	var workerErr error
+	select {
+	case <-joined:
+	case <-ctx.Done():
+		workerErr = ctx.Err()
+	}
+	shutdownErr := server.Shutdown(ctx)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-ctx.Done():
+			serveErr = ctx.Err()
+		}
+	}
+	return errors.Join(serveErr, workerErr, shutdownErr)
 }

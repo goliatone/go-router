@@ -2,11 +2,9 @@ module ws-auth-example
 
 go 1.26.0
 
-replace github.com/goliatone/go-router => ../../..
-
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
-	github.com/goliatone/go-router v0.23.0
+	github.com/goliatone/go-router v0.63.0
 )
 
 require (

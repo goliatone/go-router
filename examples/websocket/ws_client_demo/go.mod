@@ -4,10 +4,8 @@ go 1.26.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
-	github.com/goliatone/go-router v0.7.0
+	github.com/goliatone/go-router v0.63.0
 )
-
-replace github.com/goliatone/go-router => ../../..
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

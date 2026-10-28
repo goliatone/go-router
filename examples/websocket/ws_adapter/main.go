@@ -4,10 +4,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
@@ -152,8 +156,8 @@ func setupWebSocketRoutes[T any](app router.Server[T]) {
 	}
 
 	// Register WebSocket routes - SAME API for all adapters!
-	app.Router().WebSocket("/ws/echo", config, echoHandler).SetName("websocket.echo")
-	app.Router().WebSocket("/ws/chat", config, chatHandler).SetName("websocket.chat")
+	app.Router().WebSocket("/ws/echo", config, trackWebSocket(echoHandler)).SetName("websocket.echo")
+	app.Router().WebSocket("/ws/chat", config, trackWebSocket(chatHandler)).SetName("websocket.chat")
 }
 
 // setupHTTPRoutes demonstrates regular HTTP routing alongside WebSocket
@@ -296,8 +300,8 @@ func setupHTTPRoutes[T any](app router.Server[T]) {
 func getAdapterName[T any](app router.Server[T]) string {
 	// Use any to avoid generic type constraints
 	switch app := any(app).(type) {
-	case *router.FiberAdapter:
-		return "Fiber"
+	case *router.FiberV3Adapter:
+		return "Fiber v3"
 	case *router.HTTPServer:
 		return "HTTPRouter"
 	default:
@@ -320,7 +324,7 @@ func main() {
 
 	switch adapterType {
 	case "fiber":
-		app := router.NewFiberAdapter()
+		app := router.NewFiberV3Adapter()
 
 		// Setup routes - SAME function works with Fiber!
 		setupWebSocketRoutes(app)
@@ -328,7 +332,9 @@ func main() {
 
 		fmt.Println("Fiber server starting on :3000")
 		fmt.Println("Try: go run examples/websocket_adapter_demo.go httprouter")
-		log.Fatal(app.Serve(":3000"))
+		if err := runDemo(app, ":3000"); err != nil {
+			log.Fatal(err)
+		}
 
 	case "httprouter", "http":
 		app := router.NewHTTPServer()
@@ -339,11 +345,95 @@ func main() {
 
 		fmt.Println("HTTPRouter server starting on :3000")
 		fmt.Println("Try: go run examples/websocket_adapter_demo.go fiber")
-		log.Fatal(app.Serve(":3000"))
+		if err := runDemo(app, ":3000"); err != nil {
+			log.Fatal(err)
+		}
 
 	default:
 		fmt.Printf("Unknown adapter: %s\n", adapterType)
 		fmt.Println("Usage: go run websocket_adapter_demo.go [fiber|httprouter]")
 		os.Exit(1)
 	}
+}
+
+var demoSockets = struct {
+	sync.Mutex
+	readers  map[router.WebSocketReadInterrupter]struct{}
+	workers  sync.WaitGroup
+	stopping bool
+}{readers: make(map[router.WebSocketReadInterrupter]struct{})}
+
+func trackWebSocket(handler func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return func(ws router.WebSocketContext) error {
+		reader, ok := ws.(router.WebSocketReadInterrupter)
+		if !ok {
+			return fmt.Errorf("websocket read interruption unavailable")
+		}
+		demoSockets.Lock()
+		if demoSockets.stopping {
+			demoSockets.Unlock()
+			return ws.Close()
+		}
+		demoSockets.readers[reader] = struct{}{}
+		demoSockets.workers.Add(1)
+		demoSockets.Unlock()
+		defer func() {
+			if err := ws.Close(); err != nil {
+				log.Printf("websocket close: %v", err)
+			}
+			demoSockets.Lock()
+			delete(demoSockets.readers, reader)
+			demoSockets.Unlock()
+			demoSockets.workers.Done()
+		}()
+		return handler(ws)
+	}
+}
+
+func runDemo(server interface {
+	Serve(string) error
+	Shutdown(context.Context) error
+}, address string) error {
+	host, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-host.Done():
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	demoSockets.Lock()
+	demoSockets.stopping = true
+	readers := make([]router.WebSocketReadInterrupter, 0, len(demoSockets.readers))
+	for reader := range demoSockets.readers {
+		readers = append(readers, reader)
+	}
+	demoSockets.Unlock()
+	for _, reader := range readers {
+		if err := reader.InterruptRead(); err != nil {
+			log.Printf("interrupt websocket: %v", err)
+		}
+	}
+	joined := make(chan struct{})
+	go func() { demoSockets.workers.Wait(); close(joined) }()
+	var workerErr error
+	select {
+	case <-joined:
+	case <-ctx.Done():
+		workerErr = ctx.Err()
+	}
+	shutdownErr := server.Shutdown(ctx)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-ctx.Done():
+			serveErr = ctx.Err()
+		}
+	}
+	return errors.Join(serveErr, workerErr, shutdownErr)
 }

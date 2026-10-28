@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.63.3](https://github.com/goliatone/go-router/compare/v0.63.2...v0.63.3) - (2026-10-28)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Initialize before reads, handler registration sync, fix query ([96883ab](https://github.com/goliatone/go-router/commit/96883abd2108f55e88c59f61b45bd6ff7980dd24))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.63.3 ([4440b86](https://github.com/goliatone/go-router/commit/4440b86d4eda81a2572caed09a074a40488fcf59))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.63.2 ([0d874db](https://github.com/goliatone/go-router/commit/0d874db33effeb631eb00759ced8772477951bac))  - (goliatone)
+
 # [0.63.2](https://github.com/goliatone/go-router/compare/v0.63.1...v0.63.2) - (2026-10-28)
 
 ## <!-- 1 -->🐛 Bug Fixes

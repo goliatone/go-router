@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.63.2](https://github.com/goliatone/go-router/compare/v0.63.1...v0.63.2) - (2026-10-28)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Websocket and http locks ([797dcb1](https://github.com/goliatone/go-router/commit/797dcb10754cb9a7e6fb0850dfa9750422c0f332))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.63.2 ([643809d](https://github.com/goliatone/go-router/commit/643809d40190a0b874e433cb4dac6c6565df25a5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.63.1 ([e47b772](https://github.com/goliatone/go-router/commit/e47b7726c8b09693f7409924d9cef77db1187914))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([7c5b7df](https://github.com/goliatone/go-router/commit/7c5b7dfa6c8bcf19de11f606ef32233675834448))  - (goliatone)
+
 # [0.63.1](https://github.com/goliatone/go-router/compare/v0.63.0...v0.63.1) - (2026-10-28)
 
 ## <!-- 1 -->🐛 Bug Fixes

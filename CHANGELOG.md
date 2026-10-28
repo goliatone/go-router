@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.63.1](https://github.com/goliatone/go-router/compare/v0.63.0...v0.63.1) - (2026-10-28)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- View engine v3 ([0b0458e](https://github.com/goliatone/go-router/commit/0b0458ec3e35833a6b93544ffeb2b1956ac962b2))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.63.1 ([2216801](https://github.com/goliatone/go-router/commit/2216801981c1a7261272253ce71fc2e59c931db5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.63.0 ([6821529](https://github.com/goliatone/go-router/commit/6821529fba32f91727a2d0966a0887930746d98d))  - (goliatone)
+
 # [0.63.0](https://github.com/goliatone/go-router/compare/v0.62.6...v0.63.0) - (2026-10-26)
 
 ## <!-- 1 -->🐛 Bug Fixes

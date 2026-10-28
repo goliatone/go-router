@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 )
@@ -26,7 +27,6 @@ type WSHub struct {
 	handlersMu         sync.RWMutex
 
 	// Channel management
-	register     chan WSClient
 	unregisterCh chan WSClient
 	broadcast    chan broadcastMessage
 
@@ -101,7 +101,6 @@ func NewWSHub(opts ...func(*WSHubConfig)) *WSHub {
 	hub := &WSHub{
 		clients:       make(map[string]WSClient),
 		eventHandlers: make(map[string][]EventHandler),
-		register:      make(chan WSClient),
 		unregisterCh:  make(chan WSClient),
 		broadcast:     make(chan broadcastMessage),
 		ctx:           ctx,
@@ -128,7 +127,7 @@ func NewWSHub(opts ...func(*WSHubConfig)) *WSHub {
 
 // run processes hub events.
 //
-//nolint:gocyclo,nestif // The hub loop coordinates register, unregister, broadcast, room, and shutdown events.
+//nolint:gocyclo,nestif // The hub loop coordinates unregister, broadcast, room, and shutdown events.
 func (h *WSHub) run() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -140,24 +139,6 @@ func (h *WSHub) run() {
 
 	for {
 		select {
-		case client := <-h.register:
-			h.clientsMu.Lock()
-			h.clients[client.ID()] = client
-			h.clientsMu.Unlock()
-
-			// Call connect handlers
-			h.handlersMu.RLock()
-			handlers := h.connectHandlers
-			h.handlersMu.RUnlock()
-
-			for _, handler := range handlers {
-				go func(handler EventHandler) {
-					if err := handler(h.ctx, client, nil); err != nil {
-						h.handleError(h.ctx, client, err)
-					}
-				}(handler)
-			}
-
 		case client := <-h.unregisterCh:
 			h.clientsMu.Lock()
 			if _, ok := h.clients[client.ID()]; ok {
@@ -225,7 +206,9 @@ func (h *WSHub) run() {
 	}
 }
 
-// OnConnect registers a handler for client connections
+// OnConnect registers a connection initializer. Initializers run in registration
+// order for each client, before inbound dispatch, and must return to enable reads.
+// Different clients initialize independently; callbacks run outside hub locks.
 func (h *WSHub) OnConnect(handler EventHandler) error {
 	if handler == nil {
 		return errors.New("handler cannot be nil")
@@ -372,18 +355,38 @@ func (h *WSHub) Handler() func(Context) error {
 			return ctx.Status(400).SendString("WebSocket upgrade required")
 		}
 
-		// Create a new client
-		client := NewWSClient(wsCtx, h)
-		managedClient, ok := client.(*wsClient)
-		if !ok {
-			return errors.New("websocket client implementation does not expose lifecycle state")
+		client := newWSClient(wsCtx, h)
+		// Welcome messages can exceed the send buffer while initialization runs.
+		go client.writePump()
+		defer func() {
+			_ = client.Close(CloseNormalClosure, "")
+			<-client.writeDone
+		}()
+
+		// Serialize admission with Close so shutdown cannot miss a new client.
+		h.clientsMu.Lock()
+		if h.ctx.Err() != nil {
+			h.clientsMu.Unlock()
+			return nil
 		}
+		h.clients[client.ID()] = client
+		h.clientsMu.Unlock()
 
-		// Register the client
-		h.register <- client
-
-		// Wait for client to disconnect
-		<-managedClient.done
+		h.handlersMu.RLock()
+		handlers := slices.Clone(h.connectHandlers)
+		h.handlersMu.RUnlock()
+		for _, handler := range handlers {
+			if h.ctx.Err() != nil || !client.IsConnected() {
+				break
+			}
+			if err := handler(h.ctx, client, nil); err != nil {
+				h.handleError(h.ctx, client, err)
+			}
+		}
+		if h.ctx.Err() == nil && client.IsConnected() {
+			// The route owns the reader; it cannot outlive the upgraded handler.
+			client.readPump()
+		}
 
 		return nil
 	}

@@ -78,6 +78,21 @@ func (c *fiberWebSocketContext) Context() context.Context {
 	return c.fiberContext.Context()
 }
 
+// Query uses the upgrade snapshot once captured. The native Fiber context can
+// already belong to another request while connection initializers are running.
+func (c *fiberWebSocketContext) Query(key string, defaultValue ...string) string {
+	if c.meta == nil {
+		return c.fiberContext.Query(key, defaultValue...)
+	}
+	if values := c.meta.queriesMulti[key]; len(values) > 0 && values[0] != "" {
+		return values[0]
+	}
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return ""
+}
+
 // SetContext stores user context without touching the hijacked fasthttp
 // RequestCtx after the websocket upgrade.
 func (c *fiberWebSocketContext) SetContext(ctx context.Context) {

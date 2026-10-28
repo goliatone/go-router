@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 )
@@ -90,10 +91,12 @@ type wsClient struct {
 	hub    *WSHub
 	ctx    context.Context
 	cancel context.CancelFunc
+	ctxMu  sync.RWMutex
 
 	// Message handling
 	messageHandlers []MessageHandler
 	jsonHandlers    map[string][]JSONHandler
+	handlersMu      sync.RWMutex
 
 	// State management
 	state   map[string]any
@@ -106,6 +109,7 @@ type wsClient struct {
 	// Channel management
 	send      chan []byte
 	done      chan struct{}
+	writeDone chan struct{}
 	closeOnce sync.Once
 
 	// Error handling
@@ -113,8 +117,19 @@ type wsClient struct {
 	logger     Logger
 }
 
-// NewWSClient creates a new WebSocket client with automatic pump management
+// NewWSClient creates a new WebSocket client with immediate automatic pump startup.
+// To initialize state and handlers before inbound dispatch, use WSHub.OnConnect
+// with WSHub.Handler instead.
 func NewWSClient(conn WebSocketContext, hub *WSHub) WSClient {
+	c := newWSClient(conn, hub)
+	go c.writePump()
+	go c.readPump()
+	return c
+}
+
+// newWSClient leaves pump startup to its owner so hub initialization can finish
+// before inbound messages are consumed. NewWSClient retains automatic startup.
+func newWSClient(conn WebSocketContext, hub *WSHub) *wsClient {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c := &wsClient{
@@ -128,12 +143,9 @@ func NewWSClient(conn WebSocketContext, hub *WSHub) WSClient {
 		rooms:        make(map[string]bool),
 		send:         make(chan []byte, 256),
 		done:         make(chan struct{}),
+		writeDone:    make(chan struct{}),
 		logger:       &defaultLogger{},
 	}
-
-	// Start automatic pump management
-	go c.writePump()
-	go c.readPump()
 
 	return c
 }
@@ -150,35 +162,44 @@ func (c *wsClient) ConnectionID() string {
 
 // Context returns the client's context
 func (c *wsClient) Context() context.Context {
+	c.ctxMu.RLock()
+	defer c.ctxMu.RUnlock()
 	return c.ctx
 }
 
 // SetContext updates the client's context
 func (c *wsClient) SetContext(ctx context.Context) {
+	c.ctxMu.Lock()
+	defer c.ctxMu.Unlock()
 	c.ctx = ctx
 }
 
-// OnMessage registers a raw message handler
+// OnMessage registers a raw message handler. Dispatch snapshots the handlers and
+// invokes them outside the registration lock, so callbacks may register handlers.
 func (c *wsClient) OnMessage(handler MessageHandler) error {
 	if handler == nil {
 		return errors.New("handler cannot be nil")
 	}
+	c.handlersMu.Lock()
 	c.messageHandlers = append(c.messageHandlers, handler)
+	c.handlersMu.Unlock()
 	return nil
 }
 
-// OnJSON registers a JSON event handler
+// OnJSON registers a JSON event handler using the same snapshot semantics as OnMessage.
 func (c *wsClient) OnJSON(event string, handler JSONHandler) error {
 	if handler == nil {
 		return errors.New("handler cannot be nil")
 	}
+	c.handlersMu.Lock()
 	c.jsonHandlers[event] = append(c.jsonHandlers[event], handler)
+	c.handlersMu.Unlock()
 	return nil
 }
 
 // Send sends raw data to the client
 func (c *wsClient) Send(data []byte) error {
-	return c.SendWithContext(c.ctx, data)
+	return c.SendWithContext(c.Context(), data)
 }
 
 // SendWithContext sends raw data with context
@@ -195,7 +216,7 @@ func (c *wsClient) SendWithContext(ctx context.Context, data []byte) error {
 
 // SendJSON sends JSON data to the client
 func (c *wsClient) SendJSON(v any) error {
-	return c.SendJSONWithContext(c.ctx, v)
+	return c.SendJSONWithContext(c.Context(), v)
 }
 
 // SendJSONWithContext sends JSON data with context
@@ -209,7 +230,7 @@ func (c *wsClient) SendJSONWithContext(ctx context.Context, v any) error {
 
 // Broadcast sends data to all connected clients
 func (c *wsClient) Broadcast(data []byte) error {
-	return c.BroadcastWithContext(c.ctx, data)
+	return c.BroadcastWithContext(c.Context(), data)
 }
 
 // BroadcastWithContext sends data to all connected clients with context
@@ -222,7 +243,7 @@ func (c *wsClient) BroadcastWithContext(ctx context.Context, data []byte) error 
 
 // BroadcastJSON sends JSON data to all connected clients
 func (c *wsClient) BroadcastJSON(v any) error {
-	return c.BroadcastJSONWithContext(c.ctx, v)
+	return c.BroadcastJSONWithContext(c.Context(), v)
 }
 
 // BroadcastJSONWithContext sends JSON data to all connected clients with context
@@ -236,7 +257,7 @@ func (c *wsClient) BroadcastJSONWithContext(ctx context.Context, v any) error {
 
 // Join adds the client to a room
 func (c *wsClient) Join(room string) error {
-	return c.JoinWithContext(c.ctx, room)
+	return c.JoinWithContext(c.Context(), room)
 }
 
 // JoinWithContext adds the client to a room with context
@@ -253,7 +274,7 @@ func (c *wsClient) JoinWithContext(ctx context.Context, room string) error {
 
 // Leave removes the client from a room
 func (c *wsClient) Leave(room string) error {
-	return c.LeaveWithContext(c.ctx, room)
+	return c.LeaveWithContext(c.Context(), room)
 }
 
 // LeaveWithContext removes the client from a room with context
@@ -290,7 +311,7 @@ func (c *wsClient) Rooms() []string {
 
 // Set stores a value in the client's state
 func (c *wsClient) Set(key string, value any) {
-	c.SetWithContext(c.ctx, key, value)
+	c.SetWithContext(c.Context(), key, value)
 }
 
 // SetWithContext stores a value in the client's state with context
@@ -349,7 +370,7 @@ func websocketCloseCode(code int) (uint16, error) {
 
 // Close closes the connection with a status code and reason
 func (c *wsClient) Close(code int, reason string) error {
-	return c.CloseWithContext(c.ctx, code, reason)
+	return c.CloseWithContext(c.Context(), code, reason)
 }
 
 // CloseWithContext closes the connection with context
@@ -370,6 +391,13 @@ func (c *wsClient) CloseWithContext(ctx context.Context, code int, reason string
 		if writeErr := c.conn.WriteMessage(CloseMessage, closeMsg); writeErr != nil {
 			c.logger.Warn("failed to write websocket close frame", "client_id", c.ID(), "error", writeErr)
 			err = writeErr
+		}
+		// Fiber's hijacked transport may defer physical closure until the route
+		// returns. Wake its reader explicitly so that route can finish.
+		if interrupter, ok := c.conn.(WebSocketReadInterrupter); ok {
+			if interruptErr := interrupter.InterruptRead(); interruptErr != nil {
+				c.logger.Warn("failed to interrupt websocket reader", "client_id", c.ID(), "error", interruptErr)
+			}
 		}
 		if closeErr := c.conn.Close(); closeErr != nil {
 			c.logger.Warn("failed to close websocket connection", "client_id", c.ID(), "error", closeErr)
@@ -413,7 +441,7 @@ func (c *wsClient) Query(key string, defaultValue ...string) string {
 
 // Emit sends an event with data
 func (c *wsClient) Emit(event string, data any) error {
-	return c.EmitWithContext(c.ctx, event, data)
+	return c.EmitWithContext(c.Context(), event, data)
 }
 
 // EmitWithContext sends an event with data and context
@@ -456,8 +484,11 @@ func (c *wsClient) readPump() {
 		switch messageType {
 		case TextMessage, BinaryMessage:
 			// Process through handlers
-			for _, handler := range c.messageHandlers {
-				if err := handler(c.ctx, data); err != nil {
+			c.handlersMu.RLock()
+			handlers := slices.Clone(c.messageHandlers)
+			c.handlersMu.RUnlock()
+			for _, handler := range handlers {
+				if err := handler(c.Context(), data); err != nil {
 					c.logger.Error("Message handler failed",
 						"client_id", c.ID(),
 						"error", err)
@@ -473,9 +504,12 @@ func (c *wsClient) readPump() {
 				Data json.RawMessage `json:"data"`
 			}
 			if err := json.Unmarshal(data, &event); err == nil && event.Type != "" {
-				if handlers, ok := c.jsonHandlers[event.Type]; ok {
+				c.handlersMu.RLock()
+				handlers := slices.Clone(c.jsonHandlers[event.Type])
+				c.handlersMu.RUnlock()
+				if len(handlers) > 0 {
 					for _, handler := range handlers {
-						if err := handler(c.ctx, event.Data); err != nil {
+						if err := handler(c.Context(), event.Data); err != nil {
 							c.logger.Error("JSON handler failed",
 								"client_id", c.ID(),
 								"event_type", event.Type,
@@ -503,10 +537,11 @@ func (c *wsClient) readPump() {
 
 // writePump handles outgoing messages automatically
 func (c *wsClient) writePump() {
+	defer close(c.writeDone)
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
-		if err := c.conn.Close(); err != nil {
+		if err := c.Close(CloseNormalClosure, ""); err != nil {
 			c.logger.Warn("failed to close websocket writer", "client_id", c.ID(), "error", err)
 		}
 	}()

@@ -58,8 +58,8 @@ github.com/goliatone/go-errors v0.12.0 h1:FI3FHJe+sogfD+MZJqx8OVGDJqav5PNq1xi1UA
 github.com/goliatone/go-errors v0.12.0/go.mod h1:LvR8nteHvrUTbS6N7Gm/2of9yRyyLoxIB4VFPk+wkVU=
 github.com/goliatone/go-masker v0.2.0 h1:M+Xx+AVJqTpNCQNPrPgVL6ft7oao5oT+/jQ+G8XCYVg=
 github.com/goliatone/go-masker v0.2.0/go.mod h1:n+AV93IO1rNI35kjbjfV1gMkjuIOSDVEzfhABTlCf4U=
-github.com/goliatone/go-router v0.63.1 h1:huQeW+dZxg5bhYU9OPA/bvNrATO1yP2OT9ukFEOEBb4=
-github.com/goliatone/go-router v0.63.1/go.mod h1:JnIcrc8T05lQwDvu/Kbx8CG/cUoN4h6YrTVSgzZur8A=
+github.com/goliatone/go-router v0.63.2 h1:Lj6lFv5f+yzIIwcvlnUttjTVx8TEfa29Vu6mHukzF6U=
+github.com/goliatone/go-router v0.63.2/go.mod h1:puV0F7LSyo5tsUMFoDCPuIVYUnVgHB3+vOARMUmPfFY=
 github.com/goodsign/monday v1.0.2 h1:k8kRMkCRVfCTWOU4dRfRgneQsWlB1+mJd3MxG0lGLzQ=
 github.com/goodsign/monday v1.0.2/go.mod h1:r4T4breXpoFwspQNM+u2sLxJb2zyTaxVGqUfTBjWOu8=
 github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=

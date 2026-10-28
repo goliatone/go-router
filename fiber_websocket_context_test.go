@@ -2,10 +2,41 @@ package router
 
 import (
 	"context"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
 )
+
+func TestFiberWebSocketQuerySnapshot(t *testing.T) {
+	app := fiber.New()
+	app.Get("/ws", func(native *fiber.Ctx) error {
+		captured, _, err := captureFiberContextForWebSocket(native, nil, nil)
+		if err != nil {
+			t.Error(err)
+			return err
+		}
+		ws := &fiberWebSocketContext{fiberContext: captured, isUpgraded: true}
+		// Simulate reuse of the same native request while the socket remains alive.
+		native.Request().SetRequestURI("/unrelated?user=recycled&empty=recycled")
+		for _, tc := range []struct{ key, fallback, want string }{
+			{"user", "fallback", "first"},
+			{"empty", "fallback", "fallback"},
+			{"missing", "fallback", "fallback"},
+			{"missing", "", ""},
+		} {
+			if got := ws.Query(tc.key, tc.fallback); got != tc.want {
+				t.Errorf("Query(%q) = %q, want %q", tc.key, got, tc.want)
+			}
+		}
+		return native.SendStatus(200)
+	})
+	resp, err := app.Test(httptest.NewRequest("GET", "/ws?user=first&user=second&empty=", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+}
 
 // TestFiberWebSocketContextFixVerification verifies that the nil pointer bug in
 // fiber_websocket.go:508-509 is fixed (Phase 1 of BUG_FIX.md)

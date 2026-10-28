@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
-	github.com/goliatone/go-router v0.63.1
+	github.com/goliatone/go-router v0.63.2
 )
 
 require (

@@ -57,7 +57,9 @@ go.work
 node_modules
 .gocache
 .modcache
-evidence
+# Keep archived evidence local, but share its Go module boundary.
+/evidence/*
+!/evidence/go.mod
 .claude/
 .codex/
 .ctx/

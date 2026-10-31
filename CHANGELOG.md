@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.63.4](https://github.com/goliatone/go-router/compare/v0.63.3...v0.63.4) - (2026-10-31)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Event history expiry ([8c87ad9](https://github.com/goliatone/go-router/commit/8c87ad97041e02eda02cec09e0feb8803fabd1a7))  - (goliatone)
+- Lock and concurrency issues ([6735af0](https://github.com/goliatone/go-router/commit/6735af069b764e61a17c988efdeb34478e0b2cd0))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.63.4 ([baa5c37](https://github.com/goliatone/go-router/commit/baa5c3723e648b5719c959a724bf5bbeb644505e))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.63.3 ([9925d9d](https://github.com/goliatone/go-router/commit/9925d9d26950d6c9b34ca873a84414448e16eb62))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([bea7c28](https://github.com/goliatone/go-router/commit/bea7c2869ddb6539f8a35cafe12f82e76c220693))  - (goliatone)
+- Update gitignore ([00f6059](https://github.com/goliatone/go-router/commit/00f6059f3379fe038c90b43cf032715af7153df2))  - (goliatone)
+
 # [0.63.3](https://github.com/goliatone/go-router/compare/v0.63.2...v0.63.3) - (2026-10-28)
 
 ## <!-- 1 -->🐛 Bug Fixes

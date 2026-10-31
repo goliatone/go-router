@@ -1232,6 +1232,29 @@ app.Router().Get("/ws", router.NewWSHandler(func(ctx context.Context, client rou
 
 For complete WebSocket documentation, examples, and advanced features, see [README_WEBSOCKET.md](README_WEBSOCKET.md).
 
+### Cleanup ownership
+
+Call `Close()` on `EventHistory`, `ReconnectManager`, and `EventRouter` when their
+owner shuts down. `EventRouter.Close()` also closes its internally created history.
+
+```go
+history := router.NewEventHistory(1000, time.Hour)
+defer history.Close()
+
+reconnect := router.NewReconnectManager(router.DefaultReconnectConfig())
+defer reconnect.Close()
+
+events := router.NewEventRouter(router.EventRouterConfig{EnableHistory: true})
+defer events.Close()
+```
+
+These methods are safe to call repeatedly or concurrently. They stop background
+expiry and wait for an active cleanup sweep, without clearing stored data or
+disabling synchronous operations. They do not close clients or wait for client I/O.
+A zero-TTL `EventHistory` starts no cleanup worker. Stop application operations
+separately when shutting down; `Close()` has no deadline and waits for any locks
+needed by an active sweep.
+
 ## Error Handling Policy
 
 This project follows a consistent error handling strategy to ensure reliability and maintainability across the WebSocket and HTTP components.

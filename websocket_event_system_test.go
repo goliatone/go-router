@@ -15,6 +15,7 @@ func TestEventRouter(t *testing.T) {
 	t.Run("Create router with default config", func(t *testing.T) {
 		config := router.EventRouterConfig{}
 		r := router.NewEventRouter(config)
+		t.Cleanup(r.Close)
 
 		if r == nil {
 			t.Fatal("Expected router to be created")
@@ -23,6 +24,7 @@ func TestEventRouter(t *testing.T) {
 
 	t.Run("Register and trigger global handler", func(t *testing.T) {
 		r := router.NewEventRouter(router.EventRouterConfig{})
+		t.Cleanup(r.Close)
 
 		called := false
 		handler := &router.GenericEventHandler{
@@ -59,6 +61,7 @@ func TestEventRouter(t *testing.T) {
 
 	t.Run("Namespace isolation", func(t *testing.T) {
 		r := router.NewEventRouter(router.EventRouterConfig{})
+		t.Cleanup(r.Close)
 
 		ns1 := r.Namespace("ns1")
 		ns2 := r.Namespace("ns2")
@@ -118,6 +121,7 @@ func TestEventRouter(t *testing.T) {
 
 	t.Run("Middleware chain", func(t *testing.T) {
 		r := router.NewEventRouter(router.EventRouterConfig{})
+		t.Cleanup(r.Close)
 
 		order := []string{}
 		mu := sync.Mutex{}
@@ -166,6 +170,7 @@ func TestEventRouter(t *testing.T) {
 
 	t.Run("Type-safe handler", func(t *testing.T) {
 		r := router.NewEventRouter(router.EventRouterConfig{})
+		t.Cleanup(r.Close)
 
 		type TestData struct {
 			Message string `json:"message"`
@@ -201,6 +206,7 @@ func TestEventRouter(t *testing.T) {
 
 	t.Run("Namespace authorization", func(t *testing.T) {
 		r := router.NewEventRouter(router.EventRouterConfig{})
+		t.Cleanup(r.Close)
 		ns := r.Namespace("private")
 
 		// Set authorization function
@@ -239,6 +245,7 @@ func TestEventRouter(t *testing.T) {
 func TestEventHistory(t *testing.T) {
 	t.Run("Add and retrieve events", func(t *testing.T) {
 		h := router.NewEventHistory(100, 1*time.Hour)
+		t.Cleanup(h.Close)
 
 		// Add events
 		for i := range 5 {
@@ -260,6 +267,7 @@ func TestEventHistory(t *testing.T) {
 
 	t.Run("Filter by type", func(t *testing.T) {
 		h := router.NewEventHistory(100, 1*time.Hour)
+		t.Cleanup(h.Close)
 
 		// Add different types
 		h.Add(&router.EventMessage{Type: "type1", Timestamp: time.Now()})
@@ -281,6 +289,7 @@ func TestEventHistory(t *testing.T) {
 
 	t.Run("Max size enforcement", func(t *testing.T) {
 		h := router.NewEventHistory(3, 1*time.Hour)
+		t.Cleanup(h.Close)
 
 		// Add more than max size
 		for i := range 5 {
@@ -308,6 +317,7 @@ func TestEventHistory(t *testing.T) {
 
 	t.Run("Time-based filtering", func(t *testing.T) {
 		h := router.NewEventHistory(100, 1*time.Hour)
+		t.Cleanup(h.Close)
 
 		now := time.Now()
 		past := now.Add(-1 * time.Hour)

@@ -21,6 +21,8 @@ type EventHistory struct {
 	byNamespace map[string][]*EventMessage
 	byClient    map[string][]*EventMessage
 	indexMu     sync.RWMutex
+
+	cleanup *periodicCleanup
 }
 
 // EventHistoryFilter filters events in history
@@ -45,7 +47,8 @@ type EventHistoryFilter struct {
 	Offset int
 }
 
-// NewEventHistory creates a new event history
+// NewEventHistory creates a new event history. Call Close when it is no longer
+// needed. A zero TTL disables periodic expiry and starts no cleanup goroutine.
 func NewEventHistory(maxSize int, ttl time.Duration) *EventHistory {
 	h := &EventHistory{
 		events:      make([]*EventMessage, 0, maxSize),
@@ -56,10 +59,18 @@ func NewEventHistory(maxSize int, ttl time.Duration) *EventHistory {
 		byClient:    make(map[string][]*EventMessage),
 	}
 
-	// Start cleanup goroutine
-	go h.cleanup()
+	if ttl != 0 {
+		h.cleanup = newPeriodicCleanup(time.Minute, h.cleanupOldEvents)
+	}
 
 	return h
+}
+
+// Close stops periodic expiry and waits for any active cleanup sweep.
+// It is safe to call concurrently or repeatedly. Stored events and synchronous
+// operations remain available; Close does not clear history or stop replay.
+func (h *EventHistory) Close() {
+	h.cleanup.close()
 }
 
 // Add adds an event to history
@@ -248,15 +259,6 @@ func (h *EventHistory) removeFromSlice(slice *[]*EventMessage, event *EventMessa
 			*slice = append((*slice)[:i], (*slice)[i+1:]...)
 			break
 		}
-	}
-}
-
-func (h *EventHistory) cleanup() {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		h.cleanupOldEvents()
 	}
 }
 

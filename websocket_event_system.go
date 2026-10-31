@@ -180,7 +180,8 @@ type EventMiddlewareNext func(ctx context.Context, client WSClient, event *Event
 // NamespaceAuthFunc authorizes access to a namespace
 type NamespaceAuthFunc func(ctx context.Context, client WSClient) error
 
-// NewEventRouter creates a new event router
+// NewEventRouter creates a new event router. Call Close when it is no longer
+// needed to release the cleanup worker of its history, if enabled.
 func NewEventRouter(config EventRouterConfig) *EventRouter {
 	if config.AckTimeout == 0 {
 		config.AckTimeout = 30 * time.Second
@@ -210,6 +211,15 @@ func NewEventRouter(config EventRouterConfig) *EventRouter {
 	}
 
 	return router
+}
+
+// Close stops and joins cleanup of the history owned by this router.
+// It is safe to call concurrently or repeatedly, including with history disabled.
+// Routing and stored history remain available; Close does not close clients.
+func (r *EventRouter) Close() {
+	if r.history != nil {
+		r.history.Close()
+	}
 }
 
 // Namespace returns or creates a namespace

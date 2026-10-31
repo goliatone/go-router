@@ -20,6 +20,8 @@ type ReconnectManager struct {
 
 	// Message queue manager
 	queueManager *MessageQueueManager
+
+	cleanup *periodicCleanup
 }
 
 // ReconnectConfig contains reconnection configuration
@@ -119,7 +121,8 @@ func DefaultReconnectConfig() ReconnectConfig {
 	}
 }
 
-// NewReconnectManager creates a new reconnection manager
+// NewReconnectManager creates a new reconnection manager.
+// Call Close when the manager is no longer needed to release its cleanup worker.
 func NewReconnectManager(config ReconnectConfig) *ReconnectManager {
 	if config.SessionTimeout == 0 {
 		config.SessionTimeout = 5 * time.Minute
@@ -138,10 +141,18 @@ func NewReconnectManager(config ReconnectConfig) *ReconnectManager {
 		})
 	}
 
-	// Start cleanup routine
-	go mgr.cleanupSessions()
+	mgr.cleanup = newPeriodicCleanup(time.Minute, func() {
+		mgr.cleanupExpiredSessions(time.Now())
+	})
 
 	return mgr
+}
+
+// Close stops periodic expiry and waits for any active cleanup sweep.
+// It is safe to call concurrently or repeatedly. Sessions and synchronous
+// operations remain available; Close does not close clients or join their I/O.
+func (m *ReconnectManager) Close() {
+	m.cleanup.close()
 }
 
 // CreateSession creates a new session for a client
@@ -289,16 +300,6 @@ func (m *ReconnectManager) RemoveSession(sessionID string) {
 	defer m.sessionsMu.Unlock()
 
 	delete(m.sessions, sessionID)
-}
-
-// cleanupSessions periodically cleans up expired sessions
-func (m *ReconnectManager) cleanupSessions() {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		m.cleanupExpiredSessions(time.Now())
-	}
 }
 
 func (m *ReconnectManager) cleanupExpiredSessions(now time.Time) {

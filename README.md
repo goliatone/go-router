@@ -1255,6 +1255,10 @@ A zero-TTL `EventHistory` starts no cleanup worker. Stop application operations
 separately when shutting down; `Close()` has no deadline and waits for any locks
 needed by an active sweep.
 
+Nonpositive capacities in `NewEventHistory` and `EventRouterConfig.MaxHistorySize`
+use the default bounded history size. Positive capacities keep their explicit
+limit. Set `EnableHistory: false` to disable router-owned history.
+
 ## Error Handling Policy
 
 This project follows a consistent error handling strategy to ensure reliability and maintainability across the WebSocket and HTTP components.

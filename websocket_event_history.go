@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"slices"
 	"sync"
 	"time"
 )
@@ -235,28 +236,40 @@ func (h *EventHistory) removeFromIndex(event *EventMessage) {
 	if event.Type != "" {
 		events := h.byType[event.Type]
 		h.removeFromSlice(&events, event)
-		h.byType[event.Type] = events
+		if len(events) == 0 {
+			delete(h.byType, event.Type)
+		} else {
+			h.byType[event.Type] = events
+		}
 	}
 
 	// Remove from namespace index
 	if event.Namespace != "" {
 		events := h.byNamespace[event.Namespace]
 		h.removeFromSlice(&events, event)
-		h.byNamespace[event.Namespace] = events
+		if len(events) == 0 {
+			delete(h.byNamespace, event.Namespace)
+		} else {
+			h.byNamespace[event.Namespace] = events
+		}
 	}
 
 	// Remove from client index
 	if clientID, ok := event.Metadata["clientID"].(string); ok && clientID != "" {
 		events := h.byClient[clientID]
 		h.removeFromSlice(&events, event)
-		h.byClient[clientID] = events
+		if len(events) == 0 {
+			delete(h.byClient, clientID)
+		} else {
+			h.byClient[clientID] = events
+		}
 	}
 }
 
 func (h *EventHistory) removeFromSlice(slice *[]*EventMessage, event *EventMessage) {
 	for i, e := range *slice {
 		if e == event {
-			*slice = append((*slice)[:i], (*slice)[i+1:]...)
+			*slice = slices.Delete(*slice, i, i+1)
 			break
 		}
 	}
@@ -274,8 +287,8 @@ func (h *EventHistory) cleanupOldEvents() {
 
 	cutoff := time.Now().Add(-h.ttl)
 
-	// Find first event that is not expired
-	firstValid := 0
+	// If no live event is found, the entire history is expired.
+	firstValid := len(h.events)
 	for i, event := range h.events {
 		if event.Timestamp.After(cutoff) {
 			firstValid = i
@@ -284,9 +297,9 @@ func (h *EventHistory) cleanupOldEvents() {
 		h.removeFromIndex(event)
 	}
 
-	// Remove expired events
+	// Remove expired events and zero their backing-array references.
 	if firstValid > 0 {
-		h.events = h.events[firstValid:]
+		h.events = slices.Delete(h.events, 0, firstValid)
 	}
 }
 

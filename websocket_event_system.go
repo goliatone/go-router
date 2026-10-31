@@ -48,7 +48,7 @@ type EventRouterConfig struct {
 	// Enable event history
 	EnableHistory bool
 
-	// Maximum history size
+	// Maximum history size. Nonpositive values use the default of 1,000 events.
 	MaxHistorySize int
 
 	// Event TTL for history
@@ -186,8 +186,8 @@ func NewEventRouter(config EventRouterConfig) *EventRouter {
 	if config.AckTimeout == 0 {
 		config.AckTimeout = 30 * time.Second
 	}
-	if config.MaxHistorySize == 0 {
-		config.MaxHistorySize = 1000
+	if config.MaxHistorySize <= 0 {
+		config.MaxHistorySize = defaultEventHistorySize
 	}
 	if config.HistoryTTL == 0 {
 		config.HistoryTTL = 1 * time.Hour

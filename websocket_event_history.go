@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const defaultEventHistorySize = 1000
+
 // EventHistory stores event history for replay
 type EventHistory struct {
 	events   []*EventMessage
@@ -48,9 +50,14 @@ type EventHistoryFilter struct {
 	Offset int
 }
 
-// NewEventHistory creates a new event history. Call Close when it is no longer
-// needed. A zero TTL disables periodic expiry and starts no cleanup goroutine.
+// NewEventHistory creates a new event history. Nonpositive maxSize uses the
+// default limit of 1,000 events. Call Close when the history is no longer needed.
+// A zero TTL disables periodic expiry and starts no cleanup goroutine.
 func NewEventHistory(maxSize int, ttl time.Duration) *EventHistory {
+	if maxSize <= 0 {
+		maxSize = defaultEventHistorySize
+	}
+
 	h := &EventHistory{
 		events:      make([]*EventMessage, 0, maxSize),
 		maxSize:     maxSize,
@@ -74,8 +81,12 @@ func (h *EventHistory) Close() {
 	h.cleanup.close()
 }
 
-// Add adds an event to history
+// Add adds an event to history. Nil events are ignored.
 func (h *EventHistory) Add(event *EventMessage) {
+	if event == nil {
+		return
+	}
+
 	h.eventsMu.Lock()
 	h.indexMu.Lock()
 	defer h.eventsMu.Unlock()
@@ -83,8 +94,9 @@ func (h *EventHistory) Add(event *EventMessage) {
 
 	// Check size limit
 	if len(h.events) >= h.maxSize {
-		// Remove oldest event
+		// Remove the oldest event and release its backing-array reference.
 		oldest := h.events[0]
+		h.events[0] = nil
 		h.events = h.events[1:]
 		h.removeFromIndex(oldest)
 	}
@@ -179,6 +191,7 @@ func (h *EventHistory) Clear() {
 	defer h.eventsMu.Unlock()
 	defer h.indexMu.Unlock()
 
+	clear(h.events)
 	h.events = h.events[:0]
 	h.byType = make(map[string][]*EventMessage)
 	h.byNamespace = make(map[string][]*EventMessage)
@@ -287,20 +300,15 @@ func (h *EventHistory) cleanupOldEvents() {
 
 	cutoff := time.Now().Add(-h.ttl)
 
-	// If no live event is found, the entire history is expired.
-	firstValid := len(h.events)
-	for i, event := range h.events {
+	// Timestamps need not follow insertion order. Preserve survivor order and
+	// zero discarded references while removing every expired event.
+	h.events = slices.DeleteFunc(h.events, func(event *EventMessage) bool {
 		if event.Timestamp.After(cutoff) {
-			firstValid = i
-			break
+			return false
 		}
 		h.removeFromIndex(event)
-	}
-
-	// Remove expired events and zero their backing-array references.
-	if firstValid > 0 {
-		h.events = slices.Delete(h.events, 0, firstValid)
-	}
+		return true
+	})
 }
 
 // EventBatcher batches events for efficient processing

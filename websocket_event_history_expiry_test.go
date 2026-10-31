@@ -27,6 +27,14 @@ func assertExpiryViews(t *testing.T, history *EventHistory, want []*EventMessage
 		if got := history.Get(filter); !slices.Equal(got, want) {
 			t.Errorf("filter %+v returned the wrong event sequence (got %d events, want %d)", filter, len(got), len(want))
 		}
+		filter.Offset, filter.Limit = 1, 1
+		var page []*EventMessage
+		if len(want) > 1 {
+			page = want[1:2]
+		}
+		if got := history.Get(filter); !slices.Equal(got, page) {
+			t.Errorf("filter %+v returned the wrong page", filter)
+		}
 	}
 	history.indexMu.RLock()
 	defer history.indexMu.RUnlock()
@@ -67,18 +75,22 @@ func assertNoExpiredReferences(t *testing.T, history *EventHistory, storage [][]
 
 func TestEventHistoryExpirySweep(t *testing.T) {
 	cases := []struct {
-		name     string
-		ttl      time.Duration
-		offsets  []time.Duration
-		keepFrom int
+		name    string
+		ttl     time.Duration
+		offsets []time.Duration
+		keep    []int
 	}{
 		{name: "empty", ttl: time.Minute},
-		{name: "one-expired", ttl: time.Minute, offsets: []time.Duration{-2 * time.Minute}, keepFrom: 1},
-		{name: "all-expired", ttl: time.Minute, offsets: []time.Duration{-3 * time.Minute, -2 * time.Minute}, keepFrom: 2},
-		{name: "none-expired", ttl: time.Minute, offsets: []time.Duration{-30 * time.Second, 0}},
-		{name: "expired-prefix", ttl: time.Minute, offsets: []time.Duration{-2 * time.Minute, -30 * time.Second, 0}, keepFrom: 1},
-		{name: "cutoff-equality", ttl: time.Minute, offsets: []time.Duration{-time.Minute, -time.Minute + time.Nanosecond}, keepFrom: 1},
-		{name: "zero-ttl", offsets: []time.Duration{-3 * time.Minute, -2 * time.Minute}},
+		{name: "one-expired", ttl: time.Minute, offsets: []time.Duration{-2 * time.Minute}},
+		{name: "all-expired", ttl: time.Minute, offsets: []time.Duration{-3 * time.Minute, -2 * time.Minute}},
+		{name: "none-expired", ttl: time.Minute, offsets: []time.Duration{-30 * time.Second, 0}, keep: []int{0, 1}},
+		{name: "expired-prefix", ttl: time.Minute, offsets: []time.Duration{-2 * time.Minute, -30 * time.Second, 0}, keep: []int{1, 2}},
+		{name: "cutoff-equality", ttl: time.Minute, offsets: []time.Duration{-time.Minute, -time.Minute + time.Nanosecond}, keep: []int{1}},
+		{name: "zero-ttl", offsets: []time.Duration{time.Minute, -3 * time.Minute, -2 * time.Minute}, keep: []int{0, 1, 2}},
+		{name: "expired-suffix", ttl: time.Minute, offsets: []time.Duration{0, -2 * time.Minute}, keep: []int{0}},
+		{name: "interleaved", ttl: time.Minute, offsets: []time.Duration{time.Minute, -2 * time.Minute, -30 * time.Second, -3 * time.Minute, 0}, keep: []int{0, 2, 4}},
+		{name: "descending", ttl: time.Minute, offsets: []time.Duration{time.Minute, 0, -30 * time.Second, -2 * time.Minute}, keep: []int{0, 1, 2}},
+		{name: "cutoff-after-live", ttl: time.Minute, offsets: []time.Duration{0, -time.Minute, -time.Minute + time.Nanosecond}, keep: []int{0, 2}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -92,12 +104,19 @@ func TestEventHistoryExpirySweep(t *testing.T) {
 					history.Add(event)
 				}
 				storage := expiryStorage(history)
-				want := events[test.keepFrom:]
+				var want, expired []*EventMessage
+				for i, event := range events {
+					if slices.Contains(test.keep, i) {
+						want = append(want, event)
+					} else {
+						expired = append(expired, event)
+					}
+				}
 				for range 2 {
 					history.cleanupOldEvents()
 					assertExpiryViews(t, history, want)
 				}
-				assertNoExpiredReferences(t, history, storage, events[:test.keepFrom])
+				assertNoExpiredReferences(t, history, storage, expired)
 
 				var replayed []string
 				client := lifecycleClient{sendJSON: func(value any) error {
@@ -138,8 +157,8 @@ func TestEventHistoryExpiryIndexBuckets(t *testing.T) {
 			Metadata: map[string]any{"clientID": "old-client"}, Timestamp: time.Now().Add(-2 * time.Minute),
 		}
 		fresh := expiryEvent("fresh", time.Now())
-		history.Add(old)
 		history.Add(fresh)
+		history.Add(old)
 		storage := expiryStorage(history)
 		history.cleanupOldEvents()
 		assertExpiryViews(t, history, []*EventMessage{fresh})
@@ -178,48 +197,90 @@ func TestEventHistoryExpiryPeriodicDrain(t *testing.T) {
 	})
 }
 
-func TestEventHistoryExpiryConcurrentAccess(t *testing.T) {
+func TestEventHistoryExpiryPeriodicOutOfOrder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		history := NewEventHistory(1000, time.Hour)
-		history.Close()
-		start := make(chan struct{})
-		var workers sync.WaitGroup
-		for writer := range 3 {
-			workers.Go(func() {
-				<-start
-				for i := range 100 {
-					history.Add(expiryEvent(fmt.Sprintf("%d/%d", writer, i), time.Now().Add(-2*time.Hour)))
-				}
-			})
+		history := NewEventHistory(10, time.Minute)
+		defer history.Close()
+		now := time.Now()
+		future := expiryEvent("future", now.Add(2*time.Minute))
+		old := expiryEvent("old", now.Add(-time.Second))
+		fresh := expiryEvent("fresh", now.Add(30*time.Second))
+		boundary := expiryEvent("boundary", now)
+		for _, event := range []*EventMessage{future, old, fresh, boundary} {
+			history.Add(event)
 		}
-		workers.Go(func() {
-			<-start
-			for range 100 {
-				for _, filter := range []EventHistoryFilter{
-					{}, {Type: "event"}, {Namespace: "space"}, {ClientID: "client"},
-				} {
-					history.Get(filter)
+		storage := expiryStorage(history)
+		synctest.Wait() // start the periodic worker before advancing its ticker
+		for _, want := range [][]*EventMessage{{future, fresh}, {future}, nil} {
+			time.Sleep(time.Minute)
+			synctest.Wait()
+			assertExpiryViews(t, history, want)
+			var expired []*EventMessage
+			for _, event := range []*EventMessage{future, old, fresh, boundary} {
+				if !slices.Contains(want, event) {
+					expired = append(expired, event)
 				}
 			}
-		})
-		workers.Go(func() {
-			<-start
-			for range 100 {
-				history.cleanupOldEvents()
-			}
-		})
-		close(start)
-		workers.Wait()
-		history.cleanupOldEvents()
-		assertExpiryViews(t, history, nil)
-		for _, event := range history.events[:cap(history.events)] {
-			if event != nil {
-				t.Error("drained history retained an event in backing storage")
-				break
-			}
+			assertNoExpiredReferences(t, history, storage, expired)
 		}
-		later := expiryEvent("later", time.Now())
-		history.Add(later)
-		assertExpiryViews(t, history, []*EventMessage{later})
 	})
+}
+
+func TestEventHistoryExpiryConcurrentAccess(t *testing.T) {
+	for _, livePrefix := range []bool{false, true} {
+		t.Run(fmt.Sprintf("live-prefix=%t", livePrefix), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				history := NewEventHistory(1000, time.Hour)
+				history.Close()
+				var want []*EventMessage
+				if livePrefix {
+					want = []*EventMessage{expiryEvent("future", time.Now().Add(time.Hour)), expiryEvent("fresh", time.Now())}
+					for _, event := range want {
+						history.Add(event)
+					}
+				}
+				start := make(chan struct{})
+				var workers sync.WaitGroup
+				for writer := range 3 {
+					workers.Go(func() {
+						<-start
+						for i := range 100 {
+							history.Add(expiryEvent(fmt.Sprintf("%d/%d", writer, i), time.Now().Add(-2*time.Hour)))
+						}
+					})
+				}
+				workers.Go(func() {
+					<-start
+					for range 100 {
+						for _, filter := range []EventHistoryFilter{
+							{}, {Type: "event"}, {Namespace: "space"}, {ClientID: "client"},
+						} {
+							history.Get(filter)
+						}
+					}
+				})
+				workers.Go(func() {
+					<-start
+					for range 100 {
+						history.cleanupOldEvents()
+					}
+				})
+				close(start)
+				workers.Wait()
+				history.cleanupOldEvents()
+				assertExpiryViews(t, history, want)
+				for _, backing := range expiryStorage(history) {
+					for _, event := range backing {
+						if event != nil && !slices.Contains(want, event) {
+							t.Error("history or index retained an expired event in backing storage")
+							break
+						}
+					}
+				}
+				later := expiryEvent("later", time.Now())
+				history.Add(later)
+				assertExpiryViews(t, history, append(want, later))
+			})
+		})
+	}
 }

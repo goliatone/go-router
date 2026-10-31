@@ -359,7 +359,11 @@ func (h *WSHub) Handler() func(Context) error {
 		// Welcome messages can exceed the send buffer while initialization runs.
 		go client.writePump()
 		defer func() {
-			_ = client.Close(CloseNormalClosure, "")
+			if err := client.Close(CloseNormalClosure, ""); err != nil {
+				h.logger.Error("Failed to close websocket client during handler cleanup",
+					"client_id", client.ID(),
+					"error", err)
+			}
 			<-client.writeDone
 		}()
 
@@ -411,21 +415,24 @@ func (h *WSHub) Clients() []WSClient {
 	return clients
 }
 
-// Close shuts down the hub
+// Close shuts down the hub. The caller that detaches the clients owns their
+// closure; concurrent or reentrant calls return without waiting for that batch.
 func (h *WSHub) Close() error {
 	h.cancel()
 
-	// Close all client connections
+	// Detach under the same lock used for admission, then invoke client code
+	// without it. Close callbacks may query the hub or call Close themselves.
 	h.clientsMu.Lock()
-	for _, client := range h.clients {
+	clients := h.clients
+	h.clients = make(map[string]WSClient)
+	h.clientsMu.Unlock()
+	for _, client := range clients {
 		if err := client.Close(CloseGoingAway, "server shutdown"); err != nil {
 			h.logger.Error("Failed to close websocket client during hub shutdown",
 				"client_id", client.ID(),
 				"error", err)
 		}
 	}
-	h.clientsMu.Unlock()
-
 	return nil
 }
 

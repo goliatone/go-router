@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 )
@@ -177,33 +178,42 @@ func (m *ReconnectManager) CreateSession(client WSClient) (*ClientSession, error
 
 // HandleReconnect handles client reconnection
 func (m *ReconnectManager) HandleReconnect(ctx context.Context, client WSClient, sessionID, token string) (*ClientSession, error) {
-	m.sessionsMu.RLock()
+	// Membership, expiry, and the reconnect transition share one lock order:
+	// sessionsMu before session.mu. Never hold either across client callbacks.
+	m.sessionsMu.Lock()
 	session, exists := m.sessions[sessionID]
-	m.sessionsMu.RUnlock()
 
 	if !exists {
+		m.sessionsMu.Unlock()
 		return nil, errors.New("session not found")
 	}
 
+	session.mu.Lock()
 	// Validate token
 	if session.ReconnectToken != token {
+		session.mu.Unlock()
+		m.sessionsMu.Unlock()
 		return nil, errors.New("invalid reconnect token")
 	}
 
-	// Check if session is expired
-	if time.Since(session.DisconnectTime) > m.config.SessionTimeout {
-		m.RemoveSession(sessionID)
+	// A zero disconnect time denotes an active session, including a retry
+	// after another reconnect has already restored it.
+	if !session.DisconnectTime.IsZero() && time.Since(session.DisconnectTime) > m.config.SessionTimeout {
+		delete(m.sessions, sessionID)
+		session.mu.Unlock()
+		m.sessionsMu.Unlock()
 		return nil, errors.New("session expired")
 	}
 
 	// Update session
-	session.mu.Lock()
 	session.LastSeen = time.Now()
 	session.DisconnectTime = time.Time{}
+	subscriptions := slices.Clone(session.Subscriptions)
 	session.mu.Unlock()
+	m.sessionsMu.Unlock()
 
 	// Restore subscriptions
-	for _, sub := range session.Subscriptions {
+	for _, sub := range subscriptions {
 		if err := client.JoinWithContext(ctx, sub); err != nil {
 			// Log error but continue
 			fmt.Printf("Failed to restore subscription %s: %v\n", sub, err)
@@ -233,7 +243,7 @@ func (m *ReconnectManager) HandleReconnect(ctx context.Context, client WSClient,
 		"type":            "reconnect_success",
 		"session_id":      session.ID,
 		"queued_messages": queuedMessages,
-		"subscriptions":   session.Subscriptions,
+		"subscriptions":   subscriptions,
 	}); err != nil {
 		return nil, fmt.Errorf("send reconnect success: %w", err)
 	}
@@ -244,8 +254,8 @@ func (m *ReconnectManager) HandleReconnect(ctx context.Context, client WSClient,
 // HandleDisconnect handles client disconnection
 func (m *ReconnectManager) HandleDisconnect(sessionID string) {
 	m.sessionsMu.RLock()
+	defer m.sessionsMu.RUnlock()
 	session, exists := m.sessions[sessionID]
-	m.sessionsMu.RUnlock()
 
 	if !exists {
 		return
@@ -287,18 +297,21 @@ func (m *ReconnectManager) cleanupSessions() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		m.sessionsMu.Lock()
-		now := time.Now()
+		m.cleanupExpiredSessions(time.Now())
+	}
+}
 
-		for id, session := range m.sessions {
-			// Check if session is expired
-			if !session.DisconnectTime.IsZero() &&
-				now.Sub(session.DisconnectTime) > m.config.SessionTimeout {
-				delete(m.sessions, id)
-			}
+func (m *ReconnectManager) cleanupExpiredSessions(now time.Time) {
+	m.sessionsMu.Lock()
+	defer m.sessionsMu.Unlock()
+
+	for id, session := range m.sessions {
+		session.mu.RLock()
+		expired := !session.DisconnectTime.IsZero() && now.Sub(session.DisconnectTime) > m.config.SessionTimeout
+		session.mu.RUnlock()
+		if expired {
+			delete(m.sessions, id)
 		}
-
-		m.sessionsMu.Unlock()
 	}
 }
 

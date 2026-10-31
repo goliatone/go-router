@@ -33,6 +33,35 @@ current source and the API/lifecycle guides define the implementation.
 go get github.com/goliatone/go-router
 ```
 
+## Local Go quality checks
+
+Run these commands from the repository root. Tool pins and overrides live in
+[taskfile](taskfile); the lint pin also uses [.golangci-lint-version](.golangci-lint-version).
+
+```bash
+./taskfile go:tools:gohawk     # install and verify the configured release
+./taskfile go:gohawk           # scan all maintained Go modules
+./taskfile go:gohawk ./...     # explicitly scan only the current module
+./taskfile go:race             # existing root-module race suite
+bash tools/quality/test_taskfile.sh
+./taskfile go:quality:all      # full local gate; also runs gofmt and go fix
+```
+
+GoHawk verifies Go package/module/version build metadata before using a PATH or
+Go bin-directory executable, and verifies newly installed binaries. The default
+scan covers the root plus the [maintained nested modules](tools/quality/nested-go-modules.json),
+rejects inventory drift, and continues across modules after failures. Archived
+`evidence/` and `.ctx/` sources are outside this maintained scope. Findings return
+status 3; analysis/build failures return status 1 and take precedence.
+
+The full gate retains formatting, fix, tests, race tests, new-code lint, and security
+checks, and adds blocking GoHawk. It remains fail-fast between tasks. GoHawk is
+local only and uses the pinned release's default core checks without selection or
+suppression flags. Its lock checks cover missing releases, contradictory acquisition
+order, and writes under read locks. It does not establish bounded lock waits,
+shutdown deadlines, safe worker admission, or retry serialization; controlled
+concurrency tests are still needed alongside race detection.
+
 ## Overview
 
 `go-router` provides a common interface for HTTP routing that can be implemented by different HTTP frameworks. Currently includes a [Fiber](https://github.com/gofiber/fiber) and [HTTPRouter](https://github.com/julienschmidt/httprouter)  with plans to support more frameworks.

@@ -27,7 +27,9 @@ type EventWithAck struct {
 	Timeout time.Duration
 }
 
-// AckManager manages event acknowledgments
+// AckManager manages event acknowledgments. Reusing an AckID replaces and
+// cancels the pending attempt. Local cleanup is attempt-scoped; incoming ACKs
+// still resolve by ID, so distinct logical requests should use distinct IDs.
 type AckManager struct {
 	pending   map[string]*pendingAck
 	pendingMu sync.RWMutex
@@ -66,6 +68,7 @@ func (m *AckManager) SendWithAck(ctx context.Context, client WSClient, event *Ev
 	if event.AckID == "" {
 		event.AckID = generateID()
 	}
+	ackID := event.AckID
 
 	// Create pending acknowledgment
 	ackChan := make(chan *EventAck, 1)
@@ -78,28 +81,23 @@ func (m *AckManager) SendWithAck(ctx context.Context, client WSClient, event *Ev
 		cancel:  cancel,
 	}
 
-	// Set up cleanup timer before storing to avoid race conditions
-	pending.timer = time.AfterFunc(timeout, func() {
-		m.timeoutAck(event.AckID)
-	})
-
-	// Store pending ack
-	m.pendingMu.Lock()
-	m.pending[event.AckID] = pending
-	m.pendingMu.Unlock()
+	m.registerAck(ackID, pending, timeout)
 
 	// Send the event
 	if err := client.SendJSON(event); err != nil {
-		m.cleanupAck(event.AckID)
+		m.cleanupAck(ackID, pending)
 		return nil, fmt.Errorf("failed to send event: %w", err)
 	}
 
 	// Wait for acknowledgment
 	select {
-	case ack := <-ackChan:
+	case ack, ok := <-ackChan:
+		if !ok {
+			return nil, errors.New("acknowledgment canceled")
+		}
 		return ack, nil
 	case <-ackCtx.Done():
-		m.cleanupAck(event.AckID)
+		m.cleanupAck(ackID, pending)
 		return nil, errors.New("acknowledgment timeout")
 	}
 }
@@ -114,6 +112,7 @@ func (m *AckManager) SendWithCallback(ctx context.Context, client WSClient, even
 	if event.AckID == "" {
 		event.AckID = generateID()
 	}
+	ackID := event.AckID
 
 	// Create pending acknowledgment
 	ackCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -125,23 +124,31 @@ func (m *AckManager) SendWithCallback(ctx context.Context, client WSClient, even
 		cancel:   cancel,
 	}
 
-	// Set up cleanup timer before storing to avoid race conditions
-	pending.timer = time.AfterFunc(timeout, func() {
-		m.timeoutAck(event.AckID)
-	})
-
-	// Store pending ack
-	m.pendingMu.Lock()
-	m.pending[event.AckID] = pending
-	m.pendingMu.Unlock()
+	m.registerAck(ackID, pending, timeout)
 
 	// Send the event
 	if err := client.SendJSON(event); err != nil {
-		m.cleanupAck(event.AckID)
+		m.cleanupAck(ackID, pending)
 		return fmt.Errorf("failed to send event: %w", err)
 	}
 
 	return nil
+}
+
+func (m *AckManager) registerAck(ackID string, pending *pendingAck, timeout time.Duration) {
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+
+	if old, exists := m.pending[ackID]; exists {
+		m.cleanupAckUnsafe(ackID, old)
+	}
+	m.pending[ackID] = pending
+	// Publish and arm while holding the lock, so even an immediate timeout
+	// observes a fully initialized attempt. A stopped timer may already be
+	// running, so its callback must also verify attempt ownership.
+	pending.timer = time.AfterFunc(timeout, func() {
+		m.timeoutAck(ackID, pending)
+	})
 }
 
 // HandleAck processes an incoming acknowledgment
@@ -201,10 +208,10 @@ func (m *AckManager) HandleAck(ack *EventAck) error {
 	return nil
 }
 
-func (m *AckManager) timeoutAck(ackID string) {
+func (m *AckManager) timeoutAck(ackID string, expected *pendingAck) {
 	m.pendingMu.Lock()
 	pending, exists := m.pending[ackID]
-	if !exists {
+	if !exists || pending != expected {
 		m.pendingMu.Unlock()
 		return
 	}
@@ -252,11 +259,11 @@ func (m *AckManager) timeoutAck(ackID string) {
 	}
 }
 
-func (m *AckManager) cleanupAck(ackID string) {
+func (m *AckManager) cleanupAck(ackID string, expected *pendingAck) {
 	m.pendingMu.Lock()
 	defer m.pendingMu.Unlock()
 
-	if pending, exists := m.pending[ackID]; exists {
+	if pending, exists := m.pending[ackID]; exists && (expected == nil || pending == expected) {
 		m.cleanupAckUnsafe(ackID, pending)
 	}
 }
@@ -277,7 +284,7 @@ func (m *AckManager) cleanupAckUnsafe(ackID string, pending *pendingAck) {
 
 // CancelAck cancels a pending acknowledgment
 func (m *AckManager) CancelAck(ackID string) {
-	m.cleanupAck(ackID)
+	m.cleanupAck(ackID, nil)
 }
 
 // PendingCount returns the number of pending acknowledgments

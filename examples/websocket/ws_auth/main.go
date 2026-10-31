@@ -952,46 +952,92 @@ func createDemoHTML(adminToken, userToken, moderatorToken string) string {
 </html>`, adminToken, userToken, moderatorToken, adminToken, userToken, moderatorToken)
 }
 
-var demoSockets = struct {
+var demoSockets = newSocketTracker()
+
+// socketTracker owns one server lifetime. The last worker signals completion
+// directly, so a timed-out shutdown does not leave a WaitGroup waiter behind.
+type socketTracker struct {
 	sync.Mutex
-	readers  map[router.WebSocketReadInterrupter]struct{}
-	workers  sync.WaitGroup
+	readers  map[router.WebSocketReadInterrupter]int
+	workers  int
 	stopping bool
-}{readers: make(map[router.WebSocketReadInterrupter]struct{})}
+	drained  chan struct{}
+}
+
+func newSocketTracker() *socketTracker {
+	return &socketTracker{
+		readers: make(map[router.WebSocketReadInterrupter]int),
+		drained: make(chan struct{}),
+	}
+}
 
 func trackWebSocket(handler func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return demoSockets.track(handler)
+}
+
+func (s *socketTracker) track(handler func(router.WebSocketContext) error) func(router.WebSocketContext) error {
 	return func(ws router.WebSocketContext) error {
 		reader, ok := ws.(router.WebSocketReadInterrupter)
 		if !ok {
 			return fmt.Errorf("websocket read interruption unavailable")
 		}
-		demoSockets.Lock()
-		if demoSockets.stopping {
-			demoSockets.Unlock()
+		s.Lock()
+		if s.stopping {
+			s.Unlock()
 			return ws.Close()
 		}
-		demoSockets.readers[reader] = struct{}{}
-		demoSockets.workers.Add(1)
-		demoSockets.Unlock()
+		s.readers[reader]++
+		s.workers++
+		s.Unlock()
 		defer func() {
 			if err := ws.Close(); err != nil {
 				log.Printf("websocket close: %v", err)
 			}
-			demoSockets.Lock()
-			delete(demoSockets.readers, reader)
-			demoSockets.Unlock()
-			demoSockets.workers.Done()
+			s.Lock()
+			defer s.Unlock()
+			s.readers[reader]--
+			if s.readers[reader] == 0 {
+				delete(s.readers, reader)
+			}
+			s.workers--
+			if s.stopping && s.workers == 0 {
+				close(s.drained)
+			}
 		}()
 		return handler(ws)
 	}
 }
 
-func runDemo(server interface {
+// stop seals admission and returns a snapshot without holding the lock during
+// interruption or close callbacks. Repeated calls share the same completion.
+func (s *socketTracker) stop() ([]router.WebSocketReadInterrupter, <-chan struct{}) {
+	s.Lock()
+	defer s.Unlock()
+	if !s.stopping {
+		s.stopping = true
+		if s.workers == 0 {
+			close(s.drained)
+		}
+	}
+	readers := make([]router.WebSocketReadInterrupter, 0, len(s.readers))
+	for reader := range s.readers {
+		readers = append(readers, reader)
+	}
+	return readers, s.drained
+}
+
+type demoServer interface {
 	Serve(string) error
 	Shutdown(context.Context) error
-}, address string) error {
+}
+
+func runDemo(server demoServer, address string) error {
 	host, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	return demoSockets.run(host, server, address, 5*time.Second)
+}
+
+func (s *socketTracker) run(host context.Context, server demoServer, address string, timeout time.Duration) error {
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(address) }()
 	var serveErr error
@@ -1001,22 +1047,14 @@ func runDemo(server interface {
 		returned = true
 	case <-host.Done():
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	demoSockets.Lock()
-	demoSockets.stopping = true
-	readers := make([]router.WebSocketReadInterrupter, 0, len(demoSockets.readers))
-	for reader := range demoSockets.readers {
-		readers = append(readers, reader)
-	}
-	demoSockets.Unlock()
+	readers, joined := s.stop()
 	for _, reader := range readers {
 		if err := reader.InterruptRead(); err != nil {
 			log.Printf("interrupt websocket: %v", err)
 		}
 	}
-	joined := make(chan struct{})
-	go func() { demoSockets.workers.Wait(); close(joined) }()
 	var workerErr error
 	select {
 	case <-joined:

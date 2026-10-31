@@ -27,6 +27,7 @@ GO_GOLANGCI_LINT_VERSION="${GO_GOLANGCI_LINT_VERSION:-v2.11.3}"
 GO_GOLANGCI_LINT_VERSION_FILE="${GO_GOLANGCI_LINT_VERSION_FILE:-.golangci-lint-version}"
 GO_GOVULNCHECK_VERSION="${GO_GOVULNCHECK_VERSION:-v1.1.4}"
 GO_GOSEC_VERSION="${GO_GOSEC_VERSION:-v2.25.0}"
+GO_GOHAWK_VERSION="${GO_GOHAWK_VERSION:-v0.7.1}"
 GO_QUALITY_BASELINE_DIR="${GO_QUALITY_BASELINE_DIR:-ops/quality/baselines}"
 GO_QUALITY_BASELINE_SCRIPT="${GO_QUALITY_BASELINE_SCRIPT:-./tools/quality/baseline.sh}"
 GO_QUALITY_GOCACHE="${GO_QUALITY_GOCACHE:-$(pwd)/.tmp/go-cache}"
@@ -193,6 +194,50 @@ function _go:packages {
     done <<< "${packages}"
 }
 
+function _go:module_dirs {
+    local modules
+
+    modules=$(python3 tools/quality/nested_modules.py --lines) || return 1
+    printf '%s\n' "."
+    if [ -n "${modules}" ]; then
+        printf '%s\n' "${modules}"
+    fi
+}
+
+function _go:gohawk:matches {
+    local tool_path=$1
+    local go_bin
+    local metadata
+
+    [ -x "${tool_path}" ] || return 1
+    go_bin=$(_go:bin) || return 1
+    metadata=$("${go_bin}" version -m "${tool_path}" 2>/dev/null) || return 1
+    awk -v version="${GO_GOHAWK_VERSION}" '
+        $1 == "path" { package_ok = ($2 == "github.com/kojah/gohawk") }
+        $1 == "mod" { module_ok = ($2 == "github.com/kojah/gohawk" && $3 == version) }
+        $1 == "=>" { replaced = 1 }
+        END { exit !(package_ok && module_ok && !replaced) }
+    ' <<< "${metadata}"
+}
+
+function _go:gohawk:ensure {
+    local tool_path
+    local bin_dir
+
+    if tool_path=$(_go:tool:path gohawk 2>/dev/null) && _go:gohawk:matches "${tool_path}"; then
+        # Resolve relative PATH entries before changing module directories.
+        printf '%s/%s\n' "$(cd "$(dirname "${tool_path}")" && pwd)" "$(basename "${tool_path}")"
+        return 0
+    fi
+    bin_dir=$(_go:tool_bin_dir) || return 1
+    tool_path="${bin_dir}/gohawk"
+    if _go:gohawk:matches "${tool_path}"; then
+        printf '%s\n' "${tool_path}"
+        return 0
+    fi
+    go:tools:gohawk
+}
+
 function _go:package_dirs {
     local go_bin
     local -a patterns=()
@@ -284,10 +329,29 @@ function go:tools:gosec {
     _go:tool:install "gosec" "github.com/securego/gosec/v2/cmd/gosec@${GO_GOSEC_VERSION}"
 }
 
+function go:tools:gohawk {
+    local go_bin
+    local bin_dir
+    local tool_path
+
+    go_bin=$(_go:bin) || return 1
+    bin_dir=$(_go:tool_bin_dir) || return 1
+    _go:quality:prepare_env || return 1
+    echo "Installing gohawk (github.com/kojah/gohawk@${GO_GOHAWK_VERSION})" >&2
+    GOTOOLCHAIN="${GO_TOOLCHAIN}" "${go_bin}" install "github.com/kojah/gohawk@${GO_GOHAWK_VERSION}" || return 1
+    tool_path="${bin_dir}/gohawk"
+    if ! _go:gohawk:matches "${tool_path}"; then
+        echo "Installed GoHawk does not match the configured package/module/version" >&2
+        return 1
+    fi
+    printf '%s\n' "${tool_path}"
+}
+
 function go:tools:all {
     go:tools:golangci-lint || return 1
     go:tools:govulncheck || return 1
     go:tools:gosec || return 1
+    go:tools:gohawk || return 1
 }
 
 function go:fmt {
@@ -590,6 +654,40 @@ function go:quality:pr {
     go:lint:new "$@" || return 1
 }
 
+function go:gohawk {
+    local gohawk_bin
+    local modules
+    local module
+    local module_status
+    local status=0
+
+    gohawk_bin=$(_go:gohawk:ensure) || return 1
+    _go:quality:prepare_env || return 1
+    if [ "$#" -gt 0 ]; then
+        "${gohawk_bin}" "$@"
+        return $?
+    fi
+
+    modules=$(_go:module_dirs) || return 1
+    # No selection flags: use the pinned release's default core checks.
+    # Continue after findings/build errors so every maintained module is scanned.
+    while IFS= read -r module; do
+        printf 'Running GoHawk in %s\n' "${module}"
+        if (cd "${module}" && "${gohawk_bin}" ./...); then
+            continue
+        else
+            module_status=$?
+        fi
+        # Analysis/build errors take precedence over ordinary findings (3).
+        if [ "${module_status}" -ne 3 ]; then
+            status=1
+        elif [ "${status}" -eq 0 ]; then
+            status=3
+        fi
+    done <<< "${modules}"
+    return "${status}"
+}
+
 function go:quality:all {
     go:fmt || return 1
     go:fix "$@" || return 1
@@ -598,6 +696,7 @@ function go:quality:all {
     go:race "$@" || return 1
     go:lint:new "$@" || return 1
     go:security:all "$@" || return 1
+    go:gohawk "$@" || return 1
 }
 
 function go:quality:baseline {
@@ -1194,4 +1293,7 @@ function help {
 }
 
 TIMEFORMAT="Task completed in %3lR"
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
 time "${@:-help}"

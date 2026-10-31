@@ -72,6 +72,13 @@ func TestWSHubInitializationLiveBackends(t *testing.T) {
 			}))
 			cfg := router.DefaultWebSocketConfig()
 			cfg.DisableKeepAlive, cfg.DisableReadDeadline = true, true
+			disconnected := make(chan int, 2)
+			cfg.OnDisconnect = func(router.WebSocketContext, error) {
+				// Adapter close callbacks must be able to query the hub while
+				// its Close call is still on the stack.
+				disconnected <- hub.ClientCount()
+				_ = hub.Clients()
+			}
 			handler := func(c router.Context) error {
 				err := hub.Handler()(c)
 				stopped <- err
@@ -84,7 +91,7 @@ func TestWSHubInitializationLiveBackends(t *testing.T) {
 			go func() { serveDone <- f.server.Serve(address) }()
 			t.Cleanup(func() {
 				unblock()
-				_ = hub.Close()
+				checkTestError(t, hub.Close())
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
 				checkTestError(t, f.server.Shutdown(ctx))
@@ -141,6 +148,9 @@ func TestWSHubInitializationLiveBackends(t *testing.T) {
 			checkTestError(t, hub.Close())
 			for range 2 {
 				checkTestError(t, lifecycleReceive(t, stopped))
+				if count := lifecycleReceive(t, disconnected); count != 0 {
+					t.Errorf("disconnect callback saw %d registered clients during shutdown", count)
+				}
 			}
 		})
 	}

@@ -69,21 +69,21 @@ func TestEventRouter(t *testing.T) {
 		ns1Called := false
 		ns2Called := false
 
-		ns1.On("test", &router.GenericEventHandler{
+		checkTestError(t, ns1.On("test", &router.GenericEventHandler{
 			Type: "test",
 			Handler: func(ctx context.Context, client router.WSClient, event *router.EventMessage) error {
 				ns1Called = true
 				return nil
 			},
-		})
+		}))
 
-		ns2.On("test", &router.GenericEventHandler{
+		checkTestError(t, ns2.On("test", &router.GenericEventHandler{
 			Type: "test",
 			Handler: func(ctx context.Context, client router.WSClient, event *router.EventMessage) error {
 				ns2Called = true
 				return nil
 			},
-		})
+		}))
 
 		mockClient := &mockWSClient{id: "test-client"}
 
@@ -92,7 +92,7 @@ func TestEventRouter(t *testing.T) {
 			Type:      "test",
 			Namespace: "ns1",
 		}
-		r.RouteEvent(context.Background(), mockClient, event1)
+		checkTestError(t, r.RouteEvent(context.Background(), mockClient, event1))
 
 		if !ns1Called {
 			t.Error("NS1 handler should have been called")
@@ -109,7 +109,7 @@ func TestEventRouter(t *testing.T) {
 			Type:      "test",
 			Namespace: "ns2",
 		}
-		r.RouteEvent(context.Background(), mockClient, event2)
+		checkTestError(t, r.RouteEvent(context.Background(), mockClient, event2))
 
 		if ns1Called {
 			t.Error("NS1 handler should not have been called")
@@ -141,7 +141,7 @@ func TestEventRouter(t *testing.T) {
 			return next(ctx, client, event)
 		})
 
-		r.On("test", &router.GenericEventHandler{
+		checkTestError(t, r.On("test", &router.GenericEventHandler{
 			Type: "test",
 			Handler: func(ctx context.Context, client router.WSClient, event *router.EventMessage) error {
 				mu.Lock()
@@ -149,12 +149,12 @@ func TestEventRouter(t *testing.T) {
 				mu.Unlock()
 				return nil
 			},
-		})
+		}))
 
 		mockClient := &mockWSClient{id: "test-client"}
 		event := &router.EventMessage{Type: "test"}
 
-		r.RouteEvent(context.Background(), mockClient, event)
+		checkTestError(t, r.RouteEvent(context.Background(), mockClient, event))
 
 		expected := []string{"middleware1", "middleware2", "handler"}
 		if len(order) != len(expected) {
@@ -189,7 +189,7 @@ func TestEventRouter(t *testing.T) {
 			return nil
 		})
 
-		r.On("test", handler)
+		checkTestError(t, r.On("test", handler))
 
 		mockClient := &mockWSClient{id: "test-client"}
 		event := &router.EventMessage{
@@ -197,7 +197,7 @@ func TestEventRouter(t *testing.T) {
 			Data: TestData{Message: "hello", Count: 42},
 		}
 
-		r.RouteEvent(context.Background(), mockClient, event)
+		checkTestError(t, r.RouteEvent(context.Background(), mockClient, event))
 
 		if !received {
 			t.Error("Handler was not called")
@@ -309,7 +309,7 @@ func TestEventHistory(t *testing.T) {
 		// Check that we have the most recent ones (2, 3, 4)
 		for i, e := range events {
 			expectedData := i + 2
-			if e.Data.(int) != expectedData {
+			if requireTestType[int](t, e.Data) != expectedData {
 				t.Errorf("Expected data %d, got %v", expectedData, e.Data)
 			}
 		}
@@ -345,6 +345,7 @@ func TestAckManager(t *testing.T) {
 		mockClient := &mockWSClient{id: "test-client"}
 
 		// Simulate acknowledgment in background
+		handled := make(chan error, 1)
 		go func() {
 			time.Sleep(100 * time.Millisecond)
 			ack := &router.EventAck{
@@ -352,7 +353,7 @@ func TestAckManager(t *testing.T) {
 				Success: true,
 				Data:    "response",
 			}
-			mgr.HandleAck(ack)
+			handled <- mgr.HandleAck(ack)
 		}()
 
 		event := &router.EventMessage{
@@ -362,6 +363,7 @@ func TestAckManager(t *testing.T) {
 
 		ctx := context.Background()
 		ack, err := mgr.SendWithAck(ctx, mockClient, event, 500*time.Millisecond)
+		checkTestError(t, <-handled)
 
 		if err != nil {
 			t.Fatalf("Failed to get acknowledgment: %v", err)
@@ -437,7 +439,7 @@ func TestAckManager(t *testing.T) {
 			ID:      "callback-test",
 			Success: true,
 		}
-		mgr.HandleAck(ack)
+		checkTestError(t, mgr.HandleAck(ack))
 
 		// Wait for callback with timeout
 		select {

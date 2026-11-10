@@ -333,6 +333,64 @@ if err != nil {
 }
 ```
 
+#### RPC error mapping and diagnostics
+
+The default mode preserves RPC stage codes and HTTP statuses. Raw error causes
+are no longer included in `details.cause`, in either mode. This is an intentional
+security correction; use diagnostic callbacks for private causes.
+
+Enable structured application errors per mount using the mapper provided by
+[go-command](go.mod):
+
+```go
+err := rpcfiber.MountFiber(
+    app.Router(), rpcServer,
+    rpcfiber.WithErrorMapper(cmdrpc.DefaultErrorMapper),
+)
+```
+
+The same options work with `rpcfiber.Mount` and the native Fiber adapter. A host
+`cmdrpc.ErrorMapper` may instead project controlled public codes, messages and
+allowlisted JSON-safe details. Returning nil declines to the default classifier;
+`WithErrorMapper(nil)` restores legacy mode. The mapper receives the request's
+current context. It must not mutate diagnostic errors or shared nested details.
+
+| Failure | HTTP status | Legacy code | Structured mode |
+| --- | --- | --- | --- |
+| Invalid request JSON | 400 | `RPC_INVALID_REQUEST` | Same transport code |
+| Missing method | 400 | `RPC_METHOD_REQUIRED` | Same transport code |
+| Unknown method | 404 | `RPC_METHOD_NOT_FOUND` | Same transport code |
+| Invalid parameters | 400 | `RPC_INVALID_PARAMS` | Same transport code |
+| Pre-invoke rejection | 400 | `RPC_PREINVOKE_REJECTED` | Safe mapped application error |
+| Returned invocation error | 200 | `RPC_INVOKE_FAILED` | Safe mapped application error |
+
+Mounted invocation and metadata/pre-invoke hook panics are contained. Structured
+mode uses `INTERNAL` for recovered panics. Direct `Server.Invoke` failure modes
+are unchanged. Incomplete, non-JSON-safe or panicking mapper output falls back
+to the upstream default classifier. Custom detail marshalers run once before
+writing the response.
+
+`AfterInvoke` runs once after each attempted invocation, including one that
+panics, and receives the original error (or a wrapper around an error-valued
+panic). It does not run for parse, lookup, decoding or pre-invoke rejection.
+Its own panic is contained without replacing the invocation's result/error.
+
+Use `WithErrorObserver(func(c router.Context, event rpcfiber.FailureEvent) {...})`
+for private diagnostics at each failed stage, including failures before
+invocation. `Err` and `Panic` can contain secrets; never return them to clients.
+The observer must not write a response. Each stage failure is reported once:
+a failing invocation plus a failing mapper or post-invoke callback can generate
+separate events. Observer panics are suppressed without recursive notification.
+Existing server failure hooks remain independent.
+
+Successful envelopes, receipts, operational failures returned as data, and
+handler-created public `ResponseEnvelope.Error` values pass through unchanged.
+Handlers remain responsible for safe public values. Authentication middleware,
+metadata precedence, discovery and authorization policy are unchanged. An HTTP
+200 response can contain an RPC error. Retryability is informational: timeout,
+cancellation or a lost reply does not establish rollback or authorize automatic
+mutation replay.
+
 ### Fiber SSE Runtime Stream
 
 Use `eventstream` for transport-neutral runtime events and `ssefiber` for a

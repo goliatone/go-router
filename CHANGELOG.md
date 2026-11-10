@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.64.0](https://github.com/goliatone/go-router/compare/v0.63.4...v0.64.0) - (2026-11-10)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.64.0 ([d66fca2](https://github.com/goliatone/go-router/commit/d66fca26cafa0e2f0df5afc465f60ee38ef00e02))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Rpc fiber errors ([7bbdb44](https://github.com/goliatone/go-router/commit/7bbdb44ca38b045823599002ffa516ada861ff13))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.63.4 ([e2d113c](https://github.com/goliatone/go-router/commit/e2d113c539ae05a8580611fcee0d363cb2ed2d4e))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([797a124](https://github.com/goliatone/go-router/commit/797a1247a9c776990e7f9f0ebb0d1d10d2691d03))  - (goliatone)
+
 # [0.63.4](https://github.com/goliatone/go-router/compare/v0.63.3...v0.63.4) - (2026-10-31)
 
 ## <!-- 1 -->🐛 Bug Fixes

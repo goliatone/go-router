@@ -60,6 +60,8 @@ type Config struct {
 	MetaExtractors []MetaExtractor
 	BeforeInvoke   BeforeInvokeHook
 	AfterInvoke    AfterInvokeHook
+	ErrorMapper    cmdrpc.ErrorMapper
+	ErrorObserver  ErrorObserver
 }
 
 func defaultConfig() Config {
@@ -233,80 +235,64 @@ func (r invokeRequest) rawPayload() json.RawMessage {
 }
 
 func (h mountHandler) handleInvoke(ctx router.Context) error {
+	result, failure := h.execute(ctx)
+	if failure != nil {
+		return h.writeFailure(ctx, failure)
+	}
+	return ctx.JSON(http.StatusOK, result)
+}
+
+// execute contains request decoding and application callbacks, but no response
+// writes. Recovery therefore cannot append an error to a partly written response.
+func (h mountHandler) execute(ctx router.Context) (result any, failure *rpcFailure) {
+	stage := FailureStageParse
+	method := ""
+	defer func() {
+		if p := recover(); p != nil {
+			err := &panicFailure{p}
+			if stage == FailureStageInvoke {
+				h.afterInvoke(ctx, method, nil, err)
+			}
+			result, failure = nil, newRPCFailure(stage, method, err, p)
+		}
+	}()
 	req, err := parseInvokeRequest(ctx)
 	if err != nil {
-		return writeRPCError(
-			ctx,
-			http.StatusBadRequest,
-			"RPC_INVALID_REQUEST",
-			"invalid RPC request payload",
-			map[string]any{"cause": err.Error()},
-		)
+		return nil, newRPCFailure(stage, method, err, nil)
 	}
-
-	method := strings.TrimSpace(req.Method)
+	stage = FailureStageResolve
+	method = strings.TrimSpace(req.Method)
 	if method == "" {
 		method = strings.TrimSpace(ctx.Query("method", ""))
 	}
 	if method == "" {
-		return writeRPCError(ctx, http.StatusBadRequest, "RPC_METHOD_REQUIRED", "rpc method required", nil)
+		return nil, newRPCFailure(stage, method, errors.New("rpc method required"), nil)
 	}
-
 	prototype, err := h.server.NewRequestForMethod(method)
 	if err != nil {
-		return writeRPCError(
-			ctx,
-			http.StatusNotFound,
-			"RPC_METHOD_NOT_FOUND",
-			fmt.Sprintf("rpc method %q not found", method),
-			map[string]any{"cause": err.Error()},
-		)
+		return nil, newRPCFailure(stage, method, err, nil)
 	}
-
+	stage = FailureStageDecode
 	payload, err := decodePayload(req.rawPayload(), prototype)
 	if err != nil {
-		return writeRPCError(
-			ctx,
-			http.StatusBadRequest,
-			"RPC_INVALID_PARAMS",
-			"invalid rpc params",
-			map[string]any{"cause": err.Error()},
-		)
+		return nil, newRPCFailure(stage, method, err, nil)
 	}
-
+	stage = FailureStageMetadata
 	transportMeta := extractMeta(ctx, h.cfg.MetaExtractors)
 	payload = applyTransportMeta(payload, transportMeta, h.cfg.MetaMergePolicy)
-
+	stage = FailureStageBeforeInvoke
 	if h.cfg.BeforeInvoke != nil {
 		if err := h.cfg.BeforeInvoke(ctx, method, payload); err != nil {
-			return writeRPCError(
-				ctx,
-				http.StatusBadRequest,
-				"RPC_PREINVOKE_REJECTED",
-				"rpc pre-invoke hook rejected request",
-				map[string]any{"cause": err.Error()},
-			)
+			return nil, newRPCFailure(stage, method, err, nil)
 		}
 	}
-
-	result, invokeErr := h.server.Invoke(ctx.Context(), method, payload)
-	if h.cfg.AfterInvoke != nil {
-		h.cfg.AfterInvoke(ctx, method, result, invokeErr)
+	stage = FailureStageInvoke
+	result, err = h.server.Invoke(ctx.Context(), method, payload)
+	h.afterInvoke(ctx, method, result, err)
+	if err != nil {
+		return nil, newRPCFailure(stage, method, err, nil)
 	}
-	if invokeErr != nil {
-		return writeRPCError(
-			ctx,
-			http.StatusOK,
-			"RPC_INVOKE_FAILED",
-			"rpc invocation failed",
-			map[string]any{
-				"method": method,
-				"cause":  invokeErr.Error(),
-			},
-		)
-	}
-
-	return ctx.JSON(http.StatusOK, result)
+	return result, nil
 }
 
 func parseInvokeRequest(ctx router.Context) (invokeRequest, error) {
@@ -340,17 +326,6 @@ func (h mountHandler) handleEndpoints(ctx router.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]any{
 		"endpoints": h.server.EndpointsMeta(),
 	})
-}
-
-func writeRPCError(ctx router.Context, status int, code, message string, details map[string]any) error {
-	out := cmdrpc.ResponseEnvelope[any]{
-		Error: &cmdrpc.Error{
-			Code:    code,
-			Message: message,
-			Details: details,
-		},
-	}
-	return ctx.JSON(status, out)
 }
 
 func extractMeta(ctx router.Context, extractors []MetaExtractor) cmdrpc.RequestMeta {

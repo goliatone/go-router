@@ -4,7 +4,8 @@ go 1.26.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
-	github.com/goliatone/go-router v0.63.3
+	github.com/goliatone/go-router v0.63.4
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 )
 
 require (
@@ -33,7 +34,6 @@ require (
 	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

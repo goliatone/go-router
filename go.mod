@@ -14,7 +14,7 @@ require (
 	github.com/gofiber/template v1.8.3
 	github.com/gofiber/template/django/v3 v3.1.14
 	github.com/gofiber/utils v1.2.0
-	github.com/goliatone/go-command v0.25.0
+	github.com/goliatone/go-command v0.26.1
 	github.com/goliatone/go-composite-fs v0.3.0
 	github.com/goliatone/go-errors v0.12.0
 	github.com/goliatone/go-featuregate v0.6.3

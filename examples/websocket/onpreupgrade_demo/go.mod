@@ -3,7 +3,7 @@ module onpreupgrade-demo
 go 1.26.0
 
 require (
-	github.com/goliatone/go-router v0.63.4
+	github.com/goliatone/go-router v0.64.0
 	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 )
 

@@ -52,11 +52,14 @@ func (e *RegistrationError) Unwrap() error { return e.Err }
 // RegistrationSnapshot is safe to expose to diagnostics. DeclaredRoutes are
 // the logical plan; MountedRoutes are in physical dispatch order.
 type RegistrationSnapshot struct {
-	State             RegistrationState      `json:"state"`
-	Revision          uint64                 `json:"revision"`
-	MatchingSemantics RouteMatchingSemantics `json:"matching_semantics"`
-	DeclaredRoutes    []RouteDefinition      `json:"declared_routes,omitempty"`
-	MountedRoutes     []RouteDefinition      `json:"mounted_routes,omitempty"`
+	// StartupValidationError records a sticky rejected startup, if any. Sealed
+	// describes route publication and does not imply startup validation succeeded.
+	StartupValidationError string                 `json:"startup_validation_error,omitempty"`
+	State                  RegistrationState      `json:"state"`
+	Revision               uint64                 `json:"revision"`
+	MatchingSemantics      RouteMatchingSemantics `json:"matching_semantics"`
+	DeclaredRoutes         []RouteDefinition      `json:"declared_routes,omitempty"`
+	MountedRoutes          []RouteDefinition      `json:"mounted_routes,omitempty"`
 }
 
 // RegistrationInspector is implemented by routers that expose lifecycle and

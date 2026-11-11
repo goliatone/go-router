@@ -18,18 +18,20 @@ import (
 )
 
 type routerRoot struct {
-	registrationMu      sync.Mutex
-	state               RegistrationState
-	revision            uint64
-	routes              []*RouteDefinition
-	mountedRoutes       []*RouteDefinition
-	namedRoutes         map[string]*namedRouteBinding
-	namedRouteConflicts map[*RouteDefinition]error
-	lateRoutes          []*lateRoute
-	missHandlers        map[HTTPMethod]*missHandler
-	deferredRoutes      []*RouteDefinition
-	deferredRegistered  bool
-	matchingSemantics   RouteMatchingSemantics
+	registrationMu         sync.Mutex
+	startupValidationError string
+	startupValidators      map[string]func() error
+	state                  RegistrationState
+	revision               uint64
+	routes                 []*RouteDefinition
+	mountedRoutes          []*RouteDefinition
+	namedRoutes            map[string]*namedRouteBinding
+	namedRouteConflicts    map[*RouteDefinition]error
+	lateRoutes             []*lateRoute
+	missHandlers           map[HTTPMethod]*missHandler
+	deferredRoutes         []*RouteDefinition
+	deferredRegistered     bool
+	matchingSemantics      RouteMatchingSemantics
 }
 
 func (root *routerRoot) registrationState() RegistrationState {
@@ -496,11 +498,12 @@ func (br *BaseRouter) RegistrationSnapshot() RegistrationSnapshot {
 	br.root.registrationMu.Lock()
 	defer br.root.registrationMu.Unlock()
 	return RegistrationSnapshot{
-		State:             br.root.registrationState(),
-		Revision:          br.root.revision,
-		MatchingSemantics: br.root.matchingSemantics,
-		DeclaredRoutes:    cloneRouteDefinitions(br.root.routes),
-		MountedRoutes:     cloneRouteDefinitions(br.root.mountedRoutes),
+		StartupValidationError: br.root.startupValidationError,
+		State:                  br.root.registrationState(),
+		Revision:               br.root.revision,
+		MatchingSemantics:      br.root.matchingSemantics,
+		DeclaredRoutes:         cloneRouteDefinitions(br.root.routes),
+		MountedRoutes:          cloneRouteDefinitions(br.root.mountedRoutes),
 	}
 }
 

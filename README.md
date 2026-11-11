@@ -252,6 +252,44 @@ capture. Hosts still own cache eligibility, header filtering and fallback policy
 replay does not decide whether captured cookies or headers are safe to reuse.
 See `response_capture.go`, `response_state.go`, and `template_renderer.go`.
 
+
+### Consumer startup validation
+
+Native Fiber v2/v3 routers and groups implement optional
+`StartupValidatorRegistrar`. Register named, side-effect-free callbacks before
+initializing the server:
+
+```go
+registrar := server.Router().(router.StartupValidatorRegistrar)
+if err := registrar.RegisterStartupValidator("application.exposure", func() error {
+    snapshot := server.Router().(router.RegistrationInspector).RegistrationSnapshot()
+    return validateApplicationExposure(snapshot)
+}); err != nil {
+    return err
+}
+```
+
+Callbacks run once in name order after deferred routes are physically mounted and
+sealed, before serving. Snapshot reads never trigger them and remain safe inside
+callbacks. Callbacks must not mutate registration, execute application handlers or
+recursively start the server. Names must be unique and nonempty; late registration
+returns an error wrapping `ErrRouterSealed`.
+
+The optional `StartupInitializer.Initialize() error` finalizes and validates
+without opening a listener. Use it for synchronous preparation of a host-owned
+native listener. The required `Server` interface remains unchanged.
+
+Errors and callback panics reject startup persistently: `Initialize` and `Serve` return a typed
+`StartupValidationError`; `Init` and `WrappedRouter` panic with it because their
+compatibility signatures cannot return errors. Repeated/concurrent startup attempts
+cannot bypass rejection. Construct a new server after correcting configuration.
+`RegistrationSnapshot.StartupValidationError` records the rejection for diagnostics;
+`sealed` alone describes route publication, not overall startup success. No
+validators means unchanged startup behavior. HTTPRouter does not advertise this
+optional capability. Hosts bypassing the adapter with a separately retained raw
+native app must own their own startup validation.
+
+
 ## Usage
 
 ### Basic Example with Fiber

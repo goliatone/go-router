@@ -14,6 +14,7 @@ type FiberV3Adapter struct {
 	mu            sync.Mutex
 	app           *fiber.App
 	initialized   bool
+	startupErr    error
 	router        *FiberV3Router
 	mergeStrategy RenderMergeStrategy
 	strictRoutes  bool
@@ -301,11 +302,18 @@ func (r *FiberV3Router) GetPrefix() string {
 }
 
 func (a *FiberV3Adapter) Init() {
+	if err := a.Initialize(); err != nil {
+		panic(err)
+	}
+}
+
+// Initialize finalizes routes and returns any sticky startup validation failure.
+func (a *FiberV3Adapter) Initialize() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if a.initialized {
-		return
+		return a.startupErr
 	}
 
 	// Ensure router is initialized even when callers only use WrappedRouter().
@@ -314,11 +322,15 @@ func (a *FiberV3Adapter) Init() {
 	}
 
 	finalizeFiberRoutes(&a.router.BaseRouter, a.router, a.strictRoutes)
+	a.startupErr = a.router.root.validateStartup()
 	a.initialized = true
+	return a.startupErr
 }
 
 func (a *FiberV3Adapter) Serve(address string) error {
-	a.Init()
+	if err := a.Initialize(); err != nil {
+		return err
+	}
 	return a.app.Listen(address, a.listenConfig)
 }
 

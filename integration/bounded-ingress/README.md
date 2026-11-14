@@ -52,7 +52,13 @@ bounded-ingress package checks must also be rerun on this selected graph for a
 release candidate. Exact commands and source locks are recorded in the canonical
 [feature context](../../.ctx/specs/fiber-hosting-ingress/DESIGN.md).
 
-Before published qualification, select the authorized router release, remove the
-replacement, and repeat the candidate/runtime assertions with `GOWORK=off`. Do not
-remove the replacement here or label this graph published merely to prepare a
-release. Full route-aware ingress still requires B01; T19 remains a separate task.
+Published `v0.65.1` was qualified using an isolated copy of this fixture with the
+router version pinned and the replacement removed, with `GOWORK=off`. Later reviews
+found pipelined-drain response loss and truncated streams in managed hosting under
+both legacy and bounded ingress. T14 qualifies the corrected checkout, including
+both-major fixed-length/chunked drain regressions, native middleware and legacy
+RPC failures; T15/T19 await a corrected release and replacement-free verification.
+Keep the replacement here for checkout
+testing; it does not represent a published consumer graph. Full route-aware
+ingress still requires B01, and v3 compatibility does not establish production
+migration.

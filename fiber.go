@@ -357,6 +357,7 @@ func (a *FiberAdapter) Init() {
 
 // Initialize finalizes routes and returns any sticky startup validation failure.
 func (a *FiberAdapter) Initialize() error {
+	a.router.root.nativeMiddleware.closed.Store(true)
 	a.ingress.close()
 	return a.initialization.do(func() error {
 		if _, enabled, err := a.ingress.setup(); err != nil {
@@ -398,6 +399,7 @@ func (a *FiberAdapter) Shutdown(ctx context.Context) error {
 }
 
 func (a *FiberAdapter) WrappedRouter() *fiber.App {
+	a.router.root.nativeMiddleware.closed.Store(true)
 	a.ingress.close()
 	if err := a.hosting.useRaw(); err != nil {
 		panic(err)

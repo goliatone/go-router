@@ -15,11 +15,26 @@ type fiberRoutePlan interface {
 }
 
 func finalizeFiberRoutes(base *BaseRouter, plan fiberRoutePlan, strict bool) error {
+	// An early native hook may have panicked while Fiber held its own lock.
+	// Do not enter native registration again, even for late/static routes.
+	base.root.registrationMu.Lock()
+	failure := base.root.nativeMiddleware.err
+	if failure != nil {
+		base.root.state = RegistrationSealed
+		base.root.revision++
+	}
+	base.root.registrationMu.Unlock()
+	if failure != nil {
+		return failure
+	}
 	base.registerLateRoutes(plan)
 	if !base.root.beginFinalization() {
 		return nil
 	}
 	defer base.root.finishFinalization()
+	if err := base.root.nativeMiddleware.err; err != nil {
+		return err
+	}
 	if strict {
 		errs := plan.ValidateRoutes()
 		for _, route := range base.root.routes {
@@ -37,7 +52,7 @@ func finalizeFiberRoutes(base *BaseRouter, plan fiberRoutePlan, strict bool) err
 	}
 	plan.registerDeferredRoutes()
 	plan.registerMissHandlers()
-	return nil
+	return base.root.registerNativeTerminal()
 }
 
 func handleFiberRoute(base *BaseRouter, conflict *routeConflict, policy HTTPRouterConflictPolicy, mode PathConflictMode, register func(*RouteDefinition), method HTTPMethod, fullPath string, handler HandlerFunc, allMw []namedMiddleware) (RouteInfo, bool) {

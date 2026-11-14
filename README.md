@@ -12,15 +12,20 @@ Fiber v3 is available through explicit `NewFiberV3Adapter` APIs while existing
 Fiber entry points remain on v2. See the [migration guide](docs/fiber-v3-migration.md)
 and [runnable v3 example](examples/fiber-v3/main.go).
 
-The working-source bounded ingress candidate adds optional `BoundedIngressServer`
-and `ManagedServer` capabilities on both Fiber adapters. Native/Reject/Custom
+Version `v0.65.1` includes optional `BoundedIngressServer`
+and `ManagedServer` capabilities on both Fiber adapters. Managed hosting also
+works independently with legacy ingress. Native/Reject/Custom
 unknown-method policies provide early server correlation and safe observation;
 full route-aware ingress remains pending. See the [configuration and support
 boundaries](docs/fiber-v3-migration.md#bounded-ingress-candidate),
 [runnable cancellation/strategy example](examples/managed-ingress/main.go), and
 [isolated protected consumer](integration/bounded-ingress/README.md).
-These additions are not claimed to exist in the version currently recorded in
-`.version`; publication and replacement-free consumer verification are separate.
+In `v0.65.1`, managed hosting can lose or truncate an admitted response during
+shutdown when another request is pipelined, including streamed responses under
+legacy or bounded ingress. The checkout contains the drain fixes; published
+hosting and affected bounded-ingress qualification await a corrected release. The maintained
+integration fixture retains its checkout replacement for development; its v3
+coverage does not establish migration of a production host.
 
 
 ## Package and documentation map

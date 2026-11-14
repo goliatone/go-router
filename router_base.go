@@ -19,6 +19,7 @@ import (
 
 type routerRoot struct {
 	registrationMu         sync.Mutex
+	nativeMiddleware       nativeMiddlewareRegistration
 	startupValidationError string
 	startupValidators      map[string]func() error
 	state                  RegistrationState

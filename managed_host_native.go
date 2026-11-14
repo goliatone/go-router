@@ -223,6 +223,7 @@ func fiberV3RouteEntries(app *f3.App) []nativeRouteEntry {
 }
 
 func (a *FiberAdapter) StartManaged(ctx context.Context, options ManagedOptions) (ManagedRun, error) {
+	a.router.root.nativeMiddleware.closed.Store(true)
 	a.ingress.close()
 	cfg := a.app.Config()
 	if cfg.Prefork || (cfg.Network != "" && cfg.Network != "tcp" && cfg.Network != "tcp4" && cfg.Network != "tcp6") {
@@ -256,6 +257,7 @@ func (a *FiberAdapter) StartManaged(ctx context.Context, options ManagedOptions)
 	})
 }
 func (a *FiberV3Adapter) StartManaged(ctx context.Context, options ManagedOptions) (ManagedRun, error) {
+	a.router.root.nativeMiddleware.closed.Store(true)
 	a.ingress.close()
 	cfg := a.listenConfig
 	if cfg.EnablePrefork || cfg.GracefulContext != nil || cfg.TLSConfig != nil || cfg.TLSConfigFunc != nil || cfg.AutoCertManager != nil || cfg.CertFile != "" || cfg.CertKeyFile != "" || cfg.CertClientFile != "" || cfg.TLSMinVersion != 0 || cfg.ListenerAddrFunc != nil || cfg.UnixSocketFileMode != 0 || (cfg.ListenerNetwork != "" && cfg.ListenerNetwork != "tcp" && cfg.ListenerNetwork != "tcp4" && cfg.ListenerNetwork != "tcp6") {

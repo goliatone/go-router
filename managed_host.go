@@ -46,6 +46,10 @@ const (
 // ManagedOptions selects one owned plain TCP listener (tcp, tcp4 or tcp6).
 // TLS/autocert, prefork and Unix sockets are not supported in managed mode.
 // The native Serve path retains its existing listen configuration.
+// Managed hosting enables fasthttp ReduceMemoryUsage to flush each complete
+// response before shutdown, including streamed responses with pipelined input.
+// Configured keepalive behavior is preserved; batching and buffer reuse are reduced,
+// which can increase CPU usage. Startup hooks must not disable this setting.
 //
 // OnBound runs after initialization and binding but before native OnListen and
 // serving. It receives the startup context and actual address; returning an error

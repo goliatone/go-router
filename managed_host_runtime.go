@@ -155,6 +155,11 @@ func (r *managedRun) run() error {
 	if err := managedCall("registration", r.driver.validate); err != nil {
 		return err
 	}
+	// fasthttp can otherwise batch pipelined responses and discard the final
+	// buffered bytes if shutdown starts while a body stream is being written.
+	// Its memory-reduction mode flushes every response before the idle/stop
+	// boundary. Set it before serving; changing it during drain would race.
+	server.ReduceMemoryUsage = true
 	r.mu.Lock()
 	r.server = server
 	r.mu.Unlock()
@@ -195,13 +200,13 @@ func (r *managedRun) run() error {
 		}()
 		if ingress != nil {
 			ingress.handle(c, ctx, true)
-			// Flush the admitted response before native shutdown can close an idle
-			// connection, including when another request is already pipelined.
-			if r.canceled() {
-				c.SetConnectionClose()
-			}
 		} else {
 			r.driver.withContext(c, ctx, handler)
+		}
+		// Flush the admitted response before native shutdown can close an idle
+		// connection, including when another request is already pipelined.
+		if r.canceled() {
+			c.SetConnectionClose()
 		}
 	}
 	server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
@@ -301,7 +306,7 @@ func (l *managedListener) Accept() (net.Conn, error) {
 		// Native hooks have now completed. Recheck their registration effects before
 		// publishing readiness or accepting any connection.
 		l.err = managedCall("registration", r.driver.validate)
-		if reflect.ValueOf(r.server.Handler).Pointer() != r.handlerID || reflect.ValueOf(r.server.ConnState).Pointer() != r.connStateID {
+		if reflect.ValueOf(r.server.Handler).Pointer() != r.handlerID || reflect.ValueOf(r.server.ConnState).Pointer() != r.connStateID || !r.server.ReduceMemoryUsage {
 			l.err = errors.Join(l.err, ErrManagedUnsupported)
 		}
 		if l.err != nil {

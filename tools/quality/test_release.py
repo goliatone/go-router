@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real taskfile with inert Git/npm/GitHub API and temporary release metadata.
+"""Exercise the strict taskfile commands with inert Git/npm/GitHub API and temporary release metadata.
 
 No real Git command, commit, tag, push, network request or npm script runs. Calls
 are recorded and every successful-path external boundary is failed in turn.
@@ -115,10 +115,10 @@ sys.exit(subprocess.call([real, *args]))
 
 
 class ReleaseTests(unittest.TestCase):
-    def run_release(self, action="release", mode="", fail_at=0, args=None, extra="", version_bytes=None, unchanged=False):
+    def run_release(self, action="release:strict", mode="", fail_at=0, args=None, extra="", version_bytes=None, unchanged=False):
         with tempfile.TemporaryDirectory(prefix="router-release-test-") as temp:
             path = Path(temp).resolve()
-            version = "0.65.0" if action == "release:prepare" else "0.66.0"
+            version = "0.65.0" if action == "release:strict:prepare" else "0.66.0"
             (path / ".version").write_bytes(version_bytes if version_bytes is not None else (version + "\n").encode())
             for package in ["client", "sseclient"]:
                 (path / package).mkdir()
@@ -192,7 +192,7 @@ class ReleaseTests(unittest.TestCase):
                 self.assertFalse(any(c[:4] == ["git", "-c", "push.followTags=false", "push"] for c in calls))
 
     def test_explicit_arguments_required(self):
-        for action in ["release", "release:prepare"]:
+        for action in ["release:strict", "release:strict:prepare"]:
             for args in [[], ["minor"], ["0.66.0"], ["v0.66.0", HEAD], ["00.66.0", HEAD], ["0.66.0", "HEAD"], ["0.66.0", HEAD, "extra"]]:
                 with self.subTest(action=action, args=args):
                     result, calls, _ = self.run_release(action=action, args=args)
@@ -200,7 +200,7 @@ class ReleaseTests(unittest.TestCase):
                     self.assertEqual(calls, [])
 
     def test_prepare_writes_reviewable_files_without_git_mutations(self):
-        result, calls, files = self.run_release(action="release:prepare")
+        result, calls, files = self.run_release(action="release:strict:prepare")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(files[".version"], "0.66.0\n")
         self.assertIn('# [0.66.0]', files["CHANGELOG.md"])
@@ -209,10 +209,10 @@ class ReleaseTests(unittest.TestCase):
         self.assertFalse(any(c[:2] in [["git", "fetch"], ["git", "ls-remote"]] for c in calls))
 
     def test_prepare_stops_at_each_external_failure(self):
-        _, baseline, _ = self.run_release(action="release:prepare")
+        _, baseline, _ = self.run_release(action="release:strict:prepare")
         for n, call in enumerate(baseline, 1):
             with self.subTest(boundary=n, call=call):
-                result, calls, _ = self.run_release(action="release:prepare", fail_at=n)
+                result, calls, _ = self.run_release(action="release:strict:prepare", fail_at=n)
                 self.assertNotEqual(result.returncode, 0, (call, result.stdout))
                 self.assertEqual(self.mutations(calls), [])
                 self.assertNotIn("Prepared", result.stdout)
@@ -222,7 +222,7 @@ class ReleaseTests(unittest.TestCase):
     def test_prepare_guards_and_incomplete_changelog(self):
         for mode in ["head", "staged", "unstaged", "untracked", "branch", "local-tag", "same-version", "empty-changelog"]:
             with self.subTest(mode=mode):
-                result, calls, files = self.run_release(action="release:prepare", mode=mode)
+                result, calls, files = self.run_release(action="release:strict:prepare", mode=mode)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(self.mutations(calls), [])
                 self.assertNotIn("Prepared", result.stdout)
@@ -232,7 +232,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_verification_never_initializes_or_repairs_metadata(self):
         invalid = [b"", b"\n", b"not-semver\n", b"00.66.0\n", b" 0.66.0\n", b"0.66.0\n0.66.0\n", b"0.66.0-beta.1\n", b"0.66.0\x00\n", b"0.66.0\n\n"]
-        for action in ["version:verify-sync", "release", "release:prepare"]:
+        for action in ["version:verify-sync", "release:strict", "release:strict:prepare"]:
             for data in invalid:
                 with self.subTest(action=action, data=data):
                     args = [] if action == "version:verify-sync" else None
@@ -276,7 +276,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(self.mutations(calls), [])
 
     def test_failed_version_write_cannot_continue(self):
-        result, calls, _ = self.run_release(action="release:prepare", extra='function version:set { return 73; }')
+        result, calls, _ = self.run_release(action="release:strict:prepare", extra='function version:set { return 73; }')
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any(c[0] == "npm" or c[:2] == ["git", "cliff"] for c in calls))
 

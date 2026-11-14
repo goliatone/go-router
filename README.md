@@ -3,13 +3,25 @@
 A framework-neutral HTTP and WebSocket routing layer with Fiber and
 httprouter adapters, shared request contexts, route registration/ownership policy,
 views and response capture, OpenAPI metadata, event streams, and optional
-RPC/SSE integration. Hosts own listeners, authentication policy, and domain routes.
+RPC/SSE integration. Hosts choose listener ownership and own authentication policy
+and domain routes.
 
 Use the Go toolchain required by `go.mod` (currently Go 1.26.0 or newer).
 
 Fiber v3 is available through explicit `NewFiberV3Adapter` APIs while existing
 Fiber entry points remain on v2. See the [migration guide](docs/fiber-v3-migration.md)
 and [runnable v3 example](examples/fiber-v3/main.go).
+
+The working-source bounded ingress candidate adds optional `BoundedIngressServer`
+and `ManagedServer` capabilities on both Fiber adapters. Native/Reject/Custom
+unknown-method policies provide early server correlation and safe observation;
+full route-aware ingress remains pending. See the [configuration and support
+boundaries](docs/fiber-v3-migration.md#bounded-ingress-candidate),
+[runnable cancellation/strategy example](examples/managed-ingress/main.go), and
+[isolated protected consumer](integration/bounded-ingress/README.md).
+These additions are not claimed to exist in the version currently recorded in
+`.version`; publication and replacement-free consumer verification are separate.
+
 
 ## Package and documentation map
 
@@ -44,6 +56,7 @@ Run these commands from the repository root. Tool pins and overrides live in
 ./taskfile go:gohawk ./...     # explicitly scan only the current module
 ./taskfile go:race             # existing root-module race suite
 bash tools/quality/test_taskfile.sh
+python3 tools/quality/test_release.py # inert release failure-path regressions
 ./taskfile go:quality:all      # full local gate; also runs gofmt and go fix
 ```
 
@@ -61,6 +74,69 @@ suppression flags. Its lock checks cover missing releases, contradictory acquisi
 order, and writes under read locks. It does not establish bounded lock waits,
 shutdown deadlines, safe worker admission, or retry serialization; controlled
 concurrency tests are still needed alongside race detection.
+
+## Release workflow
+
+The manual command retains its original interface and one-command flow:
+
+```sh
+./taskfile release minor             # also: major or patch; default: patch
+./taskfile release patch "Release notes for the tag"
+```
+
+Commit or stash tracked changes first. The command fast-forwards the current
+branch from the single origin push endpoint, selects the next version, prepares
+synchronized package/lockfile/embedded metadata and the changelog, commits those
+seven release files, creates the annotated tag, and atomically pushes the current
+branch and that tag. It never pushes unrelated tags. Untracked files are left
+alone. A conflicting/diverged branch or tag stops the release without forcefully
+rewriting history. Python 3.9+, Node, npm and `git-cliff` are required.
+
+Manual releases do **not** require a candidate branch, a supplied SHA, `gh`, or a
+successful hosted CI run. Run the desired local qualification before releasing;
+normal branch CI still runs after a push. Publication is not consumer acceptance.
+
+Preparation runs against an isolated copy of tracked inputs, so a metadata or
+changelog generation failure leaves live release files untouched. Version
+verification is read-only and rejects invalid metadata. Once applying the prepared
+files starts, the command records recovery state under the checkout's Git directory.
+If committing, tagging, pushing or an acknowledgement fails, preserve that state
+and retry the **same version**, after addressing the reported cause:
+
+```sh
+./taskfile release:resume
+```
+
+Resume recognizes a completed commit/tag and a push that reached the server before
+the connection failed. It never bumps again or automatically resets the branch,
+index or tags. Conflicting local edits or remote history require inspection;
+resume refuses to overwrite them. The error prints the journal path, which retains
+the source commit and original/prepared metadata. Do not remove the journal or
+release refs blindly, especially after an uncertain push. If history must be
+reconciled manually, keep a copy of the journal and release commit/tag; verify
+remote refs before deciding whether to complete that release or abandon it.
+
+The stricter workflow is separate and opt-in:
+
+```sh
+./taskfile release:strict:prepare VERSION FULL_SOURCE_COMMIT
+# Review the generated diff, run checks, and manually commit it.
+# Push that exact final SHA to release-candidate/vVERSION and wait for Tests CI.
+./taskfile release:strict VERSION FULL_REVIEWED_RELEASE_COMMIT
+```
+
+Strict preparation never stages or commits. Strict publication requires clean
+`main`, matching metadata, an unused tag and successful CI on the exact final SHA
+before tagging. It uses authenticated `gh` with Actions read access to the canonical
+GitHub.com push repository. For the candidate push, use:
+
+```sh
+git -c push.followTags=false push PUSH_URL FULL_REVIEWED_RELEASE_COMMIT:refs/heads/release-candidate/vVERSION
+```
+
+Both publication modes use explicit commit/tag-object refspecs and atomic pushes
+with expected remote-ref leases. Neither falls back to a partial push. The separate
+client/npm release commands retain their own behavior.
 
 ## Overview
 

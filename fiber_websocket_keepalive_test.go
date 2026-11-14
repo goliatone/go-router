@@ -482,40 +482,47 @@ func TestFiberWebSocketCustomPingHandlerStillSendsPong(t *testing.T) {
 	config := router.DefaultWebSocketConfig()
 	config.DisableKeepAlive = true
 
-	var serverPings atomic.Int32
+	handlerReady := make(chan struct{})
+	handlerDone := make(chan struct{})
+	callbackRelease := make(chan struct{})
+	callbackDone := make(chan string, 1)
+	var releaseOnce sync.Once
+	releaseCallback := func() { releaseOnce.Do(func() { close(callbackRelease) }) }
 	app.Router().WebSocket("/ws", config, func(ws router.WebSocketContext) error {
+		defer close(handlerDone)
 		ws.SetPingHandler(func(data []byte) error {
-			serverPings.Add(1)
+			// Hold the callback until the client observes the independent pong.
+			// Pong receipt must not be treated as callback completion.
+			<-callbackRelease
+			callbackDone <- string(data)
 			return nil
 		})
+		close(handlerReady)
 		_, _, err := ws.ReadMessage()
 		return err
 	})
 
 	address, shutdown := startFiberServer(t, app)
-	defer shutdown()
+	t.Cleanup(shutdown)
 
 	conn, resp, err := websocket.DefaultDialer.Dial("ws://"+address+"/ws", nil)
 	defer closeWebSocketResponse(t, resp)
 	if err != nil {
 		t.Fatalf("failed to dial websocket: %v", err)
 	}
-	defer closeWebSocketConn(t, conn)
-
-	time.Sleep(50 * time.Millisecond)
-
-	pongs := make(chan struct{}, 1)
+	pongs := make(chan string, 1)
 	conn.SetPongHandler(func(data string) error {
-		pongs <- struct{}{}
+		select {
+		case pongs <- data:
+		default:
+		}
 		return nil
 	})
 
-	if err := conn.WriteControl(websocket.PingMessage, []byte("client-ping"), time.Now().Add(time.Second)); err != nil {
-		t.Fatalf("failed to send client ping: %v", err)
-	}
-
 	readErrs := make(chan error, 1)
+	readerDone := make(chan struct{})
 	go func() {
+		defer close(readerDone)
 		for {
 			if _, _, readErr := conn.ReadMessage(); readErr != nil {
 				readErrs <- readErr
@@ -523,17 +530,49 @@ func TestFiberWebSocketCustomPingHandlerStillSendsPong(t *testing.T) {
 			}
 		}
 	}()
+	t.Cleanup(func() {
+		// Always release the callback, including failed assertions, before
+		// closing the socket and joining either side of the connection.
+		releaseCallback()
+		closeWebSocketConn(t, conn)
+		for name, done := range map[string]<-chan struct{}{"client reader": readerDone, "server handler": handlerDone} {
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Errorf("%s did not stop", name)
+			}
+		}
+	})
 
 	select {
-	case <-pongs:
+	case <-handlerReady:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server ping handler was not installed")
+	}
+	const payload = "client-ping"
+	if err := conn.WriteControl(websocket.PingMessage, []byte(payload), time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("failed to send client ping: %v", err)
+	}
+
+	select {
+	case got := <-pongs:
+		if got != payload {
+			t.Fatalf("pong payload = %q, want %q", got, payload)
+		}
 	case readErr := <-readErrs:
 		t.Fatalf("client read failed before pong: %v", readErr)
 	case <-time.After(time.Second):
 		t.Fatal("expected server to send pong despite custom ping handler")
 	}
 
-	if got := serverPings.Load(); got == 0 {
-		t.Fatal("expected custom server ping callback to run")
+	releaseCallback()
+	select {
+	case got := <-callbackDone:
+		if got != payload {
+			t.Fatalf("custom ping callback payload = %q, want %q", got, payload)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected custom server ping callback to complete")
 	}
 }
 

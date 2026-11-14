@@ -134,6 +134,9 @@ func chainHandlers(finalHandler HandlerFunc, routeName string, middlewares []nam
 }
 
 func handlerAtIndex(index int, handler HandlerFunc) HandlerFunc {
+	if handler == nil {
+		return nil
+	}
 	return func(c Context) error {
 		// Closure continuations and Context.Next must advance the same cursor.
 		if cursor, ok := c.(interface{ setHandlerIndex(int) }); ok {

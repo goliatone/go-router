@@ -569,6 +569,7 @@ func (c *fiberV3Context) Context() context.Context {
 	}
 	if ctx := c.liveCtx(); ctx != nil {
 		if uc := ctx.Context(); uc != nil {
+			uc = nativeIngressContext(ctx.RequestCtx(), uc)
 			c.cachedCtx = uc
 			return uc
 		}
@@ -580,6 +581,7 @@ func (c *fiberV3Context) SetContext(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx = preserveIngressContext(c.Context(), ctx)
 	c.cachedCtx = ctx
 	if c.httpReq != nil {
 		c.httpReq = c.httpReq.WithContext(ctx)
@@ -670,6 +672,7 @@ func (c *fiberV3Context) FormValue(key string, defaultValues ...string) string {
 func (c *fiberV3Context) SetHeader(key string, value string) Context {
 	if ctx := c.liveCtx(); ctx != nil {
 		ctx.Set(key, value)
+		restoreIngressResponseHeader(ctx.RequestCtx())
 	}
 	return c
 }
@@ -677,6 +680,7 @@ func (c *fiberV3Context) SetHeader(key string, value string) Context {
 func (c *fiberV3Context) AppendResponseHeader(key string, value string) Context {
 	if ctx := c.liveCtx(); ctx != nil {
 		ctx.Response().Header.Add(key, value)
+		restoreIngressResponseHeader(ctx.RequestCtx())
 	}
 	return c
 }
@@ -729,6 +733,9 @@ func (c *fiberV3Context) syncFiberResponseState(written bool, stream bool) {
 		return
 	}
 	if ctx := c.liveCtx(); ctx != nil {
+		if written {
+			markIngressWritten(ctx.RequestCtx())
+		}
 		if code := ctx.Response().StatusCode(); code > 0 {
 			c.statusCode = code
 		}

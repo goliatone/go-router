@@ -4,21 +4,20 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
 type FiberAdapter struct {
-	mu            sync.Mutex
-	app           *fiber.App
-	initialized   bool
-	startupErr    error
-	router        *FiberRouter
-	mergeStrategy RenderMergeStrategy
-	strictRoutes  bool
-	opts          []func(*fiber.App) *fiber.App
+	ingress        fiberIngress
+	initialization fiberInitialization
+	hosting        fiberHosting
+	app            *fiber.App
+	router         *FiberRouter
+	mergeStrategy  RenderMergeStrategy
+	strictRoutes   bool
+	opts           []func(*fiber.App) *fiber.App
 }
 
 type FiberAdapterConfig struct {
@@ -87,7 +86,8 @@ func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) 
 	cfg = cfg.withDefaults()
 	app := newFiberInstance()
 
-	if len(opts) == 0 {
+	defaultOptions := len(opts) == 0
+	if defaultOptions {
 		opts = append(opts, DefaultFiberOptions)
 	}
 
@@ -95,17 +95,21 @@ func NewFiberAdapterWithConfig(cfg FiberAdapterConfig, opts ...func(*fiber.App) 
 		app = opt(app)
 	}
 
+	ownership := newNativeRegistrationGuard(func() []nativeRouteEntry { return fiberRouteEntries(app) }, defaultOptions)
+
 	conflictPolicy := HTTPRouterConflictLogAndContinue
 	if cfg.ConflictPolicy != nil {
 		conflictPolicy = *cfg.ConflictPolicy
 	}
 
 	return &FiberAdapter{
+		ingress:       fiberIngress{initialMethods: slices.Clone(app.Config().RequestMethods)},
 		app:           app,
 		opts:          opts,
 		mergeStrategy: cfg.MergeStrategy,
 		strictRoutes:  cfg.StrictRoutes,
 		router: &FiberRouter{
+			ownership:                ownership,
 			app:                      app,
 			mergeStrategy:            cfg.MergeStrategy,
 			conflictPolicy:           conflictPolicy,
@@ -229,7 +233,9 @@ func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
 			// already Fiber's most recently mounted route when callers chain
 			// Get(...).SetName(...). Deferred mode applies the name at mount time.
 			if !r.orderRoutesBySpecificity && name != "" {
+				r.ownership.before()
 				r.app.Name(name)
+				r.ownership.afterName(string(route.Method), route.Path, name, true)
 			}
 		})
 	}
@@ -241,7 +247,7 @@ func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
 
 	r.logger.Info("registering route", "method", route.Method, "path", route.Path, "name", route.Name)
 
-	r.app.Add(string(route.Method), route.Path, func(c *fiber.Ctx) error {
+	handler := func(c *fiber.Ctx) error {
 		ctx := NewFiberContext(c, r.logger)
 		if fc, ok := ctx.(*fiberContext); ok {
 			fc.setMergeStrategy(r.mergeStrategy)
@@ -257,9 +263,14 @@ func (r *FiberRouter) routeRegistration(route *RouteDefinition) {
 			return fc.Next()
 		}
 		return fmt.Errorf("context cast failed")
-	})
+	}
+	r.ownership.before()
+	r.app.Add(string(route.Method), route.Path, handler)
+	r.ownership.afterAdd([]string{string(route.Method)}, route.Path, handler, false)
 	if route.Name != "" && route.nameMode == routeNameModePublic {
+		r.ownership.before()
 		r.app.Name(route.Name)
+		r.ownership.afterName(string(route.Method), route.Path, route.Name, true)
 	}
 	r.root.recordMounted(route)
 }
@@ -286,7 +297,7 @@ func (r *FiberRouter) registerMissHandlers() {
 		return
 	}
 
-	r.app.Use(func(c *fiber.Ctx) error {
+	handler := func(c *fiber.Ctx) error {
 		def := r.missHandler(HTTPMethod(c.Method()))
 		if def == nil {
 			return c.Status(fiber.StatusNotFound).SendString("Not Found")
@@ -308,7 +319,10 @@ func (r *FiberRouter) registerMissHandlers() {
 		fc.SetContext(goCtx)
 
 		return fc.Next()
-	})
+	}
+	r.ownership.before()
+	r.app.Use(handler)
+	r.ownership.afterAdd(r.app.Config().RequestMethods, "/", handler, true)
 }
 
 func (r *FiberRouter) detectRouteConflict(method HTTPMethod, fullPath string) *routeConflict {
@@ -343,36 +357,51 @@ func (a *FiberAdapter) Init() {
 
 // Initialize finalizes routes and returns any sticky startup validation failure.
 func (a *FiberAdapter) Initialize() error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.initialized {
-		return a.startupErr
-	}
-
-	// Ensure router is initialized even when callers only use WrappedRouter().
-	if a.router == nil {
-		a.Router()
-	}
-
-	finalizeFiberRoutes(&a.router.BaseRouter, a.router, a.strictRoutes)
-	a.startupErr = a.router.root.validateStartup()
-	a.initialized = true
-	return a.startupErr
+	a.ingress.close()
+	return a.initialization.do(func() error {
+		if _, enabled, err := a.ingress.setup(); err != nil {
+			return err
+		} else if enabled {
+			if err := a.ValidateBoundedIngress(a.ingress.options); err != nil {
+				return err
+			}
+			if !slices.Equal(a.app.Config().RequestMethods, a.ingress.initialMethods) {
+				return ingressConfigurationError("native.methods", "mutated")
+			}
+		}
+		if a.router == nil {
+			a.Router()
+		}
+		if err := finalizeFiberRoutes(&a.router.BaseRouter, a.router, a.strictRoutes); err != nil {
+			return err
+		}
+		if err := a.router.root.validateStartup(); err != nil {
+			return err
+		}
+		return a.initializeIngress()
+	})
 }
 
 func (a *FiberAdapter) Serve(address string) error {
 	if err := a.Initialize(); err != nil {
 		return err
 	}
+	if err := a.hosting.startLegacy(); err != nil {
+		return err
+	}
+	defer a.hosting.finishLegacy()
 	return a.app.Listen(address)
 }
 
 func (a *FiberAdapter) Shutdown(ctx context.Context) error {
-	return a.app.ShutdownWithContext(ctx)
+	return a.hosting.shutdown(ctx, a.app.Server(), a.app.ShutdownWithContext)
 }
 
 func (a *FiberAdapter) WrappedRouter() *fiber.App {
+	a.ingress.close()
+	if err := a.hosting.useRaw(); err != nil {
+		panic(err)
+	}
 	// Ensure go-router late routes (e.g., Static) are registered even if the
 	// returned Fiber app is started with app.Listen directly.
 	a.Init()
@@ -380,6 +409,7 @@ func (a *FiberAdapter) WrappedRouter() *fiber.App {
 }
 
 type FiberRouter struct {
+	ownership *nativeRegistrationGuard
 	BaseRouter
 	app                      *fiber.App
 	mergeStrategy            RenderMergeStrategy
@@ -392,6 +422,7 @@ type FiberRouter struct {
 
 func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
+		ownership:                r.ownership,
 		app:                      r.app,
 		mergeStrategy:            r.mergeStrategy,
 		conflictPolicy:           r.conflictPolicy,
@@ -407,6 +438,7 @@ func (r *FiberRouter) Group(prefix string) Router[*fiber.App] {
 // return r.routers[prefix]
 func (r *FiberRouter) Mount(prefix string) Router[*fiber.App] {
 	return &FiberRouter{
+		ownership:                r.ownership,
 		app:                      r.app,
 		mergeStrategy:            r.mergeStrategy,
 		conflictPolicy:           r.conflictPolicy,

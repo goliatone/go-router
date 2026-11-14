@@ -760,6 +760,7 @@ func captureFiberV3ContextForWebSocket(c fiber.Ctx, logger Logger, prototype *fi
 }
 
 func runFiberV3WebSocketUpgrade(c fiber.Ctx, logger Logger, prototype *fiberV3Context, config WebSocketConfig, upgradeData UpgradeData, invoke func(WebSocketContext) error) error {
+	restoreIngressResponseHeader(c.RequestCtx())
 	if logger == nil {
 		logger = &defaultLogger{}
 	}

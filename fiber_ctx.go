@@ -58,6 +58,7 @@ type fasthttpResponseWriter struct {
 }
 
 func (w *fasthttpResponseWriter) notifyWrite() {
+	markIngressWritten(w.ctx)
 	if w.onWrite != nil {
 		w.onWrite()
 	}
@@ -618,6 +619,7 @@ func (c *fiberContext) Context() context.Context {
 	}
 	if ctx := c.liveCtx(); ctx != nil {
 		if uc := ctx.UserContext(); uc != nil {
+			uc = nativeIngressContext(ctx.Context(), uc)
 			c.cachedCtx = uc
 			return uc
 		}
@@ -629,7 +631,11 @@ func (c *fiberContext) SetContext(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx = preserveIngressContext(c.Context(), ctx)
 	c.cachedCtx = ctx
+	if c.httpReq != nil {
+		c.httpReq = c.httpReq.WithContext(ctx)
+	}
 	if live := c.liveCtx(); live != nil {
 		live.SetUserContext(ctx)
 	}
@@ -684,6 +690,7 @@ func (c *fiberContext) FormValue(key string, defaultValues ...string) string {
 func (c *fiberContext) SetHeader(key string, value string) Context {
 	if ctx := c.liveCtx(); ctx != nil {
 		ctx.Set(key, value)
+		restoreIngressResponseHeader(ctx.Context())
 	}
 	return c
 }
@@ -691,6 +698,7 @@ func (c *fiberContext) SetHeader(key string, value string) Context {
 func (c *fiberContext) AppendResponseHeader(key string, value string) Context {
 	if ctx := c.liveCtx(); ctx != nil {
 		ctx.Response().Header.Add(key, value)
+		restoreIngressResponseHeader(ctx.Context())
 	}
 	return c
 }
@@ -743,6 +751,9 @@ func (c *fiberContext) syncFiberResponseState(written bool, stream bool) {
 		return
 	}
 	if ctx := c.liveCtx(); ctx != nil {
+		if written {
+			markIngressWritten(ctx.Context())
+		}
 		if code := ctx.Response().StatusCode(); code > 0 {
 			c.statusCode = code
 		}

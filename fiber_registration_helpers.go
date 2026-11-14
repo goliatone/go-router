@@ -14,19 +14,30 @@ type fiberRoutePlan interface {
 	registerMissHandlers()
 }
 
-func finalizeFiberRoutes(base *BaseRouter, plan fiberRoutePlan, strict bool) {
+func finalizeFiberRoutes(base *BaseRouter, plan fiberRoutePlan, strict bool) error {
 	base.registerLateRoutes(plan)
 	if !base.root.beginFinalization() {
-		return
+		return nil
 	}
 	defer base.root.finishFinalization()
 	if strict {
-		if errs := plan.ValidateRoutes(); len(errs) > 0 {
-			panic(errors.Join(errs...))
+		errs := plan.ValidateRoutes()
+		for _, route := range base.root.routes {
+			for _, handler := range route.Handlers {
+				if handler.Handler == nil {
+					errs = append(errs, fmt.Errorf("nil handler for %s %s", route.Method, route.Path))
+				}
+			}
+		}
+		if len(errs) > 0 {
+			failure := &StartupValidationError{Err: errors.Join(errs...)}
+			base.root.startupValidationError = failure.Error()
+			return failure
 		}
 	}
 	plan.registerDeferredRoutes()
 	plan.registerMissHandlers()
+	return nil
 }
 
 func handleFiberRoute(base *BaseRouter, conflict *routeConflict, policy HTTPRouterConflictPolicy, mode PathConflictMode, register func(*RouteDefinition), method HTTPMethod, fullPath string, handler HandlerFunc, allMw []namedMiddleware) (RouteInfo, bool) {

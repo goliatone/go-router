@@ -28,7 +28,10 @@ func New(config ...Config) router.MiddlewareFunc {
 				return ctx.Next()
 			}
 
-			rid := ctx.Header(cfg.Header)
+			rid, owned := router.IngressRequestIDFromContext(ctx.Context())
+			if !owned {
+				rid = ctx.Header(cfg.Header)
+			}
 			if rid == "" {
 				rid = cfg.Generator()
 			}

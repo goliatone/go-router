@@ -52,13 +52,17 @@ bounded-ingress package checks must also be rerun on this selected graph for a
 release candidate. Exact commands and source locks are recorded in the canonical
 [feature context](../../.ctx/specs/fiber-hosting-ingress/DESIGN.md).
 
-Published `v0.65.1` was qualified using an isolated copy of this fixture with the
-router version pinned and the replacement removed, with `GOWORK=off`. Later reviews
-found pipelined-drain response loss and truncated streams in managed hosting under
-both legacy and bounded ingress. T14 qualifies the corrected checkout, including
-both-major fixed-length/chunked drain regressions, native middleware and legacy
-RPC failures; T15/T19 await a corrected release and replacement-free verification.
-Keep the replacement here for checkout
-testing; it does not represent a published consumer graph. Full route-aware
-ingress still requires B01, and v3 compatibility does not establish production
-migration.
+Published `v0.65.2` fixes the managed pipelined-drain response loss and stream
+truncation found in `v0.65.1`. An isolated copy of this fixture pinned to downloaded
+`v0.65.2`, with `GOWORK=off` and zero replacements, passes both-major protected RPC,
+legacy hosting, fixed-length/chunked drain and native middleware composition checks.
+The selected runtime, router minimum and native examples also pass. The qualified
+graph contains 320 modules with admin/quickstart v0.145.1 and go-command v0.27.1.
+
+That release omitted the [migration/support guide](../../docs/fiber-v3-migration.md).
+This documentation correction supplies the guide and updates the release claims;
+T15/T19 retain their passing runtime evidence while awaiting verification of the
+published documentation correction. Reuse requires matching runtime source,
+fixtures and dependency identities. Keep the replacement here for checkout testing;
+it does not represent a published consumer graph. Full route-aware ingress still
+requires B01, and v3 compatibility does not establish production migration.

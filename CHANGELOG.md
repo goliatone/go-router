@@ -1,5 +1,20 @@
 # Changelog
 
+# [0.65.1](https://github.com/goliatone/go-router/compare/v0.65.0...v0.65.1) - (2026-11-14)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Release setup ([3b1670e](https://github.com/goliatone/go-router/commit/3b1670e27745d8465f30bed330c6096806b20dba))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Bounded ingress ([e544da8](https://github.com/goliatone/go-router/commit/e544da8e627716192d7880a87236edd4b1a99293))  - (goliatone)
+- Managed host ([3d04bfb](https://github.com/goliatone/go-router/commit/3d04bfb247f8352535eebcd0e389208ddbfb9638))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.65.0 ([be8738d](https://github.com/goliatone/go-router/commit/be8738dcc7a07e4dd3525141e08be06480116336))  - (goliatone)
+
 # [0.65.0](https://github.com/goliatone/go-router/compare/v0.64.0...v0.65.0) - (2026-11-11)
 
 ## <!-- 13 -->📦 Bumps

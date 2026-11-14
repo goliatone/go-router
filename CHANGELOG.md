@@ -1,10 +1,20 @@
 # Changelog
 
+# [0.65.3](https://github.com/goliatone/go-router/compare/v0.65.2...v0.65.3) - (2026-11-14)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([72633ef](https://github.com/goliatone/go-router/commit/72633ef26b4fb18cc77f8820eeedccb6442dea80))  - (goliatone)
+
 # [0.65.2](https://github.com/goliatone/go-router/compare/v0.65.1...v0.65.2) - (2026-11-14)
 
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Managed host ([34e08ba](https://github.com/goliatone/go-router/commit/34e08ba3d55058391fb7927ca39beefc6eeda11b))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.65.2 ([0debba5](https://github.com/goliatone/go-router/commit/0debba5aab57884f243d11305c47cb266211dc50))  - (goliatone)
 
 # [0.65.1](https://github.com/goliatone/go-router/compare/v0.65.0...v0.65.1) - (2026-11-14)
 

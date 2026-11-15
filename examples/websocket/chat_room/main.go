@@ -3,26 +3,24 @@
 
 package main
 
-// To run this example:
-// go run chat_room.go
-//
-// You can switch between implementations by setting the USE_HIGH_LEVEL environment variable:
-// USE_HIGH_LEVEL=true go run chat_room.go    # Uses high-level WebSocket features
-// go run chat_room.go                         # Uses low-level implementation (default)
+// Run with go run main.go. Select USE_HIGH_LEVEL=true for the hub implementation.
+// CHAT_ADDR defaults to :8089.
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
 )
-
-// Example: Chat Room Application
 
 // ChatRoomMessage represents a chat message
 type ChatRoomMessage struct {
@@ -43,6 +41,9 @@ type ChatRoom struct {
 	unregister chan *ChatClient
 	history    []ChatRoomMessage
 	maxHistory int
+	stop       chan struct{}
+	done       chan struct{}
+	closeOnce  sync.Once
 }
 
 // ChatClient represents a connected user
@@ -64,6 +65,8 @@ func NewChatRoom() *ChatRoom {
 		unregister: make(chan *ChatClient),
 		history:    make([]ChatRoomMessage, 0),
 		maxHistory: 100,
+		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 
 	go room.run()
@@ -72,79 +75,62 @@ func NewChatRoom() *ChatRoom {
 
 // run handles chat room events
 func (r *ChatRoom) run() {
+	defer close(r.done)
 	for {
 		select {
+		case <-r.stop:
+			return
 		case client := <-r.register:
 			r.mu.Lock()
 			r.clients[client.ID] = client
-			log.Printf("Client registered: %s (Total: %d)", client.Username, len(r.clients))
-			r.mu.Unlock()
-
-			// Send history to new client
 			for _, msg := range r.history {
 				select {
 				case client.Send <- msg:
 				default:
-					// Client buffer full
 				}
-			}
-
-			// Announce new user (non-blocking)
-			go func() {
-				r.broadcast <- ChatRoomMessage{
-					Type:      "join",
-					Username:  client.Username,
-					Message:   fmt.Sprintf("%s joined the chat", client.Username),
-					Timestamp: time.Now(),
-					Color:     client.Color,
-				}
-			}()
-
-		case client := <-r.unregister:
-			r.mu.Lock()
-			if _, ok := r.clients[client.ID]; ok {
-				delete(r.clients, client.ID)
-				close(client.Send)
-				log.Printf("Client unregistered: %s (Total: %d)", client.Username, len(r.clients))
-				r.mu.Unlock()
-
-				// Announce user left (non-blocking)
-				go func() {
-					r.broadcast <- ChatRoomMessage{
-						Type:      "leave",
-						Username:  client.Username,
-						Message:   fmt.Sprintf("%s left the chat", client.Username),
-						Timestamp: time.Now(),
-					}
-				}()
-			} else {
-				r.mu.Unlock()
-			}
-
-		case message := <-r.broadcast:
-			// Add to history
-			r.mu.Lock()
-			r.history = append(r.history, message)
-			if len(r.history) > r.maxHistory {
-				r.history = r.history[1:]
 			}
 			r.mu.Unlock()
-
-			// Send to all clients
-			r.mu.RLock()
-			for _, client := range r.clients {
-				select {
-				case client.Send <- message:
-				default:
-					// Client buffer full, close it
-					go func(c *ChatClient) {
-						r.unregister <- c
-					}(client)
-				}
+			r.publish(ChatRoomMessage{Type: "join", Username: client.Username, Message: fmt.Sprintf("%s joined the chat", client.Username), Timestamp: time.Now(), Color: client.Color})
+		case client := <-r.unregister:
+			r.mu.Lock()
+			_, exists := r.clients[client.ID]
+			if exists {
+				delete(r.clients, client.ID)
+				close(client.Send)
 			}
-			r.mu.RUnlock()
+			r.mu.Unlock()
+			if exists {
+				r.publish(ChatRoomMessage{Type: "leave", Username: client.Username, Message: fmt.Sprintf("%s left the chat", client.Username), Timestamp: time.Now()})
+			}
+		case message := <-r.broadcast:
+			r.publish(message)
 		}
 	}
+}
+
+// publish runs on the room worker, without spawning unowned broadcast goroutines.
+func (r *ChatRoom) publish(message ChatRoomMessage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.history = append(r.history, message)
+	if len(r.history) > r.maxHistory {
+		r.history = r.history[1:]
+	}
+	for id, client := range r.clients {
+		select {
+		case client.Send <- message:
+		default:
+			// Closing the queue makes its writer close the socket and release the reader.
+			delete(r.clients, id)
+			close(client.Send)
+		}
+	}
+}
+
+// Close is called after connection workers have left the room.
+func (r *ChatRoom) Close() {
+	r.closeOnce.Do(func() { close(r.stop) })
+	<-r.done
 }
 
 // GetUserCount returns the number of connected users
@@ -167,7 +153,6 @@ func (r *ChatRoom) GetUserList() []string {
 }
 
 var (
-	chatRoom = NewChatRoom()
 	colors   = []string{"#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FECA57", "#48C9B0", "#9B59B6", "#F39C12"}
 	colorIdx = 0
 	colorMu  sync.Mutex
@@ -181,29 +166,14 @@ func getNextColor() string {
 	return color
 }
 
-func main() {
-	useHighLevel := os.Getenv("USE_HIGH_LEVEL") == "true"
-	RunChatRoomExample(useHighLevel)
-}
-
-// RunChatRoomExample is the main entry point that chooses between implementations
-func RunChatRoomExample(useHighLevel bool) {
-	if useHighLevel {
-		log.Println("Using HIGH-LEVEL WebSocket implementation")
-		runHighLevelChatRoom()
-	} else {
-		log.Println("Using LOW-LEVEL WebSocket implementation")
-		runLowLevelChatRoom()
-	}
-}
-
-// runLowLevelChatRoom runs the original low-level implementation
-func runLowLevelChatRoom() {
+// newLowLevelChatRoom configures the low-level implementation.
+func newLowLevelChatRoom() *chatHost {
 	// Register the HTTPRouter WebSocket factory
 	router.RegisterHTTPRouterWebSocketFactory(nil)
 
 	// Create router
-	app := router.NewHTTPServer()
+	host := newChatHost()
+	app, chatRoom := host.app, host.room
 
 	// WebSocket configuration
 	wsConfig := router.WebSocketConfig{
@@ -245,11 +215,17 @@ func runLowLevelChatRoom() {
 
 		// Register client
 		log.Printf("Registering client: %s", username)
-		chatRoom.register <- client
+		select {
+		case chatRoom.register <- client:
+		case <-chatRoom.done:
+			return wsCtx.Close()
+		}
 
 		// Start client handlers
-		go client.writePump()
+		written := make(chan struct{})
+		go func() { defer close(written); client.writePump() }()
 		client.readPump() // This blocks until connection closes
+		<-written
 
 		// readPump will handle unregistration in its defer
 		log.Printf("Client %s disconnected", username)
@@ -258,38 +234,79 @@ func runLowLevelChatRoom() {
 
 	// Register routes
 	app.Router().Get("/", chatPageHandler)
-	app.Router().Get("/ws/chat", chatHandler, router.WebSocketUpgrade(wsConfig))
-	app.Router().Get("/api/stats", statsHandler)
+	app.Router().Get("/ws/chat", host.track(chatHandler), router.WebSocketUpgrade(wsConfig))
+	app.Router().Get("/api/stats", chatRoom.statsHandler)
 
-	// Start server
-	port := ":8089"
-	log.Printf("Chat Room Server starting on %s", port)
-	log.Printf("Open http://localhost%s/ to join the chat", port)
-
-	if err := app.Serve(port); err != nil {
-		log.Fatal(err)
-	}
+	return host
 }
 
-// runHighLevelChatRoom runs the new high-level implementation using WSHub and WSClient
-func runHighLevelChatRoom() {
+// newHighLevelChatRoom configures the implementation using WSHub and WSClient.
+func newHighLevelChatRoom() *chatHost {
 	// Register the HTTPRouter WebSocket factory
 	router.RegisterHTTPRouterWebSocketFactory(nil)
 
 	// Create router
-	app := router.NewHTTPServer()
+	host := newChatHost()
+	app, chatRoom := host.app, host.room
 
 	// Create WSHub for managing WebSocket connections
 	hub := router.NewWSHub()
+	host.hub = hub
+
+	// Bind the page's flat JSON frames before the hub starts its client reader.
+	// hub.On handles hub.Emit events, not incoming WebSocket frames.
+	messageHandler := func(ctx context.Context, client router.WSClient) error {
+		client.OnMessage(func(msgCtx context.Context, data []byte) error {
+			// Parse the incoming message
+			var msg ChatRoomMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				return fmt.Errorf("invalid message format: %w", err)
+			}
+
+			// Get user info from client state
+			username := client.Get("username")
+			color := client.Get("color")
+
+			// Create the chat message
+			chatMsg := ChatRoomMessage{
+				ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+				Type:      msg.Type,
+				Username:  username.(string),
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+				Color:     color.(string),
+			}
+
+			// Handle different message types
+			switch msg.Type {
+			case "message":
+				// Add to history and broadcast
+				chatRoom.mu.Lock()
+				chatRoom.history = append(chatRoom.history, chatMsg)
+				if len(chatRoom.history) > chatRoom.maxHistory {
+					chatRoom.history = chatRoom.history[1:]
+				}
+				chatRoom.mu.Unlock()
+
+				hub.BroadcastJSON(chatMsg)
+			case "typing":
+				// Broadcast typing indicator
+				chatMsg.Message = fmt.Sprintf("%s is typing...", username)
+				hub.BroadcastJSON(chatMsg)
+			}
+
+			return nil
+		})
+		return nil
+	}
 
 	// Configure the hub with event handlers
 	hub.OnConnect(func(ctx context.Context, client router.WSClient, request any) error {
-		// Get username from query parameter (the hub passes the Context as request)
-		username := "Guest" + client.ID()[:8] // Default username
-		if reqCtx, ok := request.(router.Context); ok {
-			if q := reqCtx.Query("username"); q != "" {
-				username = q
-			}
+		// Extract username from the query parameters
+		// The client interface should have a Query method
+		username := client.Query("username", "")
+		if username == "" {
+			username = "Guest" + client.ID()[:8] // Default username
 		}
 
 		// Store user info in client context
@@ -300,7 +317,7 @@ func runHighLevelChatRoom() {
 
 		// Send chat history to new client
 		chatRoom.mu.RLock()
-		history := chatRoom.history
+		history := append([]ChatRoomMessage(nil), chatRoom.history...)
 		chatRoom.mu.RUnlock()
 
 		for _, msg := range history {
@@ -326,11 +343,16 @@ func runHighLevelChatRoom() {
 
 		hub.BroadcastJSON(joinMsg)
 
-		return nil
+		// Set up message handler for this client
+		return messageHandler(ctx, client)
 	})
 
 	// Handle disconnections
 	hub.OnDisconnect(func(ctx context.Context, client router.WSClient, request any) error {
+		if !host.beginWork() {
+			return nil
+		}
+		defer host.workers.Done()
 		username := client.Get("username")
 		if username == nil {
 			username = "Unknown"
@@ -354,55 +376,6 @@ func runHighLevelChatRoom() {
 		chatRoom.mu.Unlock()
 
 		hub.BroadcastJSON(leaveMsg)
-		return nil
-	})
-
-	// Handle JSON messages using the On method for event-based messaging
-	hub.On("message", func(ctx context.Context, client router.WSClient, data any) error {
-		// Parse the incoming message
-		msgData, ok := data.(map[string]any)
-		if !ok {
-			return fmt.Errorf("invalid message format")
-		}
-
-		// Get user info from client state
-		username := client.Get("username")
-		color := client.Get("color")
-
-		// Create the message
-		msg := ChatRoomMessage{
-			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-			Type:      "message",
-			Username:  username.(string),
-			Message:   msgData["message"].(string),
-			Timestamp: time.Now(),
-			Color:     color.(string),
-		}
-
-		// Add to history and broadcast
-		chatRoom.mu.Lock()
-		chatRoom.history = append(chatRoom.history, msg)
-		if len(chatRoom.history) > chatRoom.maxHistory {
-			chatRoom.history = chatRoom.history[1:]
-		}
-		chatRoom.mu.Unlock()
-
-		hub.BroadcastJSON(msg)
-		return nil
-	})
-
-	// Handle typing indicator
-	hub.On("typing", func(ctx context.Context, client router.WSClient, data any) error {
-		username := client.Get("username")
-
-		msg := ChatRoomMessage{
-			Type:      "typing",
-			Username:  username.(string),
-			Message:   fmt.Sprintf("%s is typing...", username),
-			Timestamp: time.Now(),
-		}
-
-		hub.BroadcastJSON(msg)
 		return nil
 	})
 
@@ -438,24 +411,20 @@ func runHighLevelChatRoom() {
 
 	// Register routes
 	app.Router().Get("/", chatPageHandler)
-	app.Router().Get("/ws/chat", hub.Handler(), router.WebSocketUpgrade(wsConfig))
+	app.Router().Get("/ws/chat", host.track(hub.Handler()), router.WebSocketUpgrade(wsConfig))
 	app.Router().Get("/api/stats", statsHandlerHL)
 
-	// Start server
-	port := ":8089"
-	log.Printf("Chat Room Server (High-Level) starting on %s", port)
-	log.Printf("Open http://localhost%s/ to join the chat", port)
-
-	if err := app.Serve(port); err != nil {
-		log.Fatal(err)
-	}
+	return host
 }
 
 // Client read pump
 func (c *ChatClient) readPump() {
 	defer func() {
 		log.Printf("Unregistering client: %s", c.Username)
-		c.Room.unregister <- c
+		select {
+		case c.Room.unregister <- c:
+		case <-c.Room.done:
+		}
 		c.Conn.Close()
 	}()
 
@@ -473,11 +442,19 @@ func (c *ChatClient) readPump() {
 
 		switch msg.Type {
 		case "message":
-			c.Room.broadcast <- msg
+			select {
+			case c.Room.broadcast <- msg:
+			case <-c.Room.done:
+				return
+			}
 		case "typing":
 			// Handle typing indicator
 			msg.Message = fmt.Sprintf("%s is typing...", c.Username)
-			c.Room.broadcast <- msg
+			select {
+			case c.Room.broadcast <- msg:
+			case <-c.Room.done:
+				return
+			}
 		}
 	}
 }
@@ -511,7 +488,7 @@ func (c *ChatClient) writePump() {
 }
 
 // Stats API endpoint
-func statsHandler(ctx router.Context) error {
+func (chatRoom *ChatRoom) statsHandler(ctx router.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]any{
 		"users_online": chatRoom.GetUserCount(),
 		"user_list":    chatRoom.GetUserList(),
@@ -683,7 +660,7 @@ func chatPageHandler(ctx router.Context) error {
         }
 
         function connect() {
-            ws = new WebSocket('ws://localhost:8089/ws/chat?username=' + encodeURIComponent(username));
+            ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/chat?username=' + encodeURIComponent(username));
 
             ws.onopen = function() {
                 document.getElementById('status').textContent = 'Connected';
@@ -770,4 +747,205 @@ func chatPageHandler(ctx router.Context) error {
 
 	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
 	return ctx.SendString(html)
+}
+
+// chatHost owns the HTTP listener and all application connection/room workers.
+// The native HTTP server is allocated before startup, so shutdown also prevents
+// a concurrently starting listener. Routing remains the selected HTTPRouter.
+type chatHost struct {
+	app      *router.HTTPServer
+	http     *http.Server
+	room     *ChatRoom
+	hub      *router.WSHub
+	mu       sync.Mutex
+	stopping bool
+	readers  map[*chatSocketOwner]struct{}
+	workers  sync.WaitGroup
+	stopOnce sync.Once
+	stopped  chan struct{}
+	stopErr  error
+}
+
+func newChatHost() *chatHost {
+	app := router.NewHTTPServer().(*router.HTTPServer)
+	return &chatHost{
+		app: app, room: NewChatRoom(),
+		http:    &http.Server{ReadHeaderTimeout: 10 * time.Second},
+		readers: make(map[*chatSocketOwner]struct{}), stopped: make(chan struct{}),
+	}
+}
+
+func (h *chatHost) beginWork() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.stopping {
+		return false
+	}
+	h.workers.Add(1)
+	return true
+}
+
+func (h *chatHost) track(next router.HandlerFunc) router.HandlerFunc {
+	return func(c router.Context) error {
+		ws, ok := c.(router.WebSocketContext)
+		if !ok {
+			return c.Status(http.StatusBadRequest).SendString("WebSocket upgrade required")
+		}
+		_, ok = ws.(router.WebSocketReadInterrupter)
+		if !ok {
+			return errors.New("websocket read interruption unavailable")
+		}
+		reader := &chatSocketOwner{WebSocketContext: ws}
+		h.mu.Lock()
+		if h.stopping {
+			h.mu.Unlock()
+			return ws.Close()
+		}
+		h.workers.Add(1)
+		h.readers[reader] = struct{}{}
+		h.mu.Unlock()
+		defer func() {
+			_ = reader.Close()
+			h.mu.Lock()
+			delete(h.readers, reader)
+			h.mu.Unlock()
+			h.workers.Done()
+		}()
+		return next(reader)
+	}
+}
+
+// chatSocketOwner coordinates host interruption with closes initiated by either
+// low-level pump or the high-level client. Native close callbacks may still be
+// running after the adapter has detached its transport.
+type chatSocketOwner struct {
+	router.WebSocketContext
+	mu      sync.Mutex
+	closing bool
+}
+
+func (s *chatSocketOwner) InterruptRead() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing {
+		return nil
+	}
+	return s.WebSocketContext.(router.WebSocketReadInterrupter).InterruptRead()
+}
+
+func (s *chatSocketOwner) Close() error {
+	return s.CloseWithStatus(router.CloseNormalClosure, "")
+}
+
+func (s *chatSocketOwner) CloseWithStatus(code int, reason string) error {
+	s.mu.Lock()
+	s.closing = true
+	s.mu.Unlock()
+	return s.WebSocketContext.CloseWithStatus(code, reason)
+}
+
+func (h *chatHost) Serve(address string) error {
+	// Finalize only after registration. Own HTTP entry before an upgrade hijacks
+	// the socket and removes it from net/http's shutdown accounting.
+	native := h.app.WrappedRouter()
+	h.http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !h.beginWork() {
+			w.Header().Set("Connection", "close")
+			http.Error(w, "server stopping", http.StatusServiceUnavailable)
+			return
+		}
+		defer h.workers.Done()
+		native.ServeHTTP(w, r)
+	})
+	h.http.Addr = address
+	return h.http.ListenAndServe()
+}
+
+// Shutdown is retryable: expiry bounds this caller's wait, while owned cleanup
+// continues and a later call can join it. No lock is held through callbacks.
+func (h *chatHost) Shutdown(ctx context.Context) error {
+	h.stopOnce.Do(func() {
+		h.mu.Lock()
+		h.stopping = true
+		readers := make([]*chatSocketOwner, 0, len(h.readers))
+		for reader := range h.readers {
+			readers = append(readers, reader)
+		}
+		h.mu.Unlock()
+		go func() {
+			for _, reader := range readers {
+				h.stopErr = errors.Join(h.stopErr, reader.InterruptRead())
+			}
+			if h.hub != nil {
+				h.stopErr = errors.Join(h.stopErr, h.hub.Close())
+			}
+			h.workers.Wait()
+			h.room.Close()
+			close(h.stopped)
+		}()
+	})
+	serverErr := h.http.Shutdown(ctx)
+	select {
+	case <-h.stopped:
+		return errors.Join(serverErr, h.stopErr)
+	case <-ctx.Done():
+		return errors.Join(serverErr, ctx.Err())
+	}
+}
+
+func (h *chatHost) Run(ctx context.Context, address string, drain time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), drain)
+		defer cancel()
+		return errors.Join(err, h.Shutdown(cleanup))
+	}
+	served := make(chan error, 1)
+	go func() { served <- h.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-ctx.Done():
+	}
+	cleanup, cancel := context.WithTimeout(context.Background(), drain)
+	defer cancel()
+	shutdownErr := h.Shutdown(cleanup)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-cleanup.Done():
+			serveErr = cleanup.Err()
+		}
+	}
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
+	}
+	return errors.Join(serveErr, shutdownErr)
+}
+
+func main() {
+	RunChatRoomExample(os.Getenv("USE_HIGH_LEVEL") == "true")
+}
+
+// RunChatRoomExample runs the selected chat implementation until SIGINT/SIGTERM.
+func RunChatRoomExample(useHighLevel bool) {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	var host *chatHost
+	if useHighLevel {
+		log.Println("Using HIGH-LEVEL WebSocket implementation")
+		host = newHighLevelChatRoom()
+	} else {
+		log.Println("Using LOW-LEVEL WebSocket implementation")
+		host = newLowLevelChatRoom()
+	}
+	address := os.Getenv("CHAT_ADDR")
+	if address == "" {
+		address = ":8089"
+	}
+	log.Printf("Chat Room Server starting on %s", address)
+	if err := host.Run(ctx, address, 5*time.Second); err != nil {
+		log.Fatal(err)
+	}
 }

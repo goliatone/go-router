@@ -4,16 +4,28 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
 )
 
-func main() {
-	// Create HTTP server adapter (can also use NewFiberAdapter())
-	app := router.NewHTTPServer()
+func newEchoHost() *echoHost {
+	h := &echoHost{
+		app:     router.NewHTTPServer().(*router.HTTPServer),
+		http:    &http.Server{ReadHeaderTimeout: 10 * time.Second},
+		active:  make(map[*ownedSocket]struct{}),
+		stopped: make(chan struct{}),
+	}
+	app := h.app
 
 	// Configure WebSocket settings
 	config := router.DefaultWebSocketConfig()
@@ -77,7 +89,7 @@ func main() {
 
 	// Register routes using unified WebSocket interface
 	app.Router().Get("/", homeHandler)
-	app.Router().WebSocket("/ws/echo", config, echoHandler)
+	app.Router().WebSocket("/ws/echo", config, h.track(echoHandler))
 
 	// Health check endpoint
 	app.Router().Get("/health", func(ctx router.Context) error {
@@ -87,15 +99,7 @@ func main() {
 		})
 	})
 
-	// Start server
-	port := ":8080"
-	log.Printf("Echo Server starting on %s", port)
-	log.Printf("WebSocket endpoint: ws://localhost%s/ws/echo", port)
-	log.Printf("Test page: http://localhost%s/", port)
-
-	if err := app.Serve(port); err != nil {
-		log.Fatal("Server error:", err)
-	}
+	return h
 }
 
 // Home page with WebSocket client
@@ -212,7 +216,7 @@ func homeHandler(ctx router.Context) error {
             }
 
             addMessage('Connecting...', 'system');
-            ws = new WebSocket('ws://localhost:8080/ws/echo');
+            ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/echo');
 
             ws.onopen = function() {
                 updateStatus('Connected', true);
@@ -304,4 +308,161 @@ func homeHandler(ctx router.Context) error {
 
 	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
 	return ctx.Send([]byte(html))
+}
+
+// echoHost owns HTTP and upgraded connection lifetimes. Allocate the native
+// server before starting so shutdown prevents a late listener from escaping.
+type echoHost struct {
+	app      *router.HTTPServer
+	http     *http.Server
+	mu       sync.Mutex
+	stopping bool
+	active   map[*ownedSocket]struct{}
+	workers  sync.WaitGroup
+	stopOnce sync.Once
+	stopped  chan struct{}
+	stopErr  error
+}
+
+type ownedSocket struct {
+	router.WebSocketContext
+	mu      sync.Mutex
+	closing bool
+}
+
+func (s *ownedSocket) InterruptRead() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing {
+		return nil
+	}
+	return s.WebSocketContext.(router.WebSocketReadInterrupter).InterruptRead()
+}
+
+func (s *ownedSocket) Close() error {
+	return s.CloseWithStatus(router.CloseNormalClosure, "")
+}
+
+func (s *ownedSocket) CloseWithStatus(code int, reason string) error {
+	s.mu.Lock()
+	s.closing = true
+	s.mu.Unlock()
+	// Native callbacks execute outside the lock; the enclosing handler stays owned.
+	return s.WebSocketContext.CloseWithStatus(code, reason)
+}
+
+func (h *echoHost) track(next func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return func(ws router.WebSocketContext) error {
+		socket := &ownedSocket{WebSocketContext: ws}
+		h.mu.Lock()
+		if h.stopping {
+			h.mu.Unlock()
+			return ws.Close()
+		}
+		h.active[socket] = struct{}{}
+		h.workers.Add(1)
+		h.mu.Unlock()
+		defer func() {
+			_ = socket.Close()
+			h.mu.Lock()
+			delete(h.active, socket)
+			h.mu.Unlock()
+			h.workers.Done()
+		}()
+		return next(socket)
+	}
+}
+
+func (h *echoHost) Serve(address string) error {
+	// WrappedRouter finalizes registration; call it only after all routes exist.
+	native := h.app.WrappedRouter()
+	h.http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Own entry before an upgrade can hijack its socket. Native HTTP shutdown
+		// stops tracking hijacked connections before their handlers return.
+		h.mu.Lock()
+		if h.stopping {
+			h.mu.Unlock()
+			w.Header().Set("Connection", "close")
+			http.Error(w, "server stopping", http.StatusServiceUnavailable)
+			return
+		}
+		h.workers.Add(1)
+		h.mu.Unlock()
+		defer h.workers.Done()
+		native.ServeHTTP(w, r)
+	})
+	h.http.Addr = address
+	return h.http.ListenAndServe()
+}
+
+// Shutdown bounds this caller's wait. Cleanup continues after a deadline and
+// subsequent calls join it; no application lock is held through socket callbacks.
+func (h *echoHost) Shutdown(ctx context.Context) error {
+	h.stopOnce.Do(func() {
+		h.mu.Lock()
+		h.stopping = true
+		sockets := make([]*ownedSocket, 0, len(h.active))
+		for socket := range h.active {
+			sockets = append(sockets, socket)
+		}
+		h.mu.Unlock()
+		go func() {
+			for _, socket := range sockets {
+				h.stopErr = errors.Join(h.stopErr, socket.InterruptRead())
+			}
+			h.workers.Wait()
+			close(h.stopped)
+		}()
+	})
+	serverErr := h.http.Shutdown(ctx)
+	select {
+	case <-h.stopped:
+		return errors.Join(serverErr, h.stopErr)
+	case <-ctx.Done():
+		return errors.Join(serverErr, ctx.Err())
+	}
+}
+
+func (h *echoHost) Run(parent context.Context, address string, drain time.Duration) error {
+	if err := parent.Err(); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), drain)
+		defer cancel()
+		return errors.Join(err, h.Shutdown(cleanup))
+	}
+	served := make(chan error, 1)
+	go func() { served <- h.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-parent.Done():
+	}
+	cleanup, cancel := context.WithTimeout(context.Background(), drain)
+	defer cancel()
+	shutdownErr := h.Shutdown(cleanup)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-cleanup.Done():
+			serveErr = cleanup.Err()
+		}
+	}
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
+	}
+	return errors.Join(serveErr, shutdownErr)
+}
+
+func main() {
+	address := os.Getenv("ECHO_ADDR")
+	if address == "" {
+		address = ":8080"
+	}
+	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	log.Printf("Echo Server starting on %s", address)
+	if err := newEchoHost().Run(parent, address, 5*time.Second); err != nil {
+		log.Fatal("Server error: ", err)
+	}
 }

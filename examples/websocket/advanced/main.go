@@ -4,9 +4,16 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
@@ -95,9 +102,14 @@ type QueuedMessage struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func main() {
-	// Create HTTP server adapter
-	app := router.NewHTTPServer()
+func newAdvancedHost() *advancedHost {
+	h := &advancedHost{
+		app:     router.NewHTTPServer().(*router.HTTPServer),
+		http:    &http.Server{ReadHeaderTimeout: 10 * time.Second},
+		active:  make(map[*ownedSocket]struct{}),
+		stopped: make(chan struct{}),
+	}
+	app := h.app
 
 	// Configure WebSocket settings
 	config := router.DefaultWebSocketConfig()
@@ -108,11 +120,11 @@ func main() {
 	config.MaxMessageSize = 10 * 1024 * 1024 // 10MB for file uploads
 
 	// Setup all WebSocket endpoints
-	setupFileTransferEndpoint(app.(*router.HTTPServer), config)
-	setupCollaborationEndpoint(app.(*router.HTTPServer), config)
-	setupGamingEndpoint(app.(*router.HTTPServer), config)
-	setupReconnectionEndpoint(app.(*router.HTTPServer), config)
-	setupMultiProtocolEndpoint(app.(*router.HTTPServer), config)
+	setupFileTransferEndpoint(h, config)
+	setupCollaborationEndpoint(h, config)
+	setupGamingEndpoint(h, config)
+	setupReconnectionEndpoint(h, config)
+	setupMultiProtocolEndpoint(h, config)
 
 	// Setup HTTP routes
 	app.Router().Get("/", dashboardHandler)
@@ -130,20 +142,162 @@ func main() {
 		})
 	})
 
-	// Start server
-	port := ":8080"
-	log.Printf("🚀 Advanced WebSocket Features Dashboard starting on %s", port)
-	log.Printf("📊 Dashboard: http://localhost%s/", port)
-	log.Printf("🔧 Health: http://localhost%s/health", port)
-	log.Printf("📈 Stats API: http://localhost%s/api/stats", port)
+	return h
+}
 
-	if err := app.Serve(port); err != nil {
-		log.Fatal("Server error:", err)
+// advancedHost owns HTTP and upgraded connection lifetimes. Allocate the native
+// server before starting so shutdown prevents a late listener from escaping.
+type advancedHost struct {
+	app      *router.HTTPServer
+	http     *http.Server
+	mu       sync.Mutex
+	stopping bool
+	active   map[*ownedSocket]struct{}
+	workers  sync.WaitGroup
+	stopOnce sync.Once
+	stopped  chan struct{}
+	stopErr  error
+}
+
+type ownedSocket struct {
+	mu      sync.Mutex
+	closing bool
+	ws      router.WebSocketContext
+}
+
+func (s *ownedSocket) interrupt() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing {
+		return nil
+	}
+	return s.ws.(router.WebSocketReadInterrupter).InterruptRead()
+}
+
+func (s *ownedSocket) close() {
+	s.mu.Lock()
+	s.closing = true
+	s.mu.Unlock()
+	_ = s.ws.Close()
+}
+
+func (h *advancedHost) track(next func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return func(ws router.WebSocketContext) error {
+		socket := &ownedSocket{ws: ws}
+		h.mu.Lock()
+		if h.stopping {
+			h.mu.Unlock()
+			return ws.Close()
+		}
+		h.active[socket] = struct{}{}
+		h.workers.Add(1)
+		h.mu.Unlock()
+		defer func() {
+			socket.close()
+			h.mu.Lock()
+			delete(h.active, socket)
+			h.mu.Unlock()
+			h.workers.Done()
+		}()
+		return next(ws)
+	}
+}
+
+func (h *advancedHost) Serve(address string) error {
+	// WrappedRouter finalizes registration; call it only after all routes exist.
+	native := h.app.WrappedRouter()
+	h.http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Own entry before an upgrade can hijack its socket. Native HTTP shutdown
+		// stops tracking hijacked connections before their handlers return.
+		h.mu.Lock()
+		if h.stopping {
+			h.mu.Unlock()
+			w.Header().Set("Connection", "close")
+			http.Error(w, "server stopping", http.StatusServiceUnavailable)
+			return
+		}
+		h.workers.Add(1)
+		h.mu.Unlock()
+		defer h.workers.Done()
+		native.ServeHTTP(w, r)
+	})
+	h.http.Addr = address
+	return h.http.ListenAndServe()
+}
+
+// Shutdown bounds this caller's wait. Cleanup continues after a deadline and
+// subsequent calls join it; no application lock is held through socket callbacks.
+func (h *advancedHost) Shutdown(ctx context.Context) error {
+	h.stopOnce.Do(func() {
+		h.mu.Lock()
+		h.stopping = true
+		sockets := make([]*ownedSocket, 0, len(h.active))
+		for socket := range h.active {
+			sockets = append(sockets, socket)
+		}
+		h.mu.Unlock()
+		go func() {
+			for _, socket := range sockets {
+				h.stopErr = errors.Join(h.stopErr, socket.interrupt())
+			}
+			h.workers.Wait()
+			close(h.stopped)
+		}()
+	})
+	serverErr := h.http.Shutdown(ctx)
+	select {
+	case <-h.stopped:
+		return errors.Join(serverErr, h.stopErr)
+	case <-ctx.Done():
+		return errors.Join(serverErr, ctx.Err())
+	}
+}
+
+func (h *advancedHost) Run(parent context.Context, address string, drain time.Duration) error {
+	if err := parent.Err(); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), drain)
+		defer cancel()
+		return errors.Join(err, h.Shutdown(cleanup))
+	}
+	served := make(chan error, 1)
+	go func() { served <- h.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-parent.Done():
+	}
+	cleanup, cancel := context.WithTimeout(context.Background(), drain)
+	defer cancel()
+	shutdownErr := h.Shutdown(cleanup)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-cleanup.Done():
+			serveErr = cleanup.Err()
+		}
+	}
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
+	}
+	return errors.Join(serveErr, shutdownErr)
+}
+
+func main() {
+	address := flag.String("address", ":8080", "listen address")
+	flag.Parse()
+	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	log.Printf("Advanced WebSocket dashboard starting on %s", *address)
+	if err := newAdvancedHost().Run(parent, *address, 5*time.Second); err != nil {
+		log.Fatal("Server error: ", err)
 	}
 }
 
 // File Transfer WebSocket endpoint
-func setupFileTransferEndpoint(app *router.HTTPServer, config router.WebSocketConfig) {
+func setupFileTransferEndpoint(h *advancedHost, config router.WebSocketConfig) {
+	app := h.app
 	fileHandler := func(ws router.WebSocketContext) error {
 		log.Printf("[Files] Client connected: %s", ws.ConnectionID()[:8])
 
@@ -183,11 +337,12 @@ func setupFileTransferEndpoint(app *router.HTTPServer, config router.WebSocketCo
 		return nil
 	}
 
-	app.Router().WebSocket("/ws/files", config, fileHandler)
+	app.Router().WebSocket("/ws/files", config, h.track(fileHandler))
 }
 
 // Collaboration WebSocket endpoint
-func setupCollaborationEndpoint(app *router.HTTPServer, config router.WebSocketConfig) {
+func setupCollaborationEndpoint(h *advancedHost, config router.WebSocketConfig) {
+	app := h.app
 	collabHandler := func(ws router.WebSocketContext) error {
 		clientID := ws.ConnectionID()
 		log.Printf("[Collab] Client connected: %s", clientID[:8])
@@ -230,11 +385,12 @@ func setupCollaborationEndpoint(app *router.HTTPServer, config router.WebSocketC
 		return nil
 	}
 
-	app.Router().WebSocket("/ws/collab", config, collabHandler)
+	app.Router().WebSocket("/ws/collab", config, h.track(collabHandler))
 }
 
 // Gaming WebSocket endpoint
-func setupGamingEndpoint(app *router.HTTPServer, config router.WebSocketConfig) {
+func setupGamingEndpoint(h *advancedHost, config router.WebSocketConfig) {
+	app := h.app
 	gameHandler := func(ws router.WebSocketContext) error {
 		log.Printf("[Game] Player connected: %s", ws.ConnectionID()[:8])
 
@@ -277,11 +433,12 @@ func setupGamingEndpoint(app *router.HTTPServer, config router.WebSocketConfig) 
 		return nil
 	}
 
-	app.Router().WebSocket("/ws/game", config, gameHandler)
+	app.Router().WebSocket("/ws/game", config, h.track(gameHandler))
 }
 
 // Reconnection WebSocket endpoint
-func setupReconnectionEndpoint(app *router.HTTPServer, config router.WebSocketConfig) {
+func setupReconnectionEndpoint(h *advancedHost, config router.WebSocketConfig) {
+	app := h.app
 	reconnectHandler := func(ws router.WebSocketContext) error {
 		clientID := ws.ConnectionID()
 		log.Printf("[Reconnect] Client connected: %s", clientID[:8])
@@ -344,11 +501,12 @@ func setupReconnectionEndpoint(app *router.HTTPServer, config router.WebSocketCo
 		return nil
 	}
 
-	app.Router().WebSocket("/ws/reconnect", config, reconnectHandler)
+	app.Router().WebSocket("/ws/reconnect", config, h.track(reconnectHandler))
 }
 
 // Multi-protocol WebSocket endpoint
-func setupMultiProtocolEndpoint(app *router.HTTPServer, config router.WebSocketConfig) {
+func setupMultiProtocolEndpoint(h *advancedHost, config router.WebSocketConfig) {
+	app := h.app
 	multiHandler := func(ws router.WebSocketContext) error {
 		protocol := getQueryParam(ws, "protocol")
 		if protocol == "" {
@@ -410,7 +568,7 @@ func setupMultiProtocolEndpoint(app *router.HTTPServer, config router.WebSocketC
 		return nil
 	}
 
-	app.Router().WebSocket("/ws/multiproto", config, multiHandler)
+	app.Router().WebSocket("/ws/multiproto", config, h.track(multiHandler))
 }
 
 // File transfer handlers
@@ -511,6 +669,29 @@ func handleFileDelete(ws router.WebSocketContext, msg map[string]any) {
 	})
 }
 
+// Snapshot shared response payloads while holding the corresponding state lock.
+func cloneDocument(doc *Document) *Document {
+	if doc == nil {
+		return nil
+	}
+	copy := *doc
+	copy.Cursors = make(map[string]CursorPosition, len(doc.Cursors))
+	for id, cursor := range doc.Cursors {
+		copy.Cursors[id] = cursor
+	}
+	return &copy
+}
+
+func cloneGameRoom(room *GameRoom) *GameRoom {
+	copy := *room
+	copy.Players = make(map[string]*Player, len(room.Players))
+	for id, player := range room.Players {
+		snapshot := *player
+		copy.Players[id] = &snapshot
+	}
+	return &copy
+}
+
 // Collaboration handlers
 func handleDocumentJoin(ws router.WebSocketContext, msg map[string]any) {
 	docID, ok := msg["document_id"].(string)
@@ -532,6 +713,7 @@ func handleDocumentJoin(ws router.WebSocketContext, msg map[string]any) {
 		}
 		documentState[docID] = doc
 	}
+	snapshot := cloneDocument(doc)
 	documentMutex.Unlock()
 
 	// Track this client as viewing this document
@@ -540,20 +722,21 @@ func handleDocumentJoin(ws router.WebSocketContext, msg map[string]any) {
 		documentClients[docID] = make(map[string]router.WebSocketContext)
 	}
 	documentClients[docID][clientID] = ws
+	activeClients := len(documentClients[docID])
 	clientsMutex.Unlock()
 
 	ws.WriteJSON(map[string]any{
 		"type":           "document_joined",
-		"document":       doc,
+		"document":       snapshot,
 		"message":        fmt.Sprintf("Joined document '%s'", docID),
-		"active_clients": len(documentClients[docID]),
+		"active_clients": activeClients,
 	})
 
 	// Notify other clients that someone joined
 	broadcastToDocument(docID, map[string]any{
 		"type":           "client_joined",
 		"client_id":      clientID[:8],
-		"active_clients": len(documentClients[docID]),
+		"active_clients": activeClients,
 	}, clientID)
 }
 
@@ -579,13 +762,14 @@ func handleDocumentOperation(ws router.WebSocketContext, msg map[string]any) {
 			doc.Content = content
 		}
 	}
+	snapshot := cloneDocument(doc)
 	documentMutex.Unlock()
 
 	if exists {
 		// Broadcast to ALL clients viewing this document
 		broadcastData := map[string]any{
 			"type":      "document_updated",
-			"document":  doc,
+			"document":  snapshot,
 			"operation": operation,
 			"editor_id": clientID[:8],
 		}
@@ -617,12 +801,13 @@ func handleCursorPosition(ws router.WebSocketContext, msg map[string]any) {
 			User:   userID,
 		}
 	}
+	snapshot := cloneDocument(doc)
 	documentMutex.Unlock()
 
 	if exists {
 		ws.WriteJSON(map[string]any{
 			"type":    "cursor_updated",
-			"cursors": doc.Cursors,
+			"cursors": snapshot.Cursors,
 		})
 	}
 }
@@ -643,11 +828,12 @@ func handleDocumentCreate(ws router.WebSocketContext, msg map[string]any) {
 
 	documentMutex.Lock()
 	documentState[doc.ID] = doc
+	snapshot := cloneDocument(doc)
 	documentMutex.Unlock()
 
 	ws.WriteJSON(map[string]any{
 		"type":     "document_created",
-		"document": doc,
+		"document": snapshot,
 		"message":  fmt.Sprintf("Document '%s' created successfully", name),
 	})
 }
@@ -696,24 +882,20 @@ func removeClientFromDocument(docID, clientID string) {
 // Clean up a client from all documents when they disconnect
 func cleanupCollabClient(clientID string) {
 	clientsMutex.Lock()
-	defer clientsMutex.Unlock()
-
+	notifications := make(map[string]int)
 	for docID, clients := range documentClients {
 		if _, exists := clients[clientID]; exists {
 			delete(clients, clientID)
-			// Notify remaining clients
-			if len(clients) > 0 {
-				go broadcastToDocument(docID, map[string]any{
-					"type":           "client_left",
-					"client_id":      clientID[:8],
-					"active_clients": len(clients),
-				}, "")
-			}
-			// Clean up empty document entries
 			if len(clients) == 0 {
 				delete(documentClients, docID)
+			} else {
+				notifications[docID] = len(clients)
 			}
 		}
+	}
+	clientsMutex.Unlock()
+	for docID, count := range notifications {
+		broadcastToDocument(docID, map[string]any{"type": "client_left", "client_id": clientID[:8], "active_clients": count}, "")
 	}
 }
 
@@ -747,13 +929,14 @@ func handleGameJoin(ws router.WebSocketContext, msg map[string]any) {
 		LastSeen: time.Now(),
 	}
 	room.Players[ws.ConnectionID()] = player
+	snapshot := cloneGameRoom(room)
 	gameRoomsMutex.Unlock()
 
 	ws.WriteJSON(map[string]any{
 		"type":    "game_joined",
 		"game_id": gameID,
-		"player":  player,
-		"room":    room,
+		"player":  snapshot.Players[ws.ConnectionID()],
+		"room":    snapshot,
 		"message": fmt.Sprintf("Joined game '%s' as '%s'", gameID, playerName),
 	})
 }
@@ -827,7 +1010,6 @@ func handleGameDisconnect(ws router.WebSocketContext) {
 			if len(room.Players) == 0 {
 				delete(gameRooms, gameID)
 			}
-			break
 		}
 	}
 }
@@ -1516,7 +1698,7 @@ func dashboardHandler(ctx router.Context) error {
         // File Transfer Functions
         function connectFiles() {
             if (filesWs) return;
-            filesWs = new WebSocket('ws://localhost:8080/ws/files');
+            filesWs = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/files');
 
             filesWs.onopen = () => {
                 updateStatus('files-status', true);
@@ -1649,7 +1831,7 @@ func dashboardHandler(ctx router.Context) error {
 
         function connectCollab() {
             if (collabWs) return;
-            collabWs = new WebSocket('ws://localhost:8080/ws/collab');
+            collabWs = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/collab');
 
             collabWs.onopen = () => {
                 updateStatus('collab-status', true);
@@ -1823,7 +2005,7 @@ func dashboardHandler(ctx router.Context) error {
         // Gaming Functions
         function connectGame() {
             if (gameWs) return;
-            gameWs = new WebSocket('ws://localhost:8080/ws/game');
+            gameWs = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/game');
 
             gameWs.onopen = () => {
                 updateStatus('game-status', true);
@@ -1925,7 +2107,7 @@ func dashboardHandler(ctx router.Context) error {
             const storedSessionId = localStorage.getItem('reconnect_session_id');
             const sessionToUse = storedSessionId || currentSessionId;
 
-            let url = 'ws://localhost:8080/ws/reconnect';
+            let url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/reconnect';
             if (sessionToUse) {
                 url += '?session_id=' + sessionToUse;
                 addMessage('reconnect-messages', '🔄 Attempting to reconnect with session: ' + sessionToUse, 'info');
@@ -2146,7 +2328,7 @@ func dashboardHandler(ctx router.Context) error {
 
         function createMultiProtoConnection(protocol) {
             addMessage('multiproto-messages', '🔗 Connecting with ' + protocol + ' protocol...', 'info');
-            multiprotoWs = new WebSocket('ws://localhost:8080/ws/multiproto?protocol=' + protocol);
+            multiprotoWs = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/multiproto?protocol=' + protocol);
 
             multiprotoWs.onopen = () => {
                 updateStatus('multiproto-status', true);
@@ -2285,12 +2467,7 @@ func statsHandler(ctx router.Context) error {
 	sessionCount := len(sessions)
 	sessionsMutex.RUnlock()
 
-	protocolMutex.RLock()
-	protocolStats := make(map[string]int)
-	for k, v := range protocolStats {
-		protocolStats[k] = v
-	}
-	protocolMutex.RUnlock()
+	protocolCounts := getProtocolStats()
 
 	return ctx.JSON(200, map[string]any{
 		"files": map[string]any{
@@ -2308,7 +2485,7 @@ func statsHandler(ctx router.Context) error {
 			"count":  sessionCount,
 			"active": getActiveSessions(),
 		},
-		"protocols": protocolStats,
+		"protocols": protocolCounts,
 		"timestamp": time.Now().Unix(),
 	})
 }

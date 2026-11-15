@@ -4,17 +4,29 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goliatone/go-router"
 )
 
-func main() {
-	// Create HTTP server adapter
-	app := router.NewHTTPServer()
+func newEventChatHost() *eventChatHost {
+	h := &eventChatHost{
+		app:     router.NewHTTPServer().(*router.HTTPServer),
+		http:    &http.Server{ReadHeaderTimeout: 10 * time.Second},
+		active:  make(map[*ownedSocket]struct{}),
+		clients: make(map[string]router.WebSocketContext),
+		stopped: make(chan struct{}),
+	}
+	app := h.app
 
 	// Configure WebSocket settings
 	config := router.DefaultWebSocketConfig()
@@ -24,10 +36,6 @@ func main() {
 	config.PingPeriod = 60 * time.Second   // Send ping every minute
 	config.PongWait = 120 * time.Second    // Wait up to 2 minutes for pong
 
-	// Simple broadcast system for demonstration
-	clients := make(map[string]router.WebSocketContext)
-	var clientsMutex sync.RWMutex
-
 	// No OnConnect/OnDisconnect callbacks - handle everything in main handler
 
 	// Chat handler with event-driven patterns
@@ -35,10 +43,18 @@ func main() {
 		log.Printf("[%s] WebSocket handler started", ws.ConnectionID()[:8])
 
 		// Add client to connected clients
-		clientsMutex.Lock()
-		clients[ws.ConnectionID()] = ws
-		clientsMutex.Unlock()
+		h.clientsMu.Lock()
+		h.clients[ws.ConnectionID()] = ws
+		h.clientsMu.Unlock()
 		log.Printf("Client connected: %s", ws.ConnectionID())
+		defer func() {
+			// Cleanup on exit
+			h.clientsMu.Lock()
+			delete(h.clients, ws.ConnectionID())
+			h.clientsMu.Unlock()
+			log.Printf("Client disconnected: %s", ws.ConnectionID())
+
+		}()
 
 		// Send welcome message
 		if err := ws.WriteJSON(map[string]string{
@@ -86,10 +102,10 @@ func main() {
 					"timestamp": time.Now().Unix(),
 				}
 
-				// Broadcast to all connected clients
-				clientsMutex.RLock()
+				// Snapshot recipients so network writes cannot block membership cleanup.
+				recipients := h.clientSnapshot()
 				broadcastCount := 0
-				for _, client := range clients {
+				for _, client := range recipients {
 					if client.ConnectionID() != ws.ConnectionID() {
 						if err := client.WriteJSON(response); err != nil {
 							log.Printf("[%s] Broadcast error to %s: %v", ws.ConnectionID()[:8], client.ConnectionID()[:8], err)
@@ -98,7 +114,6 @@ func main() {
 						}
 					}
 				}
-				clientsMutex.RUnlock()
 				log.Printf("[%s] Broadcasted message '%s' to %d clients", ws.ConnectionID()[:8], msg["message"], broadcastCount)
 
 				// Echo back to sender with confirmation
@@ -122,12 +137,12 @@ func main() {
 				}
 
 			case "get_users":
-				clientsMutex.RLock()
-				userList := make([]string, 0, len(clients))
-				for id := range clients {
+				h.clientsMu.RLock()
+				userList := make([]string, 0, len(h.clients))
+				for id := range h.clients {
 					userList = append(userList, id[:8]) // Short IDs
 				}
-				clientsMutex.RUnlock()
+				h.clientsMu.RUnlock()
 				log.Printf("[%s] Sending user list: %d users", ws.ConnectionID()[:8], len(userList))
 
 				if err := ws.WriteJSON(map[string]any{
@@ -144,18 +159,12 @@ func main() {
 			}
 		}
 
-		// Cleanup on exit
-		clientsMutex.Lock()
-		delete(clients, ws.ConnectionID())
-		clientsMutex.Unlock()
-		log.Printf("Client disconnected: %s", ws.ConnectionID())
-
 		return nil
 	}
 
 	// Register routes using unified WebSocket interface
 	app.Router().Get("/", homeHandler)
-	app.Router().WebSocket("/ws/chat", config, chatHandler)
+	app.Router().WebSocket("/ws/chat", config, h.track(chatHandler))
 
 	// Health check endpoint
 	app.Router().Get("/health", func(ctx router.Context) error {
@@ -165,15 +174,7 @@ func main() {
 		})
 	})
 
-	// Start server
-	port := ":8086"
-	log.Printf("Event-driven chat server starting on %s", port)
-	log.Printf("WebSocket endpoint: ws://localhost%s/ws/chat", port)
-	log.Printf("Test page: http://localhost%s/", port)
-
-	if err := app.Serve(port); err != nil {
-		log.Fatal("Server error:", err)
-	}
+	return h
 }
 
 // Home page with event-driven WebSocket client
@@ -292,7 +293,7 @@ func homeHandler(ctx router.Context) error {
             }
 
             addMessage('Connecting...', 'system');
-            ws = new WebSocket('ws://localhost:8086/ws/chat');
+            ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/chat');
 
             ws.onopen = function() {
                 updateStatus('Connected', true);
@@ -414,4 +415,173 @@ func homeHandler(ctx router.Context) error {
 	return ctx.Send([]byte(html))
 }
 
-// Note: generateID function removed as it was unused
+// clientSnapshot copies membership under its lock. Handlers own the subsequent
+// writes; disconnect and shutdown do not need to wait for that lock during I/O.
+func (h *eventChatHost) clientSnapshot() []router.WebSocketContext {
+	h.clientsMu.RLock()
+	defer h.clientsMu.RUnlock()
+	clients := make([]router.WebSocketContext, 0, len(h.clients))
+	for _, client := range h.clients {
+		clients = append(clients, client)
+	}
+	return clients
+}
+
+// eventChatHost owns HTTP and upgraded connection lifetimes. Allocate the native
+// server before starting so shutdown prevents a late listener from escaping.
+type eventChatHost struct {
+	clientsMu sync.RWMutex
+	clients   map[string]router.WebSocketContext
+	app       *router.HTTPServer
+	http      *http.Server
+	mu        sync.Mutex
+	stopping  bool
+	active    map[*ownedSocket]struct{}
+	workers   sync.WaitGroup
+	stopOnce  sync.Once
+	stopped   chan struct{}
+	stopErr   error
+}
+
+type ownedSocket struct {
+	router.WebSocketContext
+	mu      sync.Mutex
+	closing bool
+}
+
+func (s *ownedSocket) InterruptRead() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing {
+		return nil
+	}
+	return s.WebSocketContext.(router.WebSocketReadInterrupter).InterruptRead()
+}
+
+func (s *ownedSocket) Close() error {
+	return s.CloseWithStatus(router.CloseNormalClosure, "")
+}
+
+func (s *ownedSocket) CloseWithStatus(code int, reason string) error {
+	s.mu.Lock()
+	s.closing = true
+	s.mu.Unlock()
+	// Native callbacks execute outside the lock; the enclosing handler stays owned.
+	return s.WebSocketContext.CloseWithStatus(code, reason)
+}
+
+func (h *eventChatHost) track(next func(router.WebSocketContext) error) func(router.WebSocketContext) error {
+	return func(ws router.WebSocketContext) error {
+		socket := &ownedSocket{WebSocketContext: ws}
+		h.mu.Lock()
+		if h.stopping {
+			h.mu.Unlock()
+			return ws.Close()
+		}
+		h.active[socket] = struct{}{}
+		h.workers.Add(1)
+		h.mu.Unlock()
+		defer func() {
+			_ = socket.Close()
+			h.mu.Lock()
+			delete(h.active, socket)
+			h.mu.Unlock()
+			h.workers.Done()
+		}()
+		return next(socket)
+	}
+}
+
+func (h *eventChatHost) Serve(address string) error {
+	// WrappedRouter finalizes registration; call it only after all routes exist.
+	native := h.app.WrappedRouter()
+	h.http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Own entry before an upgrade can hijack its socket. Native HTTP shutdown
+		// stops tracking hijacked connections before their handlers return.
+		h.mu.Lock()
+		if h.stopping {
+			h.mu.Unlock()
+			w.Header().Set("Connection", "close")
+			http.Error(w, "server stopping", http.StatusServiceUnavailable)
+			return
+		}
+		h.workers.Add(1)
+		h.mu.Unlock()
+		defer h.workers.Done()
+		native.ServeHTTP(w, r)
+	})
+	h.http.Addr = address
+	return h.http.ListenAndServe()
+}
+
+// Shutdown bounds this caller's wait. Cleanup continues after a deadline and
+// subsequent calls join it; no application lock is held through socket callbacks.
+func (h *eventChatHost) Shutdown(ctx context.Context) error {
+	h.stopOnce.Do(func() {
+		h.mu.Lock()
+		h.stopping = true
+		sockets := make([]*ownedSocket, 0, len(h.active))
+		for socket := range h.active {
+			sockets = append(sockets, socket)
+		}
+		h.mu.Unlock()
+		go func() {
+			for _, socket := range sockets {
+				h.stopErr = errors.Join(h.stopErr, socket.InterruptRead())
+			}
+			h.workers.Wait()
+			close(h.stopped)
+		}()
+	})
+	serverErr := h.http.Shutdown(ctx)
+	select {
+	case <-h.stopped:
+		return errors.Join(serverErr, h.stopErr)
+	case <-ctx.Done():
+		return errors.Join(serverErr, ctx.Err())
+	}
+}
+
+func (h *eventChatHost) Run(parent context.Context, address string, drain time.Duration) error {
+	if err := parent.Err(); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), drain)
+		defer cancel()
+		return errors.Join(err, h.Shutdown(cleanup))
+	}
+	served := make(chan error, 1)
+	go func() { served <- h.Serve(address) }()
+	var serveErr error
+	returned := false
+	select {
+	case serveErr = <-served:
+		returned = true
+	case <-parent.Done():
+	}
+	cleanup, cancel := context.WithTimeout(context.Background(), drain)
+	defer cancel()
+	shutdownErr := h.Shutdown(cleanup)
+	if !returned {
+		select {
+		case serveErr = <-served:
+		case <-cleanup.Done():
+			serveErr = cleanup.Err()
+		}
+	}
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
+	}
+	return errors.Join(serveErr, shutdownErr)
+}
+
+func main() {
+	address := os.Getenv("EVENT_CHAT_ADDR")
+	if address == "" {
+		address = ":8086"
+	}
+	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	log.Printf("Event-driven chat server starting on %s", address)
+	if err := newEventChatHost().Run(parent, address, 5*time.Second); err != nil {
+		log.Fatal("Server error: ", err)
+	}
+}
